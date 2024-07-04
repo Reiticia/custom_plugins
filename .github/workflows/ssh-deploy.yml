@@ -26,7 +26,7 @@ jobs:
         user: ${{ secrets.DC_USER }}
         key: ${{ secrets.DC_KEY }}
         first_ssh: |
-          lsof -i :$PORT | grep LISTEN | awk '{print $2}' | xargs sudo kill -9
+          bash /home/${{ secrets.DC_USER }}/kill_process.sh $PORT
           rm -rf /home/${{ secrets.DC_USER }}/bot4q/custom_plugin
         scp: |
           './plugin/*' => /home/${{ secrets.DC_USER }}/bot4q/custom_plugin
