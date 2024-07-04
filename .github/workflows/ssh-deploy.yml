@@ -1,0 +1,35 @@
+# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-nodejs
+
+name: ssh deploy 
+
+on:
+  push:
+    branches: [ "main" ]
+    tags:
+      - '*'
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: scp ssh pipelines
+      uses: cross-the-world/ssh-scp-ssh-pipelines@latest
+      env:
+        PORT: 8123
+      with:
+        host: ${{ secrets.DC_HOST }}
+        user: ${{ secrets.DC_USER }}
+        key: ${{ secrets.DC_KEY }}
+        first_ssh: |
+          lsof -i :$PORT | grep LISTEN | awk '{print $2}' | xargs sudo kill -9
+          rm -rf /home/${{ secrets.DC_USER }}/bot4q/plugin/russian_ban
+        scp: |
+          './plugin/russian_ban/*' => /home/${{ secrets.DC_USER }}/bot4q/plugin/russian_ban
+        last_ssh: |
+          cd /home/${{ secrets.DC_USER }}/bot4q
+          nohup /home/${{ secrets.DC_USER }}/.local/bin/nb run >> /home/${{ secrets.DC_USER }}/bot4q/bot4q.log 2>&1 &
