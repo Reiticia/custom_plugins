@@ -282,3 +282,4 @@ async def mute_sb(bot: Bot, event: GroupMessageEvent, qq: Message = Arg(), time:
     except ValueError:
         await mute_sb_cmd.reject_arg("time", "请输入正确的禁言时间")
     await bot.set_group_ban(group_id=event.group_id, user_id=qq_num, duration=time)
+    await mute_sb_cmd.finish()
