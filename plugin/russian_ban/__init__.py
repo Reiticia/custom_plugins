@@ -1,5 +1,4 @@
 from datetime import datetime
-import time
 from nonebot import get_plugin_config, on_command, require
 from nonebot.params import Arg
 from nonebot.permission import SUPERUSER
@@ -257,7 +256,7 @@ async def clear_mute_list_n_history():
     global muted_list_dict, mute_history
     new_muted_list_dict = {}
     for k, v in muted_list_dict.items():
-        if v["time"] > int(time.time()):
+        if v["time"] > int(datetime.now().timestamp()):
             new_muted_list_dict[k] = v
     muted_list_dict = new_muted_list_dict
     mute_history.clear()
@@ -269,17 +268,23 @@ mute_sb_cmd = on_command(cmd="mute sb", permission=permit_roles)
 @mute_sb_cmd.handle()
 @mute_sb_cmd.got("qq", prompt="请输入QQ号")
 @mute_sb_cmd.got("time", prompt="请输入禁言时间")
-async def mute_sb(bot: Bot, event: GroupMessageEvent, qq: Message = Arg(), time: Message = Arg()):
+async def mute_sb(
+    bot: Bot, event: GroupMessageEvent, qq: Message = Arg(), time: Message = Arg()
+):
     if qq[0].type == "at":
         qq_num = qq[0].data["qq"]
     else:
         try:
             qq_num = int(qq[0].data["text"])
         except ValueError:
+            if qq[0].data["text"] == "stop":
+                await mute_sb_cmd.finish()
             await mute_sb_cmd.reject_arg("qq", "请输入正确的QQ号")
     try:
         time = int(time[0].data["text"]) * 60
     except ValueError:
+        if time[0].data["text"] == "stop":
+            await mute_sb_cmd.finish()
         await mute_sb_cmd.reject_arg("time", "请输入正确的禁言时间")
     await bot.set_group_ban(group_id=event.group_id, user_id=qq_num, duration=time)
     await mute_sb_cmd.finish()
