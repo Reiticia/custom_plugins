@@ -1,10 +1,8 @@
 from datetime import datetime
 from nonebot import get_plugin_config, on_command, require
-from nonebot.params import Arg
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.message import run_preprocessor
-from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import (
     Bot,
     GROUP_OWNER,
@@ -269,12 +267,12 @@ mute_sb_cmd = on_command(cmd="mute sb", permission=permit_roles)
 @mute_sb_cmd.handle()
 async def mute_sb(bot: Bot, event: GroupMessageEvent):
     await mute_sb_cmd.send("请输入QQ号")
-    
+
     @waiter(waits=["message"], keep_session=True)
     async def check_qq(event: GroupMessageEvent):
         ms = event.get_message()[0]
         return str(ms.data["qq"]) if ms.type == "at" else str(ms.data["text"])
-    
+
     async for qq in check_qq(
         timeout=20, retry=5, prompt="输入错误，请@某人或输入qq号。剩余次数：{count}"
     ):
@@ -306,3 +304,27 @@ async def mute_sb(bot: Bot, event: GroupMessageEvent):
         group_id=event.group_id, user_id=qq, duration=int(time) * 60
     )
 
+
+def check_mute_sb(event: GroupMessageEvent):
+    message = event.get_message()
+    try:
+        return (
+            message[0].data["text"].strip() == "mute"
+            and message[1].type == "at"
+            and message[2].data["text"].strip().isdigit()
+        )
+    except KeyError:
+        return False
+
+
+mute_cmd = on_command(cmd="mute", rule=check_mute_sb, permission=permit_roles)
+
+
+@mute_cmd.handle()
+async def _(bot: Bot, event: GroupMessageEvent):
+    message = event.get_message()
+    qq = message[1].data["qq"]
+    time = int(message[2].data["text"])
+    await bot.set_group_ban(
+        group_id=event.group_id, user_id=qq, duration=int(time) * 60
+    )
