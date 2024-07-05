@@ -4,14 +4,15 @@ from nonebot.params import Arg
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.message import run_preprocessor
+from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import (
     Bot,
     GROUP_OWNER,
     GroupMessageEvent,
     PrivateMessageEvent,
     MessageEvent,
-    Message,
 )
+from nonebot_plugin_waiter import waiter
 from random import choices
 from loguru import logger
 
@@ -266,25 +267,42 @@ mute_sb_cmd = on_command(cmd="mute sb", permission=permit_roles)
 
 
 @mute_sb_cmd.handle()
-@mute_sb_cmd.got("qq", prompt="请输入QQ号")
-@mute_sb_cmd.got("time", prompt="请输入禁言时间")
-async def mute_sb(
-    bot: Bot, event: GroupMessageEvent, qq: Message = Arg(), time: Message = Arg()
-):
-    if qq[0].type == "at":
-        qq_num = qq[0].data["qq"]
+async def mute_sb(bot: Bot, event: GroupMessageEvent):
+    await mute_sb_cmd.send("请输入QQ号")
+    
+    @waiter(waits=["message"], keep_session=True)
+    async def check_qq(event: GroupMessageEvent):
+        ms = event.get_message()[0]
+        return str(ms.data["qq"]) if ms.type == "at" else str(ms.data["text"])
+    
+    async for qq in check_qq(
+        timeout=20, retry=5, prompt="输入错误，请@某人或输入qq号。剩余次数：{count}"
+    ):
+        if qq is None:
+            await mute_sb_cmd.finish("等待超时")
+        if not qq.isdigit():
+            continue
+        break
     else:
-        try:
-            qq_num = int(qq[0].data["text"])
-        except ValueError:
-            if qq[0].data["text"] == "stop":
-                await mute_sb_cmd.finish()
-            await mute_sb_cmd.reject_arg("qq", "请输入正确的QQ号")
-    try:
-        time = int(time[0].data["text"]) * 60
-    except ValueError:
-        if time[0].data["text"] == "stop":
-            await mute_sb_cmd.finish()
-        await mute_sb_cmd.reject_arg("time", "请输入正确的禁言时间")
-    await bot.set_group_ban(group_id=event.group_id, user_id=qq_num, duration=time)
-    await mute_sb_cmd.finish()
+        await mute_sb_cmd.finish("输入失败")
+    await mute_sb_cmd.send("请输入禁言时间，单位分钟")
+
+    @waiter(waits=["message"], keep_session=True)
+    async def check_time(event: GroupMessageEvent):
+        return event.get_plaintext()
+
+    async for time in check_time(
+        timeout=20, retry=5, prompt="输入错误，请输入数字。剩余次数：{count}"
+    ):
+        if time is None:
+            await mute_sb_cmd.finish("等待超时")
+        if not time.isdigit():
+            continue
+        break
+    else:
+        await mute_sb_cmd.finish("输入失败")
+
+    await bot.set_group_ban(
+        group_id=event.group_id, user_id=qq, duration=int(time) * 60
+    )
+
