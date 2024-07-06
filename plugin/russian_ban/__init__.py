@@ -1,3 +1,5 @@
+from pathlib import Path
+from json import loads, dumps
 from datetime import datetime
 from nonebot import get_plugin_config, on_command, require
 from nonebot.permission import SUPERUSER
@@ -58,6 +60,23 @@ mute_history: list[dict[str, int]] = []
 """
 
 
+require("nonebot_plugin_localstore")
+
+import nonebot_plugin_localstore as store  # noqa: E402
+
+ban_file: Path = store.get_data_file("russian_ban", "ban.json")
+
+# read ban file to list
+if ban_file.exists():
+    muted_list_dict = loads(ban_file.read_text())
+
+
+def save():
+    """save ban list
+    """
+    ban_file.write_text(dumps(muted_list_dict))
+
+
 @run_preprocessor
 async def random_mute(bot: Bot, event: GroupMessageEvent):
     """random ban someone
@@ -106,6 +125,7 @@ async def random_mute(bot: Bot, event: GroupMessageEvent):
         v["time"] = event.time + min_res
         v["count"] += 1
         muted_list_dict[f"{event.group_id}:{event.user_id}"] = v
+        save()
 
 
 permit_roles = GROUP_OWNER | SUPERUSER
@@ -138,6 +158,7 @@ async def _(bot: Bot, event: MessageEvent):
         }
     else:
         muted_list_dict.clear()
+    save()
     await un_mute_all.finish("已解除所有禁言")
 
 
@@ -203,12 +224,12 @@ async def _(event: MessageEvent):
 def lst_group_by_group_id(
     history: list[dict[str, int]],
 ) -> dict[int, list[dict[str, int]]]:
-    """历史记录分组
+    """mute history grouping
 
     Args:
-        history (list[dict[str, int]]): 历史记录
+        history (list[dict[str, int]]): mute history
     Returns:
-        dict[int, list[dict[str, int]]]: 按group_id分组后的结果
+        dict[int, list[dict[str, int]]]: result by group_id
     """
     res: dict[int, list[dict[str, int]]] = {}
     for line in history:
@@ -225,12 +246,12 @@ def lst_group_by_group_id(
 def dict_group_by_group_id(
     members: dict[str : dict[str, int]],
 ) -> dict[str, dict[str : dict[str, int]]]:
-    """字典分组
+    """ban list grouping
 
     Args:
-        members (dict[str : dict[str, int]]): 要分组的members字典
+        members (dict[str : dict[str, int]]): ban list
     Returns:
-        dict[str, dict[str : dict[str, int]]]: 按group_id分组后的结果
+        dict[str, dict[str : dict[str, int]]]: result by group_id
     """
     res: dict[str, dict[str : dict[str, int]]] = {}
     for k, v in members.items():
@@ -259,6 +280,7 @@ async def clear_mute_list_n_history():
             new_muted_list_dict[k] = v
     muted_list_dict = new_muted_list_dict
     mute_history.clear()
+    save()
 
 
 mute_sb_cmd = on_command(cmd="mute sb", permission=permit_roles)
