@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from json import loads, dumps
 from datetime import datetime
@@ -5,13 +6,7 @@ from nonebot import get_plugin_config, on_command, require
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.message import run_preprocessor
-from nonebot.adapters.onebot.v11 import (
-    Bot,
-    GROUP_OWNER,
-    GroupMessageEvent,
-    PrivateMessageEvent,
-    MessageEvent,
-)
+from nonebot.adapters.onebot.v11 import Bot, GROUP_OWNER, GroupMessageEvent, PrivateMessageEvent, MessageEvent
 from nonebot_plugin_waiter import waiter
 from random import choices
 from loguru import logger
@@ -21,7 +16,7 @@ from .config import Config
 __plugin_meta__ = PluginMetadata(
     name="russian_ban",
     description="",
-    usage="mute clear 解除所有禁言\n mute query 查询禁言列表\n mute history 查询机器人禁言历史记录",
+    usage="mute clear 解除所有禁言\nmute query 查询禁言列表\nmute history 查询机器人禁言历史记录\nmute sb 禁言某人\nmute sb st禁言某人几分钟",
     config=Config,
 )
 
@@ -31,7 +26,15 @@ switch = True
 """ban switch
 """
 
-random_mute_dict = {0: 128, 1: 64, 2: 32, 5: 16, 10: 8, 30: 4, 60: 2}
+random_mute_dict = {
+    0: 128,
+    1: 64,
+    2: 32,
+    5: 16,
+    10: 8,
+    30: 4,
+    60: 2,
+}
 """random ban dict
 """
 
@@ -64,17 +67,26 @@ require("nonebot_plugin_localstore")
 
 import nonebot_plugin_localstore as store  # noqa: E402
 
-ban_file: Path = store.get_data_file("russian_ban", "ban.json")
+ban_file: Path = store.get_data_file(
+    "russian_ban",
+    "ban.json",
+)
+history_file: Path = store.get_data_file(
+    "russian_ban",
+    "history.json",
+)
 
 # read ban file to list
 if ban_file.exists():
     muted_list_dict = loads(ban_file.read_text())
+if history_file.exists():
+    mute_history = loads(history_file.read_text())
 
 
 def save():
-    """save ban list
-    """
+    """save ban list"""
     ban_file.write_text(dumps(muted_list_dict))
+    history_file.write_text(dumps(mute_history))
 
 
 @run_preprocessor
@@ -108,20 +120,11 @@ async def random_mute(bot: Bot, event: GroupMessageEvent):
     min_res = min_res * 60
     if min_res != 0:
         # ban fail, end process
-        await bot.set_group_ban(
-            group_id=event.group_id, user_id=event.user_id, duration=min_res
-        )
+        await bot.set_group_ban(group_id=event.group_id, user_id=event.user_id, duration=min_res)
         mute_history.append(
-            {
-                "group_id": event.group_id,
-                "user_id": event.user_id,
-                "start_time": event.time,
-                "duration": min_res / 60,
-            }
+            {"group_id": event.group_id, "user_id": event.user_id, "start_time": event.time, "duration": min_res / 60}
         )
-        logger.info(
-            f"{event.user_id}在{event.group_id}于{event.time}时被禁言{min_res}秒"
-        )
+        logger.info(f"{event.user_id}在{event.group_id}于{event.time}时被禁言{min_res}秒")
         v["time"] = event.time + min_res
         v["count"] += 1
         muted_list_dict[f"{event.group_id}:{event.user_id}"] = v
@@ -136,10 +139,7 @@ un_mute_all = on_command(cmd="mute clear", permission=permit_roles)
 @un_mute_all.handle()
 async def _(bot: Bot, event: MessageEvent):
     global muted_list_dict
-    for (
-        key,
-        value,
-    ) in muted_list_dict.items():
+    for key, value in muted_list_dict.items():
         [group_id, user_id] = key.split(":")
         # if member still banned
         if value["time"] > event.time:
@@ -151,11 +151,7 @@ async def _(bot: Bot, event: MessageEvent):
                 await bot.set_group_ban(group_id=group_id, user_id=user_id, duration=0)
     # clear muted list of this group
     if isinstance(event, GroupMessageEvent):
-        muted_list_dict = {
-            k: v
-            for k, v in muted_list_dict.items()
-            if k.split(":")[0] != str(event.group_id)
-        }
+        muted_list_dict = {k: v for k, v in muted_list_dict.items() if k.split(":")[0] != str(event.group_id)}
     else:
         muted_list_dict.clear()
     save()
@@ -221,9 +217,7 @@ async def _(event: MessageEvent):
         await mute_history_cmd.finish(res)
 
 
-def lst_group_by_group_id(
-    history: list[dict[str, int]],
-) -> dict[int, list[dict[str, int]]]:
+def lst_group_by_group_id(history: list[dict[str, int]]) -> dict[int, list[dict[str, int]]]:
     """mute history grouping
 
     Args:
@@ -243,9 +237,7 @@ def lst_group_by_group_id(
     return res
 
 
-def dict_group_by_group_id(
-    members: dict[str : dict[str, int]],
-) -> dict[str, dict[str : dict[str, int]]]:
+def dict_group_by_group_id(members: dict[str, dict[str, int]]) -> dict[str, dict[str : dict[str, int]]]:
     """ban list grouping
 
     Args:
@@ -253,7 +245,7 @@ def dict_group_by_group_id(
     Returns:
         dict[str, dict[str : dict[str, int]]]: result by group_id
     """
-    res: dict[str, dict[str : dict[str, int]]] = {}
+    res: dict[str, dict[str, dict[str, int]]] = {}
     for k, v in members.items():
         [group_id, user_id] = k.split(":")
         user_id_dict = res.get(group_id)
@@ -283,7 +275,7 @@ async def clear_mute_list_n_history():
     save()
 
 
-mute_sb_cmd = on_command(cmd="mute sb", permission=permit_roles)
+mute_sb_cmd = on_command(cmd="mute sb")
 
 
 @mute_sb_cmd.handle()
@@ -295,9 +287,7 @@ async def mute_sb(bot: Bot, event: GroupMessageEvent):
         ms = event.get_message()[0]
         return str(ms.data["qq"]) if ms.type == "at" else str(ms.data["text"])
 
-    async for qq in check_qq(
-        timeout=20, retry=5, prompt="输入错误，请@某人或输入qq号。剩余次数：{count}"
-    ):
+    async for qq in check_qq(timeout=20, retry=5, prompt="输入错误，请@某人或输入qq号。剩余次数：{count}"):
         if qq is None:
             await mute_sb_cmd.finish("等待超时")
         if not qq.isdigit():
@@ -311,9 +301,7 @@ async def mute_sb(bot: Bot, event: GroupMessageEvent):
     async def check_time(event: GroupMessageEvent):
         return event.get_plaintext()
 
-    async for time in check_time(
-        timeout=20, retry=5, prompt="输入错误，请输入数字。剩余次数：{count}"
-    ):
+    async for time in check_time(timeout=20, retry=5, prompt="输入错误，请输入数字。剩余次数：{count}"):
         if time is None:
             await mute_sb_cmd.finish("等待超时")
         if not time.isdigit():
@@ -322,31 +310,38 @@ async def mute_sb(bot: Bot, event: GroupMessageEvent):
     else:
         await mute_sb_cmd.finish("输入失败")
 
-    await bot.set_group_ban(
-        group_id=event.group_id, user_id=qq, duration=int(time) * 60
-    )
+    await bot.set_group_ban(group_id=event.group_id, user_id=qq, duration=int(time) * 60)
 
 
-def check_mute_sb(event: GroupMessageEvent):
+def check_mute(event: GroupMessageEvent):
     message = event.get_message()
-    try:
-        return (
-            message[0].data["text"].strip() == "mute"
-            and message[1].type == "at"
-            and message[2].data["text"].strip().isdigit()
-        )
-    except KeyError:
-        return False
+    message_length = len(message)
+    if message_length == 1:
+        msg = message.extract_plain_text().strip()
+        return re.fullmatch(r"mute\s*all\s*(\d+)", msg)
+    if message_length == 3:
+        try:
+            return (
+                message[0].data["text"].strip() == "mute"
+                and message[1].type == "at"
+                and message[2].data["text"].strip().isdigit()
+            )
+        except KeyError:
+            return False
+    return False
 
 
-mute_cmd = on_command(cmd="mute", rule=check_mute_sb, permission=permit_roles)
+mute_cmd = on_command(cmd="mute", rule=check_mute, permission=permit_roles)
 
 
 @mute_cmd.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
     message = event.get_message()
-    qq = message[1].data["qq"]
-    time = int(message[2].data["text"])
-    await bot.set_group_ban(
-        group_id=event.group_id, user_id=qq, duration=int(time) * 60
-    )
+    message_length = len(message)
+    if message_length == 3:
+        qq = message[1].data["qq"]
+        time = int(message[2].data["text"])
+        await bot.set_group_ban(group_id=event.group_id, user_id=qq, duration=int(time) * 60)
+    if message_length == 1:
+        match = re.fullmatch(r"mute\s*all\s*(\d+)", message.extract_plain_text().strip())
+        await bot.set_group_whole_ban(group_id=event.group_id, enable=(int(match.group(1)) > 0))
