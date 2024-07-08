@@ -301,16 +301,21 @@ async def mute_sb(bot: Bot, event: GroupMessageEvent):
     async def check_time(event: GroupMessageEvent):
         return event.get_plaintext()
 
-    async for time in check_time(timeout=20, retry=5, prompt="输入错误，请输入数字。剩余次数：{count}"):
-        if time is None:
+    async for mute_time in check_time(timeout=20, retry=5, prompt="输入错误，请输入数字。剩余次数：{count}"):
+        if mute_time is None:
             await mute_sb_cmd.finish("等待超时")
-        if not time.isdigit():
+        if not mute_time.isdigit():
             continue
         break
     else:
         await mute_sb_cmd.finish("输入失败")
+    
+    mute_time = int(mute_time)
 
-    await bot.set_group_ban(group_id=event.group_id, user_id=qq, duration=int(time) * 60)
+    if mute_time > 1440:
+        await mute_sb_cmd.finish("你好恶毒啊！")
+
+    await bot.set_group_ban(group_id=event.group_id, user_id=qq, duration=mute_time * 60)
 
 
 def check_mute(event: GroupMessageEvent):
