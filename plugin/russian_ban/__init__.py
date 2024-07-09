@@ -2,25 +2,17 @@ import re
 from pathlib import Path
 from json import loads, dumps
 from datetime import datetime
-from nonebot import get_plugin_config, on_command, require
+from nonebot import on_command, require
+from nonebot.rule import to_me
 from nonebot.permission import SUPERUSER
-from nonebot.plugin import PluginMetadata
+from nonebot.params import CommandArg
 from nonebot.message import run_preprocessor
-from nonebot.adapters.onebot.v11 import Bot, GROUP_OWNER, GroupMessageEvent, PrivateMessageEvent, MessageEvent
+from nonebot.adapters.onebot.v11 import Bot, GROUP_OWNER, GroupMessageEvent, PrivateMessageEvent, MessageEvent, Message
 from nonebot_plugin_waiter import waiter
 from random import choices
 from loguru import logger
-
-from .config import Config
-
-__plugin_meta__ = PluginMetadata(
-    name="russian_ban",
-    description="",
-    usage="mute clear 解除所有禁言\nmute query 查询禁言列表\nmute history 查询机器人禁言历史记录\nmute sb 禁言某人\nmute sb st禁言某人几分钟",
-    config=Config,
-)
-
-config = get_plugin_config(Config)
+from .config import config
+from .metadata import __plugin_meta__ as __plugin_meta__
 
 switch = True
 """ban switch
@@ -89,6 +81,8 @@ def save():
     history_file.write_text(dumps(mute_history))
 
 
+random_mute_switch = True
+
 @run_preprocessor
 async def random_mute(bot: Bot, event: GroupMessageEvent):
     """random ban someone
@@ -97,7 +91,10 @@ async def random_mute(bot: Bot, event: GroupMessageEvent):
         bot (Bot): bot object
         event (Event): group message event
     """
-    global switch, random_mute_dict, muted_list_dict
+    global switch, random_mute_dict, muted_list_dict, random_mute_switch
+    # 如果处于关闭状态，则不检测
+    if not random_mute_switch:
+        return
     if event.sender.role in ["admin", "owner"]:
         return
     # check someone has been banned
@@ -350,3 +347,40 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if message_length == 1:
         match = re.fullmatch(r"mute\s*all\s*(\d+)", message.extract_plain_text().strip())
         await bot.set_group_whole_ban(group_id=event.group_id, enable=(int(match.group(1)) > 0))
+
+mute_voting_cmd = on_command(cmd="mute voting", rule=to_me)
+
+@mute_voting_cmd.handle()
+async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
+    global random_mute_switch
+    mute_time = arg.extract_plain_text().strip()
+    if not mute_time.isdigit():
+        await mute_voting_cmd.finish("禁言时间不合法")
+    random_mute_switch = False
+    await mute_voting_cmd.send("已开启禁言投票")
+    await mute_voting_cmd.send("请@你要禁言的人")
+
+    @waiter(waits=["message"], keep_session=False)
+    async def check(event: GroupMessageEvent):
+        return event.user_id, event.get_message()[0]
+    
+    voted_members: list[int] = []
+    wait_for_mute: dict[int, int] = {}
+    
+    async for user_id, ms in check(timeout=20):
+        if not user_id and not ms:
+            random_mute_switch = True
+            await mute_voting_cmd.finish("投票超时结束")
+        if user_id in voted_members:
+            continue
+        else:
+            voted_members.append(user_id)
+        if ms.type == "at":
+            qq = ms.data["qq"]
+            count = wait_for_mute.get(qq, 0)
+            if count >= config.voting_member_count - 1:
+                await bot.set_group_ban(group_id=event.group_id, user_id=qq, duration=int(mute_time) * 60)
+                random_mute_switch = True
+                await mute_voting_cmd.finish(f"已禁言{qq} {mute_time}分钟")
+            wait_for_mute.update({qq: count + 1})
+        continue
