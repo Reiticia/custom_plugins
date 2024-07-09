@@ -11,5 +11,7 @@ class Config(BaseModel):
     """增加被禁言的时长"""
     voting_member_count: int = 3
     """投票成功人数"""
+    msg_count_max_last_vote: int = 20
+    """投票最大消息间隙"""
 
 config = get_plugin_config(Config)
