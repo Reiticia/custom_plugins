@@ -13,6 +13,7 @@ from random import choices
 from loguru import logger
 from .config import config
 from .metadata import __plugin_meta__ as __plugin_meta__
+import asyncio
 
 switch = True
 """ban switch
@@ -349,13 +350,14 @@ async def _(bot: Bot, event: GroupMessageEvent):
         await bot.set_group_whole_ban(group_id=event.group_id, enable=(int(match.group(1)) > 0))
 
 mute_voting_cmd = on_command(cmd="mute voting")
-
+lock = asyncio.Lock()
 @mute_voting_cmd.handle()
 async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
     global random_mute_switch
     mute_time = arg.extract_plain_text().strip()
     if not mute_time.isdigit():
         await mute_voting_cmd.finish("禁言时间不合法")
+    
     random_mute_switch = False
     await mute_voting_cmd.send("已开启禁言投票")
     await mute_voting_cmd.send("请@你要禁言的人")
@@ -365,33 +367,45 @@ async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
         return event.user_id, event.get_message()[0]
     
     voted_members: list[int] = []
-    wait_for_mute: dict[int, int] = {}
+    wait_for_mute: dict[int, set[int]] = {}
     msg_count_since_last_vote = 0
-    
+
     async for res in check(timeout=20):
         if not res:  # 长时间没人发言
             random_mute_switch = True
             await mute_voting_cmd.finish("投票超时结束")
+        
         user_id, ms = res
         if msg_count_since_last_vote > config.msg_count_max_last_vote:  # 发言长期未涉及投票
             random_mute_switch = True
             await mute_voting_cmd.finish("投票超时结束")
+        
         if ms.type != "at":  # 如果不是投票消息
             msg_count_since_last_vote += 1
             continue
-        if user_id in voted_members:  # 如果成员已经参与过投票
-            continue
-        else:
-            voted_members.append(user_id)
-        msg_count_since_last_vote = 0  # 清空投票间隙
-        qq = ms.data["qq"]
-        count = wait_for_mute.get(qq, 0)
-        if count >= config.voting_member_count - 1:  # 被投票成员达到指定票数
-            await bot.set_group_ban(group_id=event.group_id, user_id=qq, duration=int(mute_time) * 60)
-            random_mute_switch = True
-            await mute_voting_cmd.finish(f"已禁言{qq} {mute_time}分钟")
-        count = count + 1
-        wait_for_mute.update({qq: count})
-        msg = MessageSegment.at(user_id) + MessageSegment.text(f"已投{qq}一票，目前得票{count}")
-        await mute_voting_cmd.send(msg)
-        continue
+        
+        async with lock:
+            if user_id not in voted_members:  # 如果成员没有参与过投票
+                voted_members.append(user_id)
+                msg_count_since_last_vote = 0  # 清空投票间隙
+                qq = ms.data["qq"]
+
+                if qq not in wait_for_mute:
+                    wait_for_mute[qq] = set()
+                
+                wait_for_mute[qq].add(user_id)
+                count = len(wait_for_mute[qq])  # 票数
+
+                if count >= config.voting_member_count:  # 被投票成员达到指定票数
+                    await bot.set_group_ban(group_id=event.group_id, user_id=qq, duration=int(mute_time) * 60)
+                    random_mute_switch = True
+                    at_members = lambda members: Message([MessageSegment.at(member) for member in members])
+                    # 发送投票统计消息
+                    res_msg = MessageSegment.at(qq) + MessageSegment.text("请记住, 这些人投票禁言了你!\n") + at_members(wait_for_mute[qq])
+                    await mute_voting_cmd.send(res_msg)
+                    await mute_voting_cmd.finish(f"已禁言{qq} {mute_time}分钟")
+                
+                msg = MessageSegment.at(user_id) + MessageSegment.text(f"已投{qq}一票，目前得票{count}")
+                await mute_voting_cmd.send(msg)
+            else:
+                await mute_voting_cmd.send(MessageSegment.at(user_id) + MessageSegment.text("你已经投过票啦!"))
