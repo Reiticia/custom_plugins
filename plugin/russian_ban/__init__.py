@@ -2,6 +2,7 @@ import re
 from pathlib import Path
 from json import loads, dumps
 from datetime import datetime
+from typing import Optional
 from nonebot import on_command, require
 from nonebot.permission import SUPERUSER
 from nonebot.params import CommandArg
@@ -20,7 +21,7 @@ from random import choices
 from loguru import logger
 from .config import config
 from .metadata import __plugin_meta__ as __plugin_meta__
-import asyncio
+from asyncio import Lock
 
 switch = True
 """ban switch
@@ -353,27 +354,27 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
 
 mute_voting_cmd = on_command(cmd="mute voting")
-lock = asyncio.Lock()
+lock = Lock()
 
 
 @mute_voting_cmd.handle()
 async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
-    global random_mute_switch
+    global random_mute_switch, lock
     mute_time = arg.extract_plain_text().strip()
     if not mute_time.isdigit():
         await mute_voting_cmd.finish("禁言时间不合法")
 
     random_mute_switch = False
     await mute_voting_cmd.send("已开启禁言投票")
-    await mute_voting_cmd.send("请@你要禁言的人")
+    await mute_voting_cmd.send("请@你要禁言的人或输入其QQ号")
 
     @waiter(waits=["message"], keep_session=False)
     async def check(event: GroupMessageEvent):
-        message = event.get_message()
+        message = [ms for ms in event.get_message() if not (ms.type == "text" and ms.data["text"].strip() == "")]
         if len(message) == 1 and message[0].type == "at":  # at消息
-            return event.user_id, message[0].data["qq"]
-        if len(message) == 1 and message[0].type == "text" and message[0].data["text"].isdigit():  # 纯数字指定
-            return event.user_id, int(message[0].data["text"])
+            return event.user_id, int(message[0].data["qq"])
+        if len(message) == 1 and message[0].type == "text" and (m0 := message[0].data["text"].strip()).isdigit():  # 纯数字指定
+            return event.user_id, int(m0)
         return event.user_id, -1  # 非投票消息
 
     voted_members: list[int] = []
@@ -393,7 +394,7 @@ async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
         if qq == -1:  # 如果不是投票消息
             msg_count_since_last_vote += 1
             continue
-
+        
         async with lock:
             if user_id not in voted_members:  # 如果成员没有参与过投票
                 voted_members.append(user_id)
@@ -416,12 +417,12 @@ async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
                     )
                     await mute_voting_cmd.send(res_msg)
                     await mute_voting_cmd.finish(f"已禁言{qq} {mute_time}分钟")
-
                 msg = MessageSegment.at(user_id) + MessageSegment.text(f" 已投{qq}一票，目前得票{count}")
                 await mute_voting_cmd.send(msg)
             else:
                 msg_count_since_last_vote += 1
                 await mute_voting_cmd.send(MessageSegment.at(user_id) + MessageSegment.text(" 你已经投过票啦!"))
+
 
 def at_members(members: set[int]) -> Message:
     return Message([MessageSegment.at(member) for member in members])
