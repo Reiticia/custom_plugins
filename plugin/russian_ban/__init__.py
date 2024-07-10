@@ -3,11 +3,18 @@ from pathlib import Path
 from json import loads, dumps
 from datetime import datetime
 from nonebot import on_command, require
-from nonebot.rule import to_me
 from nonebot.permission import SUPERUSER
 from nonebot.params import CommandArg
 from nonebot.message import run_preprocessor
-from nonebot.adapters.onebot.v11 import Bot, GROUP_OWNER, GroupMessageEvent, PrivateMessageEvent, MessageEvent, Message, MessageSegment
+from nonebot.adapters.onebot.v11 import (
+    Bot,
+    GROUP_OWNER,
+    GroupMessageEvent,
+    PrivateMessageEvent,
+    MessageEvent,
+    Message,
+    MessageSegment,
+)
 from nonebot_plugin_waiter import waiter
 from random import choices
 from loguru import logger
@@ -60,14 +67,8 @@ require("nonebot_plugin_localstore")
 
 import nonebot_plugin_localstore as store  # noqa: E402
 
-ban_file: Path = store.get_data_file(
-    "russian_ban",
-    "ban.json",
-)
-history_file: Path = store.get_data_file(
-    "russian_ban",
-    "history.json",
-)
+ban_file: Path = store.get_data_file("russian_ban", "ban.json")
+history_file: Path = store.get_data_file("russian_ban", "history.json")
 
 # read ban file to list
 if ban_file.exists():
@@ -83,6 +84,7 @@ def save():
 
 
 random_mute_switch = True
+
 
 @run_preprocessor
 async def random_mute(bot: Bot, event: GroupMessageEvent):
@@ -285,7 +287,7 @@ async def mute_sb(bot: Bot, event: GroupMessageEvent):
         ms = event.get_message()[0]
         return str(ms.data["qq"]) if ms.type == "at" else str(ms.data["text"])
 
-    async for qq in check_qq(timeout=20, retry=5, prompt="输入错误，请@某人或输入qq号。剩余次数：{count}"):
+    async for qq in check_qq(timeout=20, retry=5, prompt="输入错误，请@某人或输入qq号。剩余次数: {count}"):
         if qq is None:
             await mute_sb_cmd.finish("等待超时")
         if not qq.isdigit():
@@ -299,7 +301,7 @@ async def mute_sb(bot: Bot, event: GroupMessageEvent):
     async def check_time(event: GroupMessageEvent):
         return event.get_plaintext()
 
-    async for mute_time in check_time(timeout=20, retry=5, prompt="输入错误，请输入数字。剩余次数：{count}"):
+    async for mute_time in check_time(timeout=20, retry=5, prompt="输入错误，请输入数字。剩余次数: {count}"):
         if mute_time is None:
             await mute_sb_cmd.finish("等待超时")
         if not mute_time.isdigit():
@@ -307,7 +309,7 @@ async def mute_sb(bot: Bot, event: GroupMessageEvent):
         break
     else:
         await mute_sb_cmd.finish("输入失败")
-    
+
     mute_time = int(mute_time)
 
     if mute_time > 1440:
@@ -349,63 +351,77 @@ async def _(bot: Bot, event: GroupMessageEvent):
         match = re.fullmatch(r"mute\s*all\s*(\d+)", message.extract_plain_text().strip())
         await bot.set_group_whole_ban(group_id=event.group_id, enable=(int(match.group(1)) > 0))
 
+
 mute_voting_cmd = on_command(cmd="mute voting")
 lock = asyncio.Lock()
+
+
 @mute_voting_cmd.handle()
 async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
     global random_mute_switch
     mute_time = arg.extract_plain_text().strip()
     if not mute_time.isdigit():
         await mute_voting_cmd.finish("禁言时间不合法")
-    
+
     random_mute_switch = False
     await mute_voting_cmd.send("已开启禁言投票")
     await mute_voting_cmd.send("请@你要禁言的人")
 
     @waiter(waits=["message"], keep_session=False)
     async def check(event: GroupMessageEvent):
-        return event.user_id, event.get_message()[0]
-    
+        message = event.get_message()
+        if len(message) == 1 and message[0].type == "at":  # at消息
+            return event.user_id, message[0].data["qq"]
+        if len(message) == 1 and message[0].type == "text" and message[0].data["text"].isdigit():  # 纯数字指定
+            return event.user_id, int(message[0].data["text"])
+        return event.user_id, -1  # 非投票消息
+
     voted_members: list[int] = []
     wait_for_mute: dict[int, set[int]] = {}
     msg_count_since_last_vote = 0
 
     async for res in check(timeout=20):
-        if not res:  # 长时间没人发言
+        if not res:  # 长时间没人发
             random_mute_switch = True
             await mute_voting_cmd.finish("投票超时结束")
-        
-        user_id, ms = res
+
+        user_id, qq = res
         if msg_count_since_last_vote > config.msg_count_max_last_vote:  # 发言长期未涉及投票
             random_mute_switch = True
             await mute_voting_cmd.finish("投票超时结束")
-        
-        if ms.type != "at":  # 如果不是投票消息
+
+        if qq == -1:  # 如果不是投票消息
             msg_count_since_last_vote += 1
             continue
-        
+
         async with lock:
             if user_id not in voted_members:  # 如果成员没有参与过投票
                 voted_members.append(user_id)
                 msg_count_since_last_vote = 0  # 清空投票间隙
-                qq = ms.data["qq"]
 
                 if qq not in wait_for_mute:
                     wait_for_mute[qq] = set()
-                
+
                 wait_for_mute[qq].add(user_id)
                 count = len(wait_for_mute[qq])  # 票数
 
                 if count >= config.voting_member_count:  # 被投票成员达到指定票数
                     await bot.set_group_ban(group_id=event.group_id, user_id=qq, duration=int(mute_time) * 60)
                     random_mute_switch = True
-                    at_members = lambda members: Message([MessageSegment.at(member) for member in members])
                     # 发送投票统计消息
-                    res_msg = MessageSegment.at(qq) + MessageSegment.text("请记住, 这些人投票禁言了你!\n") + at_members(wait_for_mute[qq])
+                    res_msg = (
+                        MessageSegment.at(qq)
+                        + MessageSegment.text("请记住, 这些人投票禁言了你!\n")
+                        + at_members(wait_for_mute[qq])
+                    )
                     await mute_voting_cmd.send(res_msg)
                     await mute_voting_cmd.finish(f"已禁言{qq} {mute_time}分钟")
-                
-                msg = MessageSegment.at(user_id) + MessageSegment.text(f"已投{qq}一票，目前得票{count}")
+
+                msg = MessageSegment.at(user_id) + MessageSegment.text(f" 已投{qq}一票，目前得票{count}")
                 await mute_voting_cmd.send(msg)
             else:
-                await mute_voting_cmd.send(MessageSegment.at(user_id) + MessageSegment.text("你已经投过票啦!"))
+                msg_count_since_last_vote += 1
+                await mute_voting_cmd.send(MessageSegment.at(user_id) + MessageSegment.text(" 你已经投过票啦!"))
+
+def at_members(members: set[int]) -> Message:
+    return Message([MessageSegment.at(member) for member in members])
