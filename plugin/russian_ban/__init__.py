@@ -394,6 +394,11 @@ async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
         if qq == -1:  # 如果不是投票消息
             msg_count_since_last_vote += 1
             continue
+
+        if qq == 0:  # 如果是老版本QQ或Tim，检测不到@
+            msg_count_since_last_vote += 1
+            await mute_voting_cmd.send("老版本QQ以及Tim用户请使用QQ号投票")
+            continue
         
         async with lock:
             if user_id not in voted_members:  # 如果成员没有参与过投票
