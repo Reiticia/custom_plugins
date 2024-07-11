@@ -304,8 +304,10 @@ async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
         await mute_voting_cmd.finish("禁言时间超过最大限度")
 
     switch = False
+    
+    max_count = len(mute_time) if int(mute_time) > 0 else 3
 
-    await mute_voting_cmd.send(f"已开启禁言投票，投票成功票数为{len(mute_time)}")
+    await mute_voting_cmd.send(f"已开启禁言投票，投票成功票数为{max_count}")
     await mute_voting_cmd.send("请@你要禁言的人或输入其QQ号")
 
     @waiter(waits=["message"], keep_session=False)
@@ -353,17 +355,20 @@ async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
                 wait_for_mute[qq].add(user_id)
                 count = len(wait_for_mute[qq])  # 票数
 
-                if count >= len(mute_time):  # 被投票成员达到指定票数
+                if count >= max_count:  # 被投票成员达到指定票数
                     await bot.set_group_ban(group_id=event.group_id, user_id=qq, duration=int(mute_time) * 60)
                     switch = True
                     # 发送投票统计消息
                     res_msg = (
                         MessageSegment.at(qq)
-                        + MessageSegment.text("请记住, 这些人投票禁言了你!\n")
+                        + MessageSegment.text(f"请记住, 这些人投票{'禁言' if int(mute_time) > 0 else '解禁'}了你!\n")
                         + at_members(wait_for_mute[qq])
                     )
                     await mute_voting_cmd.send(res_msg)
-                    await mute_voting_cmd.finish(f"已禁言{qq} {mute_time}分钟")
+                    if int(mute_time) > 0:
+                        await mute_voting_cmd.finish(f"已禁言{qq} {mute_time}分钟")
+                    else: 
+                        await mute_voting_cmd.finish(f"已解禁{qq}")
                 msg = MessageSegment.at(user_id) + MessageSegment.text(f" 已投{qq}一票，目前得票{count}")
                 await mute_voting_cmd.send(msg)
             else:
@@ -428,5 +433,5 @@ async def _(bot: Bot, event: GroupMessageEvent):
     qq, period, hour, minute = split_event_args(message)
     group_id = event.group_id
     await add_schedule(bot=bot, group_id=group_id, user_id=qq, time=period, hour=hour, minute=minute)
-    msg = MessageSegment.text(f"已设置{qq}在{hour}:{minute}被禁言{period}分钟")
+    msg = MessageSegment.text(f"已设置{qq}在{hour:02}:{minute:02}被禁言{period}分钟")
     await bot.send_group_msg(group_id=group_id, message=msg)
