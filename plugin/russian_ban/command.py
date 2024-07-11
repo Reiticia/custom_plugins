@@ -8,6 +8,7 @@ from nonebot.message import run_preprocessor
 from nonebot.adapters.onebot.v11 import (
     Bot,
     GROUP_OWNER,
+    GROUP_ADMIN,
     GroupMessageEvent,
     PrivateMessageEvent,
     MessageEvent,
@@ -86,7 +87,7 @@ async def random_mute(bot: Bot, event: GroupMessageEvent):
         save()
 
 
-permit_roles = GROUP_OWNER | SUPERUSER
+permit_roles = GROUP_OWNER | SUPERUSER | GROUP_ADMIN
 
 un_mute_all = on_command(cmd="mute clear", permission=permit_roles)
 
