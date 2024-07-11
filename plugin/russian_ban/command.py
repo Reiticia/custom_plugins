@@ -299,8 +299,12 @@ async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
     if not (mute_time := arg.extract_plain_text().strip()).isdigit():
         await mute_voting_cmd.finish("禁言时间不合法")
 
+    if int(mute_time) > 43200:
+        await mute_voting_cmd.finish("禁言时间超过最大限度")
+
     switch = False
-    await mute_voting_cmd.send("已开启禁言投票")
+
+    await mute_voting_cmd.send(f"已开启禁言投票，投票成功票数为{len(mute_time)}")
     await mute_voting_cmd.send("请@你要禁言的人或输入其QQ号")
 
     @waiter(waits=["message"], keep_session=False)
@@ -346,7 +350,7 @@ async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
                 wait_for_mute[qq].add(user_id)
                 count = len(wait_for_mute[qq])  # 票数
 
-                if count >= config.voting_member_count:  # 被投票成员达到指定票数
+                if count >= len(mute_time):  # 被投票成员达到指定票数
                     await bot.set_group_ban(group_id=event.group_id, user_id=qq, duration=int(mute_time) * 60)
                     switch = True
                     # 发送投票统计消息

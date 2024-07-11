@@ -1,2 +1,2 @@
 from .metadata import __plugin_meta__ as __plugin_meta__
-from . import command
+from . import command  # noqa: F401
