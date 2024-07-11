@@ -433,5 +433,6 @@ async def _(bot: Bot, event: GroupMessageEvent):
     qq, period, hour, minute = split_event_args(message)
     group_id = event.group_id
     await add_schedule(bot=bot, group_id=group_id, user_id=qq, time=period, hour=hour, minute=minute)
-    msg = MessageSegment.text(f"已设置{qq}在{hour:02}:{minute:02}被禁言{period}分钟")
+    msg = f"已设置{qq}在{hour}:{minute:0>2}被禁言{period}分钟"
+    logger.info(msg)
     await bot.send_group_msg(group_id=group_id, message=msg)
