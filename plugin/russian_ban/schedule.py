@@ -3,9 +3,10 @@ import string
 from nonebot import require
 from datetime import datetime
 
-from json import loads, dump
+from json import loads, dumps
 from pathlib import Path
 from nonebot.adapters.onebot.v11 import Bot
+from aiofiles import open as aopen
 
 require("nonebot_plugin_localstore")
 
@@ -45,12 +46,12 @@ if history_file.exists():
     mute_history = loads(t) if (t := history_file.read_text()) else {}
 
 
-def save():
+async def save(muted_list_dict: dict[str, dict[str, int]], mute_history: list[dict[str, int]]):
     """save ban list"""
-    with open(ban_file, 'w') as fp:
-        dump(muted_list_dict, fp, indent=4)
-    with open(history_file, 'w') as fp:
-        dump(mute_history, fp, indent=4)
+    async with aopen(ban_file, mode='w') as fp:
+        await fp.write(dumps(muted_list_dict, indent=4))
+    async with aopen(history_file, 'w') as fp:
+        await fp.write(dumps(mute_history, indent=4))
 
 
 require("nonebot_plugin_apscheduler")
@@ -64,7 +65,7 @@ async def clear_mute_list_n_history():
     new_muted_list_dict = {k: v for k, v in muted_list_dict.items() if v["time"] > int(datetime.now().timestamp())}
     muted_list_dict = new_muted_list_dict
     mute_history.clear()
-    save()
+    await save(muted_list_dict, mute_history)
 
 
 async def ban_reserve(bot: Bot, user_id: int, group_id: int, time: int, job_id: str):

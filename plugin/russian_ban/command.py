@@ -80,7 +80,7 @@ async def random_mute(bot: Bot, event: GroupMessageEvent):
         v["time"] = event.time + min_res
         v["count"] += 1
         muted_list_dict[f"{event.group_id}:{event.user_id}"] = v
-        save()
+        await save(muted_list_dict, mute_history)
 
 
 permit_roles = GROUP_OWNER | SUPERUSER | GROUP_ADMIN
@@ -106,7 +106,7 @@ async def _(bot: Bot, event: MessageEvent):
         muted_list_dict = {k: v for k, v in muted_list_dict.items() if k.split(":")[0] != str(event.group_id)}
     else:
         muted_list_dict.clear()
-    save()
+    await save(muted_list_dict, mute_history)
     await un_mute_all.finish("已解除所有禁言")
 
 
