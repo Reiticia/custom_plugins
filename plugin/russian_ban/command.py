@@ -1,5 +1,5 @@
 import re
-from .schedule import save, muted_list_dict, mute_history
+from .schedule import save, add_schedule, muted_list_dict, mute_history
 from datetime import datetime
 from nonebot import on_command
 from nonebot.permission import SUPERUSER
@@ -19,7 +19,6 @@ from random import choices
 from loguru import logger
 from .config import config
 from asyncio import Lock
-
 
 
 switch = True
@@ -213,7 +212,9 @@ def dict_group_by_group_id(members: dict[str, dict[str, int]]) -> dict[str, dict
             user_id_dict[user_id] = v
     return res
 
+
 mute_sb_cmd = on_command(cmd="mute sb")
+
 
 @mute_sb_cmd.handle()
 async def mute_sb(bot: Bot, event: GroupMessageEvent):
@@ -312,7 +313,9 @@ async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
         message = [ms for ms in event.get_message() if not (ms.type == "text" and ms.data["text"].strip() == "")]
         if len(message) == 1 and message[0].type == "at":  # at消息
             return event.user_id, int(message[0].data["qq"])
-        if len(message) == 1 and message[0].type == "text" and (m0 := message[0].data["text"].strip()).isdigit():  # 纯数字指定
+        if (
+            len(message) == 1 and message[0].type == "text" and (m0 := message[0].data["text"].strip()).isdigit()
+        ):  # 纯数字指定
             return event.user_id, int(m0)
         return event.user_id, -1  # 非投票消息
 
@@ -338,7 +341,7 @@ async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
             msg_count_since_last_vote += 1
             await mute_voting_cmd.send("老版本QQ以及Tim用户请使用QQ号投票")
             continue
-        
+
         async with lock:
             if user_id not in voted_members:  # 如果成员没有参与过投票
                 voted_members.append(user_id)
@@ -370,3 +373,58 @@ async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
 
 def at_members(members: set[int]) -> Message:
     return Message([MessageSegment.at(member) for member in members])
+
+
+def mute_sb_p_at_st(event: GroupMessageEvent):
+    """mute somebody period at some time
+
+    Args:
+        event (GroupMessageEvent): 消息事件
+    """
+    message = event.get_message()
+    if len(message) != 3:
+        return False
+
+    text_0 = message[0].data.get("text", "").strip()
+    if text_0 != "mute schedule":
+        return False
+
+    if message[1].type != "at" or message[2].type != "text":
+        return False
+
+    text_2 = message[2].data.get("text", "").strip()
+    pattern = r"^(\d+)\s*at\s*([01]?\d|2[0-3])(:[0-5]?\d)?$"
+    if re.match(pattern, text_2):
+        return True
+
+    return False
+
+
+mute_schedule_cmd = on_command(cmd="mute schedule", rule=mute_sb_p_at_st, permission=permit_roles)
+
+
+def split_event_args(msg: Message):
+    """split args from message
+
+    Args:
+        msg (Message): message
+
+    Returns:
+        tuple[int, int, str, str]: qq, period, hour, minute
+    """
+    qq = int(msg[1].data.get("qq", ""))
+
+    pattern = r"^(\d+)\s*at\s*([01]?\d|2[0-3])(:[0-5]?\d)?$"
+    match = re.match(pattern, msg[2].data.get("text", "").strip())
+    period = int(match.group(1))
+    hour = str(match.group(2))
+    minute = str(match.group(3)[1:]) if match.group(3) else "0"
+    return qq, period, hour, minute
+
+
+@mute_schedule_cmd.handle()
+async def _(bot: Bot, event: GroupMessageEvent):
+    message = event.get_message()
+    qq, period, hour, minute = split_event_args(message)
+    group_id = event.group_id
+    await add_schedule(bot=bot, group_id=group_id, user_id=qq, time=period, hour=hour, minute=minute)

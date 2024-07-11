@@ -46,9 +46,16 @@ __plugin_meta__ = PluginMetadata(
             {
                 'func': '禁言投票',
                 'trigger_method': 'on_cmd',
-                'trigger_condition': '@bot mute voting $st',
+                'trigger_condition': 'mute voting $st',
                 'brief_des': '禁言投票',
                 'detail_des': '触发命令后，每个群成员可以通过@某人进行投票，\n票数达到指定数量后，bot会自动禁言该成员'
+            },
+            {
+                'func': '预约禁言',
+                'trigger_method': 'on_cmd',
+                'trigger_condition': 'mute schedule @$sb $st at $st',
+                'brief_des': '预约禁言',
+                'detail_des': '触发命令后，将在指定时间点禁言该用户指定时间，只执行一次，at后可只跟时刻，如10，或时分，如10:30'
             },
         ],
         'menu_template': 'default'
