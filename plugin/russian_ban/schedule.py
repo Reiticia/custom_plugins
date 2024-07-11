@@ -3,7 +3,7 @@ import string
 from nonebot import require
 from datetime import datetime
 
-from json import loads, dumps
+from json import loads, dump
 from pathlib import Path
 from nonebot.adapters.onebot.v11 import Bot
 
@@ -40,15 +40,17 @@ history_file: Path = store.get_data_file("russian_ban", "history.json")
 
 # read ban file to list
 if ban_file.exists():
-    muted_list_dict = loads(ban_file.read_text())
+    muted_list_dict = loads(t) if (t := ban_file.read_text()) else {}
 if history_file.exists():
-    mute_history = loads(history_file.read_text())
+    mute_history = loads(t) if (t := history_file.read_text()) else {}
 
 
 def save():
     """save ban list"""
-    ban_file.write_text(dumps(muted_list_dict))
-    history_file.write_text(dumps(mute_history))
+    with open(ban_file, 'w') as fp:
+        dump(muted_list_dict, fp, indent=4)
+    with open(history_file, 'w') as fp:
+        dump(mute_history, fp, indent=4)
 
 
 require("nonebot_plugin_apscheduler")
@@ -59,10 +61,7 @@ from nonebot_plugin_apscheduler import scheduler  # noqa: E402
 @scheduler.scheduled_job("cron", hour="0", id="clear_record")
 async def clear_mute_list_n_history():
     global muted_list_dict, mute_history
-    new_muted_list_dict = {}
-    for k, v in muted_list_dict.items():
-        if v["time"] > int(datetime.now().timestamp()):
-            new_muted_list_dict[k] = v
+    new_muted_list_dict = {k: v for k, v in muted_list_dict.items() if v["time"] > int(datetime.now().timestamp())}
     muted_list_dict = new_muted_list_dict
     mute_history.clear()
     save()

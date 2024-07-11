@@ -59,19 +59,15 @@ async def random_mute(bot: Bot, event: GroupMessageEvent):
     # check someone has been banned
     keys = list(random_mute_dict.keys())
     weights = list(random_mute_dict.values())
-    try:
-        v = muted_list_dict[f"{event.group_id}:{event.user_id}"]
-        # If someone has been banned, decreate the weight of a 0-minute banand and
-        # increate the weight of a 60-minute ban based on the number of previous bans
-        if config.increase_probability:
-            weights[0] >>= v["count"]
-            weights[-1] <<= v["count"]
-        # If someone has been banned, increase the duration of the ban time
-        if config.increase_duration:
-            keys = [i << v["count"] for i in keys]
-    except KeyError:
-        # someone has not been banned
-        v = {"time": 0, "count": 0}
+    v = muted_list_dict.get(f"{event.group_id}:{event.user_id}", {"time": 0, "count": 0})
+    # If someone has been banned, decreate the weight of a 0-minute banand and
+    # increate the weight of a 60-minute ban based on the number of previous bans
+    if config.increase_probability:
+        weights[0] >>= v["count"]
+        weights[-1] <<= v["count"]
+    # If someone has been banned, increase the duration of the ban time
+    if config.increase_duration:
+        keys = [i << v["count"] for i in keys]
     [min_res] = choices(keys, weights=weights, k=1)
     min_res = min_res * 60
     if min_res != 0:
@@ -122,17 +118,14 @@ async def _(event: MessageEvent):
     global muted_list_dict
     members = dict_group_by_group_id(muted_list_dict)
     if isinstance(event, GroupMessageEvent):
-        try:
-            members_group = members[str(event.group_id)]
-            if not members_group:
-                await query.finish("当前没有禁言名单")
-            else:
-                msg = "当前禁言名单："
-                for key, value in members_group.items():
-                    msg += f"\n{key} 禁言次数：{value['count']}"
-                await query.finish(msg)
-        except KeyError:
+        members_group = members.get(str(event.group_id))
+        if not members_group:
             await query.finish("当前没有禁言名单")
+        else:
+            msg = "当前禁言名单："
+            for key, value in members_group.items():
+                msg += f"\n{key} 禁言次数：{value['count']}"
+            await query.finish(msg)
     else:
         if not members:
             await query.finish("当前没有禁言名单")
@@ -264,14 +257,11 @@ def check_mute(event: GroupMessageEvent):
         msg = message.extract_plain_text().strip()
         return re.fullmatch(r"mute\s*all\s*(\d+)", msg)
     if message_length == 3:
-        try:
-            return (
-                message[0].data["text"].strip() == "mute"
-                and message[1].type == "at"
-                and message[2].data["text"].strip().isdigit()
-            )
-        except KeyError:
-            return False
+        return (
+            message[0].data.get("text", "").strip() == "mute"
+            and message[1].type == "at"
+            and message[2].data.get("text", "").strip().isdigit()
+        )
     return False
 
 
@@ -305,7 +295,7 @@ async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
         await mute_voting_cmd.finish("禁言时间超过最大限度")
 
     switch = False
-    
+
     max_count = len(mute_time) if int(mute_time) > 0 else 3
 
     await mute_voting_cmd.send(f"已开启禁言投票，投票成功票数为{max_count}")
@@ -368,7 +358,7 @@ async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
                     await mute_voting_cmd.send(res_msg)
                     if int(mute_time) > 0:
                         await mute_voting_cmd.finish(f"已禁言{qq} {mute_time}分钟")
-                    else: 
+                    else:
                         await mute_voting_cmd.finish(f"已解禁{qq}")
                 msg = MessageSegment.at(user_id) + MessageSegment.text(f" 已投{qq}一票，目前得票{count}")
                 await mute_voting_cmd.send(msg)
