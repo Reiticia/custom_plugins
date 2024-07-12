@@ -20,7 +20,7 @@ jobs:
     - name: scp ssh pipelines
       uses: cross-the-world/ssh-scp-ssh-pipelines@latest
       env:
-        PORT: 8123
+        PORT: ${{ secrets.PORT }}
       with:
         host: ${{ secrets.DC_HOST }}
         user: ${{ secrets.DC_USER }}
