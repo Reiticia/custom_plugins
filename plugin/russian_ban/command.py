@@ -82,7 +82,7 @@ permit_roles = GROUP_OWNER | SUPERUSER | GROUP_ADMIN
 """允许执行命令的角色
 """
 
-un_mute_all = on_command(cmd="mute clear", permission=permit_roles)
+un_mute_all = on_command(cmd="mute clear", aliases={'mc'}, permission=permit_roles)
 
 
 @un_mute_all.handle()
@@ -114,7 +114,7 @@ async def _(bot: Bot, event: MessageEvent):
     await un_mute_all.finish("已解除所有禁言")
 
 
-query = on_command(cmd="mute query", permission=permit_roles)
+query = on_command(cmd="mute query", aliases={'mq'}, permission=permit_roles)
 
 
 @query.handle()
@@ -147,7 +147,7 @@ async def _(event: MessageEvent):
             await query.finish(msg)
 
 
-mute_history_cmd = on_command(cmd="mute history", permission=permit_roles)
+mute_history_cmd = on_command(cmd="mute history", aliases={'mh'}, permission=permit_roles)
 
 
 @mute_history_cmd.handle()
@@ -221,7 +221,7 @@ def dict_group_by_group_id(members: dict[str, dict[str, int]]) -> dict[str, dict
     return res
 
 
-mute_sb_cmd = on_command(cmd="mute sb")
+mute_sb_cmd = on_command(cmd="mute sb", aliases={'msb'})
 
 
 @mute_sb_cmd.handle()
@@ -331,7 +331,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
         await bot.set_group_whole_ban(group_id=event.group_id, enable=(int(match.group(1)) > 0))
 
 
-mute_voting_cmd = on_command(cmd="mute voting")
+mute_voting_cmd = on_command(cmd="mute voting", aliases={'mv'})
 lock = Lock()
 
 
@@ -459,7 +459,7 @@ def mute_sb_p_at_st(event: GroupMessageEvent) -> bool:
         return False
 
     text_0 = message[0].data.get("text", "").strip()
-    if text_0 != "mute schedule":
+    if text_0 not in ["mute schedule", "ms"]:
         return False
 
     if message[1].type != "at" or message[2].type != "text":
@@ -473,7 +473,7 @@ def mute_sb_p_at_st(event: GroupMessageEvent) -> bool:
     return False
 
 
-mute_schedule_cmd = on_command(cmd="mute schedule", rule=mute_sb_p_at_st, permission=permit_roles)
+mute_schedule_cmd = on_command(cmd="mute schedule", aliases={'ms'}, rule=mute_sb_p_at_st, permission=permit_roles)
 
 
 def split_event_args(msg: Message) -> tuple[int, int, str, str]:
@@ -511,7 +511,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
     await bot.send_group_msg(group_id=group_id, message=msg)
 
 
-remove_schedule_cmd = on_command(cmd="remove schedule", permission=permit_roles)
+remove_schedule_cmd = on_command(cmd="remove schedule", aliases={'rms'}, permission=permit_roles)
 
 
 @remove_schedule_cmd.handle()
@@ -530,7 +530,7 @@ async def _(arg: Message = CommandArg()):
     else:
         await remove_schedule_cmd.finish(f"定时任务 {job_id} 不存在")
 
-list_schedule_cmd = on_command(cmd="list schedule", permission=permit_roles)
+list_schedule_cmd = on_command(cmd="list schedule", aliases={'lss'}, permission=permit_roles)
 
 
 @list_schedule_cmd.handle()
