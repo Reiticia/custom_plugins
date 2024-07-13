@@ -57,6 +57,20 @@ __plugin_meta__ = PluginMetadata(
                 'brief_des': '预约禁言',
                 'detail_des': '触发命令后，将在指定时间点禁言该用户指定时间，只执行一次，at后可只跟时刻，如10，或时分，如10:30'
             },
+            {
+                'func': '查看预约禁言',
+                'trigger_method': 'on_cmd',
+                'trigger_condition': 'list schedule',
+                'brief_des': '查看预约禁言',
+                'detail_des': '查看预约禁言列表'
+            },
+            {
+                'func': '移除预约禁言',
+                'trigger_method': 'on_cmd',
+                'trigger_condition': 'remove schedule $id',
+                'brief_des': '移除预约禁言',
+                'detail_des': '移除指定id的预约禁言'
+            },
         ],
         'menu_template': 'default'
     }

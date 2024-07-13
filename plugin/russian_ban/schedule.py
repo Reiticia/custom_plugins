@@ -116,8 +116,7 @@ from nonebot_plugin_apscheduler import scheduler  # noqa: E402
 
 @scheduler.scheduled_job("cron", hour="0", id="clear_record")
 async def clear_mute_list_n_history():
-    """清空禁言列表与历史记录
-    """
+    """清空禁言列表与历史记录"""
     global muted_list_dict, mute_history
     new_muted_list_dict = {k: v for k, v in muted_list_dict.items() if v["time"] > int(datetime.now().timestamp())}
     muted_list_dict = new_muted_list_dict
@@ -136,9 +135,7 @@ async def ban_reserve(bot: Bot, user_id: int, group_id: int, time: int, job_id: 
         time (int): 禁言时间
     """
     await bot.set_group_ban(group_id=group_id, user_id=user_id, duration=time * 60)
-    scheduler.remove_job(job_id=job_id)
-    schedule_dict.pop(job_id, {})
-    await save_schedule(schedule_dict)
+    await remove_schedule(job_id=job_id, schedule_dict=schedule_dict)
 
 
 def generate_random_string(length: int) -> str:
@@ -178,6 +175,26 @@ async def add_schedule(
         ban_reserve, "cron", hour=hour, minute=minute, id=job_id, args=[bot, user_id, group_id, period, job_id]
     )
     schedule_dict.update(
-        {job_id: {"group_id": group_id, "user_id": user_id, "period": period, "start_hour": hour, "start_minute": minute}}
+        {
+            job_id: {
+                "group_id": group_id,
+                "user_id": user_id,
+                "period": period,
+                "start_hour": hour,
+                "start_minute": minute,
+            }
+        }
     )
+    await save_schedule(schedule_dict)
+
+
+async def remove_schedule(*, job_id: str, schedule_dict: dict[str, dict[str, Any]]):
+    """删除一个禁言定时任务
+
+    Args:
+        job_id (str, optional): 任务id
+        schedule_dict (dict[str, dict[str, Any]]): 任务字典
+    """
+    scheduler.remove_job(job_id=job_id)
+    schedule_dict.pop(job_id, {})
     await save_schedule(schedule_dict)

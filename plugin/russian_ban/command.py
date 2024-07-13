@@ -1,5 +1,5 @@
 import re
-from .schedule import save_mute, add_schedule, muted_list_dict, mute_history
+from .schedule import save_mute, add_schedule, remove_schedule, muted_list_dict, mute_history, schedule_dict
 from datetime import datetime
 from nonebot import on_command
 from nonebot.permission import SUPERUSER
@@ -450,7 +450,7 @@ def mute_sb_p_at_st(event: GroupMessageEvent) -> bool:
 
     Args:
         event (GroupMessageEvent): 消息事件
-    
+
     Returns:
         bool: 是否匹配
     """
@@ -486,7 +486,6 @@ def split_event_args(msg: Message) -> tuple[int, int, str, str]:
         tuple[int, int, str, str]: qq, period, hour, minute
     """
     qq = int(msg[1].data.get("qq", ""))
-
     pattern = r"^(\d+)\s*at\s*([01]?\d|2[0-3])(:[0-5]?\d)?$"
     match = re.match(pattern, msg[2].data.get("text", "").strip())
     period = int(match.group(1))
@@ -510,3 +509,43 @@ async def _(bot: Bot, event: GroupMessageEvent):
     msg = f"已设置{qq}在{hour}:{minute:0>2}被禁言{period}分钟"
     logger.info(msg)
     await bot.send_group_msg(group_id=group_id, message=msg)
+
+
+remove_schedule_cmd = on_command(cmd="remove schedule", permission=permit_roles)
+
+
+@remove_schedule_cmd.handle()
+async def _(arg: Message = CommandArg()):
+    """移除指定定时任务
+
+    Args:
+        bot (Bot): bot 对象
+        event (GroupMessageEvent): 群组消息事件
+    """
+    job_id = arg.extract_plain_text().strip()
+    res = schedule_dict.pop(job_id, None)
+    if res:
+        await remove_schedule(job_id=job_id, schedule_dict=schedule_dict)
+        await remove_schedule_cmd.finish(f"已移除定时任务 {job_id} ")
+    else:
+        await remove_schedule_cmd.finish(f"定时任务 {job_id} 不存在")
+
+list_schedule_cmd = on_command(cmd="list schedule", permission=permit_roles)
+
+
+@list_schedule_cmd.handle()
+async def _(event: GroupMessageEvent):
+    """查看定时任务
+
+    Args:
+        event (GroupMessageEvent): 群组消息事件
+    """
+    group_id = event.group_id
+    schedule_dict_group = {k: v for k, v in schedule_dict.items() if v["group_id"] == group_id}
+    if schedule_dict_group :
+        msg = f"当前群组 {group_id} 的定时任务列表："
+        for job_id, job in schedule_dict_group.items():
+            msg += f"\n任务 {job_id}：{job['user_id']} 在 {job['start_hour']}:{job['start_minute']:0>2} 被禁言 {job['period']} 分钟"
+    else: 
+        msg = "当前群组没有定时任务"
+    await list_schedule_cmd.finish(msg)
