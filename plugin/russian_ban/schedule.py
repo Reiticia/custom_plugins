@@ -158,7 +158,7 @@ async def add_schedule(
     period: int,
     hour: str,
     minute: str,
-    job_id: str = generate_random_string(10),
+    job_id: str = None,
 ):
     """添加一个禁言定时任务
 
@@ -169,8 +169,10 @@ async def add_schedule(
         period (int): 禁言时间
         hour (str): 禁言时刻
         minute (str): 禁言分刻
-        job_id (str, optional): 任务id. Defaults to generate_random_string(10).
+        job_id (str, optional): 任务id. Defaults to None.
     """
+    job_id = job_id if job_id else generate_random_string(10)
+
     scheduler.add_job(
         ban_reserve, "cron", hour=hour, minute=minute, id=job_id, args=[bot, user_id, group_id, period, job_id]
     )
