@@ -522,13 +522,14 @@ async def _(arg: Message = CommandArg()):
         bot (Bot): bot 对象
         event (GroupMessageEvent): 群组消息事件
     """
-    job_id = arg.extract_plain_text().strip()
-    res = schedule_dict.pop(job_id, None)
-    if res:
-        await remove_schedule(job_id=job_id, schedule_dict=schedule_dict)
-        await remove_schedule_cmd.finish(f"已移除定时任务 {job_id} ")
-    else:
-        await remove_schedule_cmd.finish(f"定时任务 {job_id} 不存在")
+    job_ids = [job_id for job_id in arg.extract_plain_text().strip().split(" ") if job_id != '']
+    for job_id in job_ids:
+        res = schedule_dict.pop(job_id, None)
+        if res:
+            await remove_schedule(job_id=job_id, schedule_dict=schedule_dict)
+            await remove_schedule_cmd.send(f"已移除定时任务 {job_id} ")
+        else:
+            await remove_schedule_cmd.send(f"定时任务 {job_id} 不存在")
 
 list_schedule_cmd = on_command(cmd="list schedule", aliases={'lss'}, permission=permit_roles)
 
