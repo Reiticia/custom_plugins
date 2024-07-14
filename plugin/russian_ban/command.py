@@ -1,6 +1,7 @@
 import re
 from .schedule import save_mute, add_schedule, remove_schedule, muted_list_dict, schedule_dict
-from nonebot import on_command
+from .decorator import switch_depend
+from nonebot import on_command, logger
 from nonebot.permission import SUPERUSER
 from nonebot.params import CommandArg
 from nonebot.message import run_preprocessor
@@ -16,7 +17,6 @@ from nonebot.adapters.onebot.v11 import (
 )
 from nonebot_plugin_waiter import waiter
 from random import choices
-from loguru import logger
 from .config import config
 from asyncio import Lock
 
@@ -39,6 +39,7 @@ random_mute_dict = {
 
 
 @run_preprocessor
+@switch_depend(dependOn=[lambda: switch])
 async def random_mute(bot: Bot, event: GroupMessageEvent):
     """触发指令时，对某人进行随机禁言
 
@@ -48,8 +49,6 @@ async def random_mute(bot: Bot, event: GroupMessageEvent):
     """
     global switch, random_mute_dict, muted_list_dict
     # 如果处于关闭状态，则不检测
-    if not switch:
-        return
     if event.sender.role in ["admin", "owner"]:
         return
     # 检查这个人是否已被禁言过
