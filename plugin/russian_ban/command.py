@@ -250,6 +250,9 @@ async def mute_sb(bot: Bot, event: GroupMessageEvent):
     async for qq in check_qq(timeout=20, retry=5, prompt="输入错误，请@某人或输入qq号。剩余次数: {count}"):
         if qq is None:
             await mute_sb_cmd.finish("等待超时")
+        if qq == "0":
+            await mute_sb_cmd.send("老版本QQ以及Tim用户请使用QQ号投票")
+            continue
         if not qq.isdigit():
             continue
         break
