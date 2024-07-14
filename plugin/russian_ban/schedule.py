@@ -26,19 +26,6 @@ muted_list_dict: dict[str, dict[str, int]] = {}
 }
 """
 
-mute_history: list[dict[str, int]] = []
-"""禁言历史
-[
-    {
-        "group_id": int,
-        "user_id": int,
-        "start_time": int,
-        "duration": int
-    },
-    ...
-]
-"""
-
 schedule_dict: dict[str, dict[str, Any]] = {}
 """定时任务列表
 {
@@ -55,14 +42,11 @@ schedule_dict: dict[str, dict[str, Any]] = {}
 
 
 ban_file: Path = store.get_data_file("russian_ban", "ban.json")
-history_file: Path = store.get_data_file("russian_ban", "history.json")
 schedule_file: Path = store.get_data_file("russian_ban", "schedule.json")
 
 # 读取持久化的数据
 if ban_file.exists():
     muted_list_dict = loads(t) if (t := ban_file.read_text()) else {}
-if history_file.exists():
-    mute_history = loads(t) if (t := history_file.read_text()) else []
 if schedule_file.exists():
     schedule_dict = loads(t) if (t := schedule_file.read_text()) else {}
 
@@ -86,17 +70,14 @@ async def _(bot: Bot):
         )
 
 
-async def save_mute(muted_list_dict: dict[str, dict[str, int]] = {}, mute_history: list[dict[str, int]] = []):
+async def save_mute(muted_list_dict: dict[str, dict[str, int]] = {}):
     """保存禁言数据
 
     Args:
         muted_list_dict (dict[str, dict[str, int]], optional): 禁言列表. Defaults to {}.
-        mute_history (list[dict[str, int]], optional): 禁言历史. Defaults to [].
     """
     async with aopen(ban_file, mode="w") as fp:
         await fp.write(dumps(muted_list_dict, indent=4))
-    async with aopen(history_file, "w") as fp:
-        await fp.write(dumps(mute_history, indent=4))
 
 
 async def save_schedule(schedule_list: list[dict[str, Any]] = {}):
@@ -117,10 +98,9 @@ from nonebot_plugin_apscheduler import scheduler  # noqa: E402
 @scheduler.scheduled_job("cron", hour="0", id="clear_record")
 async def clear_mute_list_n_history():
     """清空禁言列表与历史记录"""
-    global muted_list_dict, mute_history
+    global muted_list_dict
     new_muted_list_dict = {k: v for k, v in muted_list_dict.items() if v["time"] > int(datetime.now().timestamp())}
     muted_list_dict = new_muted_list_dict
-    mute_history.clear()
     await save_mute()
 
 

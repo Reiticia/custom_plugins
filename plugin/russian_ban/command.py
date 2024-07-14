@@ -1,6 +1,5 @@
 import re
-from .schedule import save_mute, add_schedule, remove_schedule, muted_list_dict, mute_history, schedule_dict
-from datetime import datetime
+from .schedule import save_mute, add_schedule, remove_schedule, muted_list_dict, schedule_dict
 from nonebot import on_command
 from nonebot.permission import SUPERUSER
 from nonebot.params import CommandArg
@@ -68,14 +67,11 @@ async def random_mute(bot: Bot, event: GroupMessageEvent):
     min_res = min_res * 60
     if min_res != 0:
         await bot.set_group_ban(group_id=event.group_id, user_id=event.user_id, duration=min_res)
-        mute_history.append(
-            {"group_id": event.group_id, "user_id": event.user_id, "start_time": event.time, "duration": min_res / 60}
-        )
         logger.info(f"{event.user_id}在{event.group_id}于{event.time}时被禁言{min_res}秒")
         v["time"] = event.time + min_res
         v["count"] += 1
         muted_list_dict[f"{event.group_id}:{event.user_id}"] = v
-        await save_mute(muted_list_dict, mute_history)
+        await save_mute(muted_list_dict)
 
 
 permit_roles = GROUP_OWNER | SUPERUSER | GROUP_ADMIN
@@ -110,7 +106,7 @@ async def _(bot: Bot, event: MessageEvent):
     else:
         # 如果消息事件是私聊消息事件，则清空所有禁言列表
         muted_list_dict.clear()
-    await save_mute(muted_list_dict, mute_history)
+    await save_mute(muted_list_dict)
     await un_mute_all.finish("已解除所有禁言")
 
 
@@ -145,59 +141,6 @@ async def _(event: MessageEvent):
                 for user_id, info in value.items():
                     msg += f"\n{user_id} 禁言次数: {info['count']}"
             await query.finish(msg)
-
-
-mute_history_cmd = on_command(cmd="mute history", aliases={'mh'}, permission=permit_roles)
-
-
-@mute_history_cmd.handle()
-async def _(event: MessageEvent):
-    """禁言历史查询（因触发命令而被禁言的用户）
-
-    Args:
-        event (MessageEvent): 消息事件
-    """
-    global mute_history
-    if isinstance(event, GroupMessageEvent):
-        mute_history = [e for e in mute_history if e["group_id"] == event.group_id]
-        if not mute_history:
-            await mute_history_cmd.finish("无禁言记录")
-        res = "本群禁言历史: "
-        for item in mute_history:
-            dt = datetime.fromtimestamp(float(item["start_time"]))
-            res += f"\n{item['user_id']}于{dt.hour:02}:{dt.minute:02}被禁言{int(item['duration'])}分钟"
-        await mute_history_cmd.finish(res)
-    else:
-        mute_history_dict_by_group = lst_group_by_group_id(mute_history)
-        if not mute_history_dict_by_group:
-            await mute_history_cmd.finish("无禁言记录")
-        res = "禁言历史: "
-        for g, lst in mute_history_dict_by_group.items():
-            res += f"\n群{g}"
-            for item in lst:
-                dt = datetime.fromtimestamp(float(item["start_time"]))
-                res += f"\n{item['user_id']}于{dt.hour:02}:{dt.minute:02}被禁言{int(item['duration'])}分钟"
-        await mute_history_cmd.finish(res)
-
-
-def lst_group_by_group_id(history: list[dict[str, int]]) -> dict[int, list[dict[str, int]]]:
-    """将禁言历史记录按群组id进行分组
-
-    Args:
-        history (list[dict[str, int]]): 禁言历史记录
-    Returns:
-        dict[int, list[dict[str, int]]]: 按群组id分组后的禁言历史记录
-    """
-    res: dict[int, list[dict[str, int]]] = {}
-    for line in history:
-        group_id = line["group_id"]
-        user_id_list = res.get(group_id)
-        if not user_id_list:
-            user_id_list = [line]
-            res[group_id] = user_id_list
-        else:
-            user_id_list.append(line)
-    return res
 
 
 def dict_group_by_group_id(members: dict[str, dict[str, int]]) -> dict[str, dict[str : dict[str, int]]]:
