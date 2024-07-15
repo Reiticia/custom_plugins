@@ -48,7 +48,7 @@ async def save_user_id_nickname(event: GroupMessageEvent):
     Args:
         event (GroupMessageEvent): 群组消息事件
     """
-    user_id_nickname_dict[event.user_id] = event.sender.card or event.sender.nickname
+    user_id_nickname_dict.update({event.user_id: event.sender.card or event.sender.nickname})
     logger.debug(user_id_nickname_dict)
 
 
@@ -383,11 +383,11 @@ async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
                     )
                     await mute_voting_cmd.send(res_msg)
                     if int(mute_time) > 0:
-                        await mute_voting_cmd.finish(f"已禁言{user_id_nickname_dict.get(qq, qq)} {mute_time}分钟")
+                        await mute_voting_cmd.finish(f"已禁言 {user_id_nickname_dict.get(qq, qq)} {mute_time}分钟")
                     else:
-                        await mute_voting_cmd.finish(f"已解禁{user_id_nickname_dict.get(qq, qq)}")
+                        await mute_voting_cmd.finish(f"已解禁 {user_id_nickname_dict.get(qq, qq)}")
                 msg = MessageSegment.at(user_id) + MessageSegment.text(
-                    f" 已投{user_id_nickname_dict.get(qq, qq)}一票，目前得票{count}"
+                    f" 已投 {user_id_nickname_dict.get(qq, qq)} 一票，目前得票{count}"
                 )
                 await mute_voting_cmd.send(msg)
             else:
