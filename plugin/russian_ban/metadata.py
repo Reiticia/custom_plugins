@@ -67,7 +67,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 'func': '移除预约禁言',
                 'trigger_method': 'on_cmd',
-                'trigger_condition': 'remove schedule $id',
+                'trigger_condition': 'remove schedule $id...',
                 'brief_des': '移除预约禁言',
                 'detail_des': '移除指定id的预约禁言'
             },

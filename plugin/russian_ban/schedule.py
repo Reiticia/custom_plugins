@@ -101,7 +101,7 @@ async def clear_mute_list_n_history():
     global muted_list_dict
     new_muted_list_dict = {k: v for k, v in muted_list_dict.items() if v["time"] > int(datetime.now().timestamp())}
     muted_list_dict = new_muted_list_dict
-    await save_mute()
+    await save_mute(muted_list_dict)
 
 
 async def ban_reserve(bot: Bot, user_id: int, group_id: int, time: int, job_id: str):

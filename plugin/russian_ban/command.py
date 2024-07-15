@@ -4,7 +4,7 @@ from .decorator import switch_depend
 from nonebot import on_command, logger
 from nonebot.permission import SUPERUSER
 from nonebot.params import CommandArg
-from nonebot.message import run_preprocessor
+from nonebot.message import run_preprocessor, event_preprocessor
 from nonebot.adapters.onebot.v11 import (
     Bot,
     GROUP_OWNER,
@@ -36,6 +36,21 @@ random_mute_dict = {
 }
 """随机禁言时间权重
 """
+
+user_id_nickname_dict: dict[int, str] = {}
+"""用户ID与昵称对应关系
+"""
+
+@event_preprocessor
+async def save_user_id_nickname(event: GroupMessageEvent):
+    """保存用户ID与昵称对应关系
+
+    Args:
+        event (GroupMessageEvent): 群组消息事件
+    """
+    user_id_nickname_dict[event.user_id] = event.sender.card or event.sender.nickname
+    logger.debug(user_id_nickname_dict)
+
 
 
 @run_preprocessor
@@ -77,7 +92,7 @@ permit_roles = GROUP_OWNER | SUPERUSER | GROUP_ADMIN
 """允许执行命令的角色
 """
 
-un_mute_all = on_command(cmd="mute clear", aliases={'mc'}, permission=permit_roles)
+un_mute_all = on_command(cmd="mute clear", aliases={"mc"}, permission=permit_roles)
 
 
 @un_mute_all.handle()
@@ -109,7 +124,7 @@ async def _(bot: Bot, event: MessageEvent):
     await un_mute_all.finish("已解除所有禁言")
 
 
-query = on_command(cmd="mute query", aliases={'mq'}, permission=permit_roles)
+query = on_command(cmd="mute query", aliases={"mq"}, permission=permit_roles)
 
 
 @query.handle()
@@ -128,7 +143,7 @@ async def _(event: MessageEvent):
         else:
             msg = "当前禁言名单："
             for key, value in members_group.items():
-                msg += f"\n{key} 禁言次数：{value['count']}"
+                msg += f"\n{user_id_nickname_dict.get(int(key), key)} 禁言次数：{value['count']}"
             await query.finish(msg)
     else:
         if not members:
@@ -138,7 +153,7 @@ async def _(event: MessageEvent):
             for group_id, value in members.items():
                 msg += f"\n群组: {group_id}"
                 for user_id, info in value.items():
-                    msg += f"\n{user_id} 禁言次数: {info['count']}"
+                    msg += f"\n{user_id_nickname_dict.get(int(user_id), user_id)} 禁言次数: {info['count']}"
             await query.finish(msg)
 
 
@@ -163,7 +178,7 @@ def dict_group_by_group_id(members: dict[str, dict[str, int]]) -> dict[str, dict
     return res
 
 
-mute_sb_cmd = on_command(cmd="mute sb", aliases={'msb'})
+mute_sb_cmd = on_command(cmd="mute sb", aliases={"msb"})
 
 
 @mute_sb_cmd.handle()
@@ -276,7 +291,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
         await bot.set_group_whole_ban(group_id=event.group_id, enable=(int(match.group(1)) > 0))
 
 
-mute_voting_cmd = on_command(cmd="mute voting", aliases={'mv'})
+mute_voting_cmd = on_command(cmd="mute voting", aliases={"mv"})
 lock = Lock()
 
 
@@ -368,10 +383,12 @@ async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
                     )
                     await mute_voting_cmd.send(res_msg)
                     if int(mute_time) > 0:
-                        await mute_voting_cmd.finish(f"已禁言{qq} {mute_time}分钟")
+                        await mute_voting_cmd.finish(f"已禁言{user_id_nickname_dict.get(qq, qq)} {mute_time}分钟")
                     else:
-                        await mute_voting_cmd.finish(f"已解禁{qq}")
-                msg = MessageSegment.at(user_id) + MessageSegment.text(f" 已投{qq}一票，目前得票{count}")
+                        await mute_voting_cmd.finish(f"已解禁{user_id_nickname_dict.get(qq, qq)}")
+                msg = MessageSegment.at(user_id) + MessageSegment.text(
+                    f" 已投{user_id_nickname_dict.get(qq, qq)}一票，目前得票{count}"
+                )
                 await mute_voting_cmd.send(msg)
             else:
                 msg_count_since_last_vote += 1
@@ -387,7 +404,7 @@ def at_members(members: set[int]) -> Message:
     Returns:
         Message: 所有的@消息
     """
-    return Message([MessageSegment.at(member) + MessageSegment.text(" ") for member in members])
+    return Message([MessageSegment.at(member) for member in members])
 
 
 def mute_sb_p_at_st(event: GroupMessageEvent) -> bool:
@@ -418,7 +435,7 @@ def mute_sb_p_at_st(event: GroupMessageEvent) -> bool:
     return False
 
 
-mute_schedule_cmd = on_command(cmd="mute schedule", aliases={'ms'}, rule=mute_sb_p_at_st, permission=permit_roles)
+mute_schedule_cmd = on_command(cmd="mute schedule", aliases={"ms"}, rule=mute_sb_p_at_st, permission=permit_roles)
 
 
 def split_event_args(msg: Message) -> tuple[int, int, str, str]:
@@ -451,12 +468,12 @@ async def _(bot: Bot, event: GroupMessageEvent):
     qq, period, hour, minute = split_event_args(message)
     group_id = event.group_id
     await add_schedule(bot=bot, group_id=group_id, user_id=qq, period=period, hour=hour, minute=minute)
-    msg = f"已设置{qq}在{hour}:{minute:0>2}被禁言{period}分钟"
+    msg = f"已设置{user_id_nickname_dict.get(qq, qq)}在{hour}:{minute:0>2}被禁言{period}分钟"
     logger.info(msg)
     await bot.send_group_msg(group_id=group_id, message=msg)
 
 
-remove_schedule_cmd = on_command(cmd="remove schedule", aliases={'rms'}, permission=permit_roles)
+remove_schedule_cmd = on_command(cmd="remove schedule", aliases={"rms"}, permission=permit_roles)
 
 
 @remove_schedule_cmd.handle()
@@ -467,7 +484,7 @@ async def _(arg: Message = CommandArg()):
         bot (Bot): bot 对象
         event (GroupMessageEvent): 群组消息事件
     """
-    job_ids = [job_id for job_id in arg.extract_plain_text().strip().split(" ") if job_id != '']
+    job_ids = [job_id for job_id in arg.extract_plain_text().strip().split(" ") if job_id != ""]
     for job_id in job_ids:
         res = schedule_dict.pop(job_id, None)
         if res:
@@ -476,7 +493,8 @@ async def _(arg: Message = CommandArg()):
         else:
             await remove_schedule_cmd.send(f"定时任务 {job_id} 不存在")
 
-list_schedule_cmd = on_command(cmd="list schedule", aliases={'lss'}, permission=permit_roles)
+
+list_schedule_cmd = on_command(cmd="list schedule", aliases={"lss"}, permission=permit_roles)
 
 
 @list_schedule_cmd.handle()
@@ -488,10 +506,10 @@ async def _(event: GroupMessageEvent):
     """
     group_id = event.group_id
     schedule_dict_group = {k: v for k, v in schedule_dict.items() if v["group_id"] == group_id}
-    if schedule_dict_group :
+    if schedule_dict_group:
         msg = f"当前群组 {group_id} 的定时任务列表："
         for job_id, job in schedule_dict_group.items():
-            msg += f"\n任务 {job_id}：{job['user_id']} 在 {job['start_hour']}:{job['start_minute']:0>2} 被禁言 {job['period']} 分钟"
-    else: 
+            msg += f"\n任务 {job_id}：{user_id_nickname_dict.get(int(job['user_id']), job['user_id'])} 在 {job['start_hour']}:{job['start_minute']:0>2} 被禁言 {job['period']} 分钟"
+    else:
         msg = "当前群组没有定时任务"
     await list_schedule_cmd.finish(msg)
