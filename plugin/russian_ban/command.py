@@ -1,7 +1,8 @@
 import re
 from .schedule import save_mute, add_schedule, remove_schedule, muted_list_dict, schedule_dict
-from .decorator import switch_depend
+from .decorator import switch_depend, mute_sb_stop_runpreprocessor
 from nonebot import on_command, logger
+from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.params import CommandArg
 from nonebot.message import run_preprocessor, event_preprocessor
@@ -16,7 +17,7 @@ from nonebot.adapters.onebot.v11 import (
     MessageSegment,
 )
 from nonebot_plugin_waiter import waiter
-from random import choices
+from random import choices, choice
 from .config import config
 from asyncio import Lock
 
@@ -24,6 +25,8 @@ from asyncio import Lock
 switch = True
 """是否开启随机禁言
 """
+
+ignoreIds: set[int] = set()
 
 random_mute_dict = {
     0: 128,
@@ -54,7 +57,7 @@ async def save_user_id_nickname(event: GroupMessageEvent):
 
 
 @run_preprocessor
-@switch_depend(dependOn=[lambda: switch])
+@switch_depend(dependOn=[lambda: switch], ignoreIds=ignoreIds)
 async def random_mute(bot: Bot, event: GroupMessageEvent):
     """触发指令时，对某人进行随机禁言
 
@@ -96,7 +99,7 @@ un_mute_all = on_command(cmd="mute clear", aliases={"mc"}, permission=permit_rol
 
 
 @un_mute_all.handle()
-async def _(bot: Bot, event: MessageEvent):
+async def _(bot: Bot, event: MessageEvent, matcher:Matcher):
     """解除所有禁言（因触发命令而被禁言的用户，其他情况下被禁言的用户无法解除）
 
     Args:
@@ -121,14 +124,14 @@ async def _(bot: Bot, event: MessageEvent):
         # 如果消息事件是私聊消息事件，则清空所有禁言列表
         muted_list_dict.clear()
     await save_mute(muted_list_dict)
-    await un_mute_all.finish("已解除所有禁言")
+    await matcher.finish("已解除所有禁言")
 
 
 query = on_command(cmd="mute query", aliases={"mq"}, permission=permit_roles)
 
 
 @query.handle()
-async def _(event: MessageEvent):
+async def _(event: MessageEvent, matcher: Matcher):
     """禁言列表查询（因触发命令而被禁言的用户）
 
     Args:
@@ -139,22 +142,22 @@ async def _(event: MessageEvent):
     if isinstance(event, GroupMessageEvent):
         members_group = members.get(str(event.group_id))
         if not members_group:
-            await query.finish("当前没有禁言名单")
+            await matcher.finish("当前没有禁言名单")
         else:
             msg = "当前禁言名单："
             for key, value in members_group.items():
                 msg += f"\n{user_id_nickname_dict.get(int(key), key)} 禁言次数：{value['count']}"
-            await query.finish(msg)
+            await matcher.finish(msg)
     else:
         if not members:
-            await query.finish("当前没有禁言名单")
+            await matcher.finish("当前没有禁言名单")
         else:
             msg = "当前禁言名单："
             for group_id, value in members.items():
                 msg += f"\n群组: {group_id}"
                 for user_id, info in value.items():
                     msg += f"\n{user_id_nickname_dict.get(int(user_id), user_id)} 禁言次数: {info['count']}"
-            await query.finish(msg)
+            await matcher.finish(msg)
 
 
 def dict_group_by_group_id(members: dict[str, dict[str, int]]) -> dict[str, dict[str : dict[str, int]]]:
@@ -178,18 +181,36 @@ def dict_group_by_group_id(members: dict[str, dict[str, int]]) -> dict[str, dict
     return res
 
 
-mute_sb_cmd = on_command(cmd="mute sb", aliases={"msb"})
+def add_user_ignore(event: GroupMessageEvent) -> bool:
+    """判断事件是否为 mute sb 命令，如果是，则将 user_id 添加到 ignoreIds 中
+
+    Args:
+        event (GroupMessageEvent): 群组消息事件
+
+    Returns:
+        bool: 匹配是否成功
+    """
+    if event.message.extract_plain_text() not in ["mute sb", "msb"]:
+        return False
+    else:
+        logger.debug(f"{ignoreIds} will append {event.user_id}")
+        ignoreIds.add(event.user_id)
+        return True
+
+
+mute_sb_cmd = on_command(cmd="mute sb", rule=add_user_ignore, aliases={"msb"})
 
 
 @mute_sb_cmd.handle()
-async def mute_sb(bot: Bot, event: GroupMessageEvent):
+@mute_sb_stop_runpreprocessor(ignoreIds=ignoreIds)
+async def mute_sb(bot: Bot, event: GroupMessageEvent, matcher: Matcher):
     """禁言某人
 
     Args:
         bot (Bot): bot 对象
         event (GroupMessageEvent): 群组消息事件
     """
-    await mute_sb_cmd.send("请输入QQ号")
+    await matcher.send("请输入QQ号")
 
     @waiter(waits=["message"], keep_session=True)
     async def check_qq(event: GroupMessageEvent) -> str:
@@ -206,16 +227,17 @@ async def mute_sb(bot: Bot, event: GroupMessageEvent):
 
     async for qq in check_qq(timeout=20, retry=5, prompt="输入错误，请@某人或输入qq号。剩余次数: {count}"):
         if qq is None:
-            await mute_sb_cmd.finish("等待超时")
+            await matcher.finish("等待超时")
         if qq == "0":
-            await mute_sb_cmd.send("老版本QQ以及Tim用户请使用QQ号投票")
+            await matcher.send("老版本QQ以及Tim用户请使用QQ号投票")
             continue
         if not qq.isdigit():
             continue
         break
     else:
-        await mute_sb_cmd.finish("输入失败")
-    await mute_sb_cmd.send("请输入禁言时间，单位分钟")
+        await matcher.finish("输入失败")
+    qq = int(qq)
+    await matcher.send("请输入禁言时间，单位分钟")
 
     @waiter(waits=["message"], keep_session=True)
     async def check_time(event: GroupMessageEvent) -> str:
@@ -231,19 +253,21 @@ async def mute_sb(bot: Bot, event: GroupMessageEvent):
 
     async for mute_time in check_time(timeout=20, retry=5, prompt="输入错误，请输入数字。剩余次数: {count}"):
         if mute_time is None:
-            await mute_sb_cmd.finish("等待超时")
+            await matcher.finish("等待超时")
         if not mute_time.isdigit():
             continue
         break
     else:
-        await mute_sb_cmd.finish("输入失败")
+        await matcher.finish("输入失败")
 
     mute_time = int(mute_time)
 
-    if mute_time > 1440:
-        await mute_sb_cmd.finish("你好恶毒啊！")
+    random_user_id:list[int] = [event.user_id, qq]
 
-    await bot.set_group_ban(group_id=event.group_id, user_id=qq, duration=mute_time * 60)
+    if mute_time > 1440:
+        await matcher.finish("你好恶毒啊！")
+
+    await bot.set_group_ban(group_id=event.group_id, user_id=choice(random_user_id), duration=mute_time * 60)
 
 
 def check_mute(event: GroupMessageEvent) -> bool:
@@ -273,7 +297,7 @@ mute_cmd = on_command(cmd="mute", rule=check_mute, permission=permit_roles)
 
 
 @mute_cmd.handle()
-async def _(bot: Bot, event: GroupMessageEvent):
+async def _(bot: Bot, event: GroupMessageEvent, matcher: Matcher):
     """mute @sb st
 
     Args:
@@ -296,7 +320,7 @@ lock = Lock()
 
 
 @mute_voting_cmd.handle()
-async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
+async def _(bot: Bot, event: GroupMessageEvent, matcher: Matcher, arg: Message = CommandArg()):
     """禁言投票
 
     Args:
@@ -306,18 +330,18 @@ async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
     """
     global switch, lock
     if not (mute_time := arg.extract_plain_text().strip()).isdigit():
-        await mute_voting_cmd.finish("禁言时间不合法")
+        await matcher.finish("禁言时间不合法")
 
     if int(mute_time) > 43200:
-        await mute_voting_cmd.finish("禁言时间超过最大限度")
+        await matcher.finish("禁言时间超过最大限度")
 
     # 在禁言投票期间，关闭命令触发检测禁言
     switch = False
 
     max_count = len(mute_time) if int(mute_time) > 0 else 3
 
-    await mute_voting_cmd.send(f"已开启禁言投票，投票成功票数为{max_count}")
-    await mute_voting_cmd.send("请@你要禁言的人或输入其QQ号")
+    await matcher.send(f"已开启禁言投票，投票成功票数为{max_count}")
+    await matcher.send("请@你要禁言的人或输入其QQ号")
 
     @waiter(waits=["message"], keep_session=False)
     async def check(event: GroupMessageEvent) -> tuple[int, int]:
@@ -345,12 +369,12 @@ async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
     async for res in check(timeout=20):
         if not res:  # 长时间没人发
             switch = True
-            await mute_voting_cmd.finish("投票超时结束")
+            await matcher.finish("投票超时结束")
 
         user_id, qq = res
         if msg_count_since_last_vote > config.msg_count_max_last_vote:  # 发言长期未涉及投票
             switch = True
-            await mute_voting_cmd.finish("投票超时结束")
+            await matcher.finish("投票超时结束")
 
         if qq == -1:  # 如果不是投票消息
             msg_count_since_last_vote += 1
@@ -358,7 +382,7 @@ async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
 
         if qq == 0:  # 如果是老版本QQ或Tim，检测不到@
             msg_count_since_last_vote += 1
-            await mute_voting_cmd.send("老版本QQ以及Tim用户请使用QQ号投票")
+            await matcher.send("老版本QQ以及Tim用户请使用QQ号投票")
             continue
 
         async with lock:
@@ -381,18 +405,18 @@ async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
                         + MessageSegment.text(f"请记住, 这些人投票{'禁言' if int(mute_time) > 0 else '解禁'}了你!\n")
                         + at_members(wait_for_mute[qq])
                     )
-                    await mute_voting_cmd.send(res_msg)
+                    await matcher.send(res_msg)
                     if int(mute_time) > 0:
-                        await mute_voting_cmd.finish(f"已禁言 {user_id_nickname_dict.get(qq, qq)} {mute_time}分钟")
+                        await matcher.finish(f"已禁言 {user_id_nickname_dict.get(qq, qq)} {mute_time}分钟")
                     else:
-                        await mute_voting_cmd.finish(f"已解禁 {user_id_nickname_dict.get(qq, qq)}")
+                        await matcher.finish(f"已解禁 {user_id_nickname_dict.get(qq, qq)}")
                 msg = MessageSegment.at(user_id) + MessageSegment.text(
                     f" 已投 {user_id_nickname_dict.get(qq, qq)} 一票，目前得票{count}"
                 )
-                await mute_voting_cmd.send(msg)
+                await matcher.send(msg)
             else:
                 msg_count_since_last_vote += 1
-                await mute_voting_cmd.send(MessageSegment.at(user_id) + MessageSegment.text(" 你已经投过票啦!"))
+                await matcher.send(MessageSegment.at(user_id) + MessageSegment.text(" 你已经投过票啦!"))
 
 
 def at_members(members: set[int]) -> Message:
@@ -457,7 +481,7 @@ def split_event_args(msg: Message) -> tuple[int, int, str, str]:
 
 
 @mute_schedule_cmd.handle()
-async def _(bot: Bot, event: GroupMessageEvent):
+async def _(bot: Bot, event: GroupMessageEvent, matcher: Matcher):
     """在某时某分让某人被禁言某段时间
 
     Args:
@@ -477,7 +501,7 @@ remove_schedule_cmd = on_command(cmd="remove schedule", aliases={"rms"}, permiss
 
 
 @remove_schedule_cmd.handle()
-async def _(arg: Message = CommandArg()):
+async def _(matcher: Matcher, arg: Message = CommandArg()):
     """移除指定定时任务
 
     Args:
@@ -489,16 +513,16 @@ async def _(arg: Message = CommandArg()):
         res = schedule_dict.pop(job_id, None)
         if res:
             await remove_schedule(job_id=job_id, schedule_dict=schedule_dict)
-            await remove_schedule_cmd.send(f"已移除定时任务 {job_id} ")
+            await matcher.send(f"已移除定时任务 {job_id} ")
         else:
-            await remove_schedule_cmd.send(f"定时任务 {job_id} 不存在")
+            await matcher.send(f"定时任务 {job_id} 不存在")
 
 
 list_schedule_cmd = on_command(cmd="list schedule", aliases={"lss"}, permission=permit_roles)
 
 
 @list_schedule_cmd.handle()
-async def _(event: GroupMessageEvent):
+async def _(event: GroupMessageEvent, matcher: Matcher):
     """查看定时任务
 
     Args:
@@ -512,4 +536,4 @@ async def _(event: GroupMessageEvent):
             msg += f"\n任务 {job_id}：{user_id_nickname_dict.get(int(job['user_id']), job['user_id'])} 在 {job['start_hour']}:{job['start_minute']:0>2} 被禁言 {job['period']} 分钟"
     else:
         msg = "当前群组没有定时任务"
-    await list_schedule_cmd.finish(msg)
+    await matcher.finish(msg)

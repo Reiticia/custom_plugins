@@ -1,15 +1,17 @@
-from typing import Any, Awaitable, Callable, TypeVar
 import functools
+from typing import Any, Awaitable, Callable, Optional, TypeVar
+from nonebot import logger
+from nonebot.adapters.onebot.v11 import GroupMessageEvent
 
-F = TypeVar('F', bound=Callable[..., Awaitable[None]])
+F = TypeVar("F", bound=Callable[..., Awaitable[None]])
 
 
-def switch_depend(*, dependOn:list[Callable[..., bool]]) -> Callable[[F], F]:
-    """装饰器名称
+def switch_depend(*, dependOn: list[Callable[..., bool]], ignoreIds: set[int]) -> Callable[[F], F]:
+    """装饰 random_mute 方法，使某些特殊情况下的事件不被处理
 
     Args:
-        dependOn (list): 装饰器参数，方法是否执行的依赖项
-
+        dependOn (list): 依赖的开关项，每一项为返回 bool 的函数
+        ignoreIds (set[int]): 忽略的 user_id
     Returns:
         Callable[[F], F]: 处理后的方法
     """
@@ -29,10 +31,36 @@ def switch_depend(*, dependOn:list[Callable[..., bool]]) -> Callable[[F], F]:
             Returns:
                 Any: 方法执行结果
             """
-            for item in dependOn:
-                if not item():
-                    return
-            else:
-                return await func(*args, **kwargs)
+            event: Optional[GroupMessageEvent] = kwargs.get("event", None)
+            if event and event.user_id in ignoreIds:
+                logger.debug(f"忽略用户 {event.user_id} 的操作")
+                return
+            if any(not item() for item in dependOn):
+                return
+            return await func(*args, **kwargs)
         return wrapper
     return decorator
+
+
+def mute_sb_stop_runpreprocessor(*, ignoreIds: set[int]) -> Callable[[F], F]:
+    """装饰 mute_sb 处理函数，在其处理函数结束运行时将 ignoreIds 中对应的 user_id 移除
+
+    Args:
+        ignoreIds (set[int]): 忽略的 user_id
+
+    Returns:
+        Callable[[F], F]: 装饰后的新函数
+    """
+    def decorator(func: F) -> F:
+        @functools.wraps(func)
+        async def wrapper(*args: Any, **kwargs: Any) -> None:
+            try:
+                res = await func(*args, **kwargs)
+            finally:
+                event: Optional[GroupMessageEvent] = kwargs.get("event", None)
+                ignoreIds.remove(event.user_id)
+                logger.debug(f"移除用户 {event.user_id} 的操作, 当前忽略列表: {ignoreIds}")
+            return res
+        return wrapper
+    return decorator
+
