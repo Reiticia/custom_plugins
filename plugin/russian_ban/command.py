@@ -188,7 +188,7 @@ def dict_group_by_group_id(members: dict[str, dict[str, int]]) -> dict[str, dict
     return res
 
 
-def add_user_ignore(event: GroupMessageEvent, cs: str = CommandStart(), cmd: tuple[str, ...] = Command()) -> bool:
+def add_user_ignore(event: GroupMessageEvent, cs: str = CommandStart(), cmd: tuple[str, ...] = ("mute sb", "msb")) -> bool:
     """判断事件是否为 mute sb 命令，如果是，则将 user_id 添加到 ignoreIds 中
 
     Args:
@@ -444,7 +444,7 @@ def at_members(members: set[int]) -> Message:
     return Message([MessageSegment.at(member) for member in members])
 
 
-def mute_sb_p_at_st(event: GroupMessageEvent, cs: str = CommandStart(), cmd: tuple[str, ...] = Command()) -> bool:
+def mute_sb_p_at_st(event: GroupMessageEvent, cs: str = CommandStart(), cmd: tuple[str, ...] = ("mute schedule", "ms")) -> bool:
     """在某时某分让某人被禁言某段时间
 
     Args:
