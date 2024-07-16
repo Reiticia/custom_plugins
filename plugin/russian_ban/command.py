@@ -4,7 +4,7 @@ from .decorator import switch_depend, mute_sb_stop_runpreprocessor
 from nonebot import on_command, logger
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
-from nonebot.params import CommandArg
+from nonebot.params import CommandArg, CommandStart, Command
 from nonebot.message import run_preprocessor, event_preprocessor
 from nonebot.adapters.onebot.v11 import (
     Bot,
@@ -16,6 +16,7 @@ from nonebot.adapters.onebot.v11 import (
     Message,
     MessageSegment,
 )
+from nonebot.adapters.onebot.v11.exception import ActionFailed
 from nonebot_plugin_waiter import waiter
 from random import choices, choice
 from .config import config
@@ -67,8 +68,8 @@ async def random_mute(bot: Bot, event: GroupMessageEvent):
     """
     global switch, random_mute_dict, muted_list_dict
     # 如果处于关闭状态，则不检测
-    if event.sender.role in ["admin", "owner"]:
-        return
+    # if event.sender.role in ["admin", "owner"]:
+    #     return
     # 检查这个人是否已被禁言过
     keys = list(random_mute_dict.keys())
     weights = list(random_mute_dict.values())
@@ -82,13 +83,19 @@ async def random_mute(bot: Bot, event: GroupMessageEvent):
         keys = [i << v["count"] for i in keys]
     [min_res] = choices(keys, weights=weights, k=1)
     min_res = min_res * 60
-    if min_res != 0:
+    if min_res == 0:
+        return
+    try:
         await bot.set_group_ban(group_id=event.group_id, user_id=event.user_id, duration=min_res)
         logger.info(f"{event.user_id}在{event.group_id}于{event.time}时被禁言{min_res}秒")
         v["time"] = event.time + min_res
         v["count"] += 1
         muted_list_dict[f"{event.group_id}:{event.user_id}"] = v
         await save_mute(muted_list_dict)
+    except ActionFailed as e:
+        msg = e.info.get("data", {}).get("message", "未知异常")
+        logger.error(f"禁言失败：{msg}")
+
 
 
 permit_roles = GROUP_OWNER | SUPERUSER | GROUP_ADMIN
@@ -181,7 +188,7 @@ def dict_group_by_group_id(members: dict[str, dict[str, int]]) -> dict[str, dict
     return res
 
 
-def add_user_ignore(event: GroupMessageEvent) -> bool:
+def add_user_ignore(event: GroupMessageEvent, cs: str = CommandStart(), cmd: tuple[str, ...] = Command()) -> bool:
     """判断事件是否为 mute sb 命令，如果是，则将 user_id 添加到 ignoreIds 中
 
     Args:
@@ -190,12 +197,15 @@ def add_user_ignore(event: GroupMessageEvent) -> bool:
     Returns:
         bool: 匹配是否成功
     """
-    if event.message.extract_plain_text() not in ["mute sb", "msb"]:
+    logger.debug(f"cs: {cs}")
+    if not (msg := event.message.extract_plain_text().strip()).startswith(cs):
         return False
-    else:
-        logger.debug(f"{ignoreIds} will append {event.user_id}")
-        ignoreIds.add(event.user_id)
-        return True
+    logger.debug(f"cmd: {cmd}")
+    if msg.removeprefix(cs).strip() not in cmd:
+        return False
+    logger.debug(f"{ignoreIds} will append {event.user_id}")
+    ignoreIds.add(event.user_id)
+    return True
 
 
 mute_sb_cmd = on_command(cmd="mute sb", rule=add_user_ignore, aliases={"msb"})
@@ -270,7 +280,7 @@ async def mute_sb(bot: Bot, event: GroupMessageEvent, matcher: Matcher):
     await bot.set_group_ban(group_id=event.group_id, user_id=choice(random_user_id), duration=mute_time * 60)
 
 
-def check_mute(event: GroupMessageEvent) -> bool:
+def check_mute(event: GroupMessageEvent, cs: str = CommandStart()) -> bool:
     """检测命令格式是否为 mute @sb st
 
     Args:
@@ -280,13 +290,16 @@ def check_mute(event: GroupMessageEvent) -> bool:
         bool: 是否符合命令格式
     """
     message = event.get_message()
+    if not (ept := message.extract_plain_text().strip()).startswith(cs):
+        return False
+    logger.debug(f"ept: {ept}")
     message_length = len(message)
     if message_length == 1:
-        msg = message.extract_plain_text().strip()
+        msg = ept.removeprefix(cs).strip()
         return re.fullmatch(r"mute\s*all\s*(\d+)", msg)
     if message_length == 3:
         return (
-            message[0].data.get("text", "").strip() == "mute"
+            message[0].data.get("text", "").strip().removeprefix(cs).strip() == "mute"
             and message[1].type == "at"
             and message[2].data.get("text", "").strip().isdigit()
         )
@@ -431,7 +444,7 @@ def at_members(members: set[int]) -> Message:
     return Message([MessageSegment.at(member) for member in members])
 
 
-def mute_sb_p_at_st(event: GroupMessageEvent) -> bool:
+def mute_sb_p_at_st(event: GroupMessageEvent, cs: str = CommandStart(), cmd: tuple[str, ...] = Command()) -> bool:
     """在某时某分让某人被禁言某段时间
 
     Args:
@@ -444,8 +457,16 @@ def mute_sb_p_at_st(event: GroupMessageEvent) -> bool:
     if len(message) != 3:
         return False
 
-    text_0 = message[0].data.get("text", "").strip()
-    if text_0 not in ["mute schedule", "ms"]:
+    text_0:str = message[0].data.get("text", "").strip()
+    # 判断指令前缀
+    if not text_0.startswith(cs):
+        return False
+    
+    # 判断指令
+    for c in cmd:
+        if text_0.removeprefix(cs).strip().startswith(c):
+            break
+    else:
         return False
 
     if message[1].type != "at" or message[2].type != "text":
@@ -455,7 +476,6 @@ def mute_sb_p_at_st(event: GroupMessageEvent) -> bool:
     pattern = r"^(\d+)\s*at\s*([01]?\d|2[0-3])(:[0-5]?\d)?$"
     if re.match(pattern, text_2):
         return True
-
     return False
 
 
