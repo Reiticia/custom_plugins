@@ -4,7 +4,7 @@ from .decorator import switch_depend, mute_sb_stop_runpreprocessor
 from nonebot import on_command, logger
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
-from nonebot.params import CommandArg, CommandStart, Command
+from nonebot.params import CommandArg, CommandStart
 from nonebot.message import run_preprocessor, event_preprocessor
 from nonebot.adapters.onebot.v11 import (
     Bot,
@@ -238,9 +238,6 @@ async def mute_sb(bot: Bot, event: GroupMessageEvent, matcher: Matcher):
     async for qq in check_qq(timeout=20, retry=5, prompt="输入错误，请@某人或输入qq号。剩余次数: {count}"):
         if qq is None:
             await matcher.finish("等待超时")
-        if qq == "0":
-            await matcher.send("老版本QQ以及Tim用户请使用QQ号投票")
-            continue
         if not qq.isdigit():
             continue
         break
@@ -280,7 +277,7 @@ async def mute_sb(bot: Bot, event: GroupMessageEvent, matcher: Matcher):
     await bot.set_group_ban(group_id=event.group_id, user_id=choice(random_user_id), duration=mute_time * 60)
 
 
-def check_mute(event: GroupMessageEvent, cs: str = CommandStart()) -> bool:
+def check_mute(event: GroupMessageEvent, cs: str = CommandStart(), cmd: tuple[str, ...] = ("mute")) -> bool:
     """检测命令格式是否为 mute @sb st
 
     Args:
@@ -299,7 +296,7 @@ def check_mute(event: GroupMessageEvent, cs: str = CommandStart()) -> bool:
         return re.fullmatch(r"mute\s*all\s*(\d+)", msg)
     if message_length == 3:
         return (
-            message[0].data.get("text", "").strip().removeprefix(cs).strip() == "mute"
+            message[0].data.get("text", "").strip().removeprefix(cs).strip() in cmd
             and message[1].type == "at"
             and message[2].data.get("text", "").strip().isdigit()
         )
@@ -391,11 +388,6 @@ async def _(bot: Bot, event: GroupMessageEvent, matcher: Matcher, arg: Message =
 
         if qq == -1:  # 如果不是投票消息
             msg_count_since_last_vote += 1
-            continue
-
-        if qq == 0:  # 如果是老版本QQ或Tim，检测不到@
-            msg_count_since_last_vote += 1
-            await matcher.send("老版本QQ以及Tim用户请使用QQ号投票")
             continue
 
         async with lock:
