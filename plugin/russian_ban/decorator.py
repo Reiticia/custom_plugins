@@ -35,7 +35,8 @@ def switch_depend(*, dependOn: list[Callable[..., bool]], ignoreIds: set[int]) -
             if event and event.user_id in ignoreIds:
                 logger.debug(f"忽略用户 {event.user_id} 的操作")
                 return
-            if any(not item() for item in dependOn):
+            if any(not item(*args, **kwargs) for item in dependOn):
+                logger.debug("忽略操作")
                 return
             return await func(*args, **kwargs)
         return wrapper
@@ -54,13 +55,27 @@ def mute_sb_stop_runpreprocessor(*, ignoreIds: set[int]) -> Callable[[F], F]:
     def decorator(func: F) -> F:
         @functools.wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> None:
+            event: Optional[GroupMessageEvent] = kwargs.get("event", None)
+            ignoreIds.add(event.user_id)
+            logger.debug(f"{ignoreIds} will append {event.user_id}")
             try:
                 res = await func(*args, **kwargs)
             finally:
-                event: Optional[GroupMessageEvent] = kwargs.get("event", None)
                 ignoreIds.remove(event.user_id)
                 logger.debug(f"移除用户 {event.user_id} 的操作, 当前忽略列表: {ignoreIds}")
             return res
         return wrapper
     return decorator
 
+
+def negate_return_value(func: Callable[..., bool]):
+    """将返回值类型为bool的函数调用返回值取反
+
+    Args:
+        func (Callable[..., bool]): 原函数
+    """
+    def wrapper(*args, **kwargs):
+        print(args, kwargs)
+        result = func(*args, **kwargs)
+        return not result
+    return wrapper
