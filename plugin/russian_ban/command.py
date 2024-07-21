@@ -188,7 +188,6 @@ def dict_group_by_group_id(members: dict[str, dict[str, int]]) -> dict[str, dict
     return res
 
 
-
 mute_sb_cmd = on_command(cmd="mute sb", aliases={"msb"})
 
 
