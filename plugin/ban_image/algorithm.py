@@ -15,14 +15,14 @@ ban_iamge_size_file: Path = store.get_data_file("ban_image", "ban_iamge_size.jso
 
 # 读取持久化的数据
 if ban_iamge_size_file.exists():
-    ban_iamge_size = loads(t) if (t := ban_iamge_size_file.read_text()) else {}
+    ban_iamge_size = set(loads(t)) if (t := ban_iamge_size_file.read_text()) else set()
 
 
 async def save(ban_iamge_size: set[int] = {}):
     """保存禁图数据
     """
     async with aopen(ban_iamge_size_file, mode="w") as fp:
-        await fp.write(dumps(ban_iamge_size, indent=4))
+        await fp.write(dumps(list(ban_iamge_size), indent=4))
 
 
 def check_image_equals(img: MessageSegment, ban_iamge_size: set[int]) -> bool:
