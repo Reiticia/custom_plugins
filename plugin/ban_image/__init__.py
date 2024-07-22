@@ -1,13 +1,11 @@
-from pathlib import Path
-from nonebot import get_plugin_config, require
+from nonebot import get_plugin_config
 from nonebot.plugin import PluginMetadata
 from nonebot import on_message
 from nonebot.permission import SUPERUSER
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageSegment, Message, Bot, GROUP_OWNER, GROUP_ADMIN
 from nonebot.adapters.onebot.v11.event import Reply
 from typing import Optional
-from aiofiles import open as aopen
-from json import loads, dumps
+from .algorithm import check_image_equals, ban_iamge_size, save
 
 from nonebot.matcher import Matcher
 
@@ -23,38 +21,16 @@ __plugin_meta__ = PluginMetadata(
 config = get_plugin_config(Config)
 
 
-require("nonebot_plugin_localstore")
-
-import nonebot_plugin_localstore as store  # noqa: E402
-
-ban_iamge_size: set[int] = {}
-
-
 permit_roles = GROUP_OWNER | SUPERUSER | GROUP_ADMIN
 """允许执行命令的角色
 """
 
-ban_iamge_size_file: Path = store.get_data_file("ban_image", "ban_iamge_size.json")
-
-
-# 读取持久化的数据
-if ban_iamge_size_file.exists():
-    ban_iamge_size = loads(t) if (t := ban_iamge_size_file.read_text()) else {}
-
-
-async def save(ban_iamge_size: set[int] = {}):
-    """保存禁图数据
-    """
-    async with aopen(ban_iamge_size_file, mode="w") as fp:
-        await fp.write(dumps(ban_iamge_size, indent=4))
-
-
-def check_img(event: GroupMessageEvent):
+async def check_img(event: GroupMessageEvent):
     """判断是否违禁图片"""
     img_message = event.get_message().include("image")
     if len(img_message) == 0:
         return False
-    if any(int(msg.data.get("file_size")) in ban_iamge_size for msg in img_message):
+    if any(await check_image_equals(msg) for msg in img_message):
         return True
     return False
 
