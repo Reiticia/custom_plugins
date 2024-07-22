@@ -1,7 +1,7 @@
 import re
 from .schedule import save_mute, add_schedule, remove_schedule, muted_list_dict, schedule_dict
 from .decorator import switch_depend, mute_sb_stop_runpreprocessor, negate_return_value
-from .rule import check_mute_sb, check_mute_sb_p_at_st
+from .rule import check_mute_sb
 from nonebot import on_command, logger
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
@@ -389,7 +389,7 @@ def at_members(members: set[int]) -> Message:
     """
     return Message([MessageSegment.at(member) for member in members])
 
-mute_schedule_cmd = on_command(cmd="mute schedule", aliases={"ms"}, rule=check_mute_sb_p_at_st, permission=permit_roles)
+mute_schedule_cmd = on_command(cmd="mute schedule", aliases={"ms"}, permission=permit_roles)
 
 
 def split_event_args(msg: Message) -> tuple[int, int, str, str]:
