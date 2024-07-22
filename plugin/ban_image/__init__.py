@@ -27,10 +27,11 @@ permit_roles = GROUP_OWNER | SUPERUSER | GROUP_ADMIN
 
 async def check_img(event: GroupMessageEvent):
     """判断是否违禁图片"""
+    global ban_iamge_size
     img_message = event.get_message().include("image")
     if len(img_message) == 0:
         return False
-    if any(await check_image_equals(msg) for msg in img_message):
+    if any(check_image_equals(msg, ban_iamge_size) for msg in img_message):
         return True
     return False
 
@@ -51,7 +52,7 @@ async def check_message_add(event: GroupMessageEvent):
         reply_msg: Optional[Reply] = event.reply
         if reply_msg and len(imgs := reply_msg.message.include("image")) > 0:
             # 添加到违禁图片列表
-            ban_iamge_size |= {int(img.data.get("file_size")) for img in imgs}
+            ban_iamge_size = ban_iamge_size | set([int(img.data.get("file_size")) for img in imgs])
             await save(ban_iamge_size)
             return True
     return False
@@ -70,11 +71,11 @@ async def check_message_del(event: GroupMessageEvent):
     """检测消息合法性"""
     global ban_iamge_size
     cmd_msg = [msg.data.get("text", "").strip() for msg in event.get_message() if msg.type == "text"]
-    if "发吧发吧" in cmd_msg:
+    if "随便发" in cmd_msg:
         reply_msg: Optional[Reply] = event.reply
         if reply_msg and len(imgs := reply_msg.message.include("image")) > 0:
             # 删除指定违禁图片
-            ban_iamge_size -= {int(img.data.get("file_size")) for img in imgs}
+            ban_iamge_size = ban_iamge_size - set([int(img.data.get("file_size")) for img in imgs])
             await save(ban_iamge_size)
             return True
     return False

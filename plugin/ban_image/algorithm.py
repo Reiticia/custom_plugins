@@ -8,7 +8,7 @@ require("nonebot_plugin_localstore")
 
 import nonebot_plugin_localstore as store  # noqa: E402
 
-ban_iamge_size: set[int] = {}
+ban_iamge_size: set[int] = set()
 
 ban_iamge_size_file: Path = store.get_data_file("ban_image", "ban_iamge_size.json")
 
@@ -25,7 +25,7 @@ async def save(ban_iamge_size: set[int] = {}):
         await fp.write(dumps(ban_iamge_size, indent=4))
 
 
-async def check_image_equals(img: MessageSegment) -> bool:
+def check_image_equals(img: MessageSegment, ban_iamge_size: set[int]) -> bool:
     """检测是否匹配 TODO 更好的匹配策略
     
     Args:
