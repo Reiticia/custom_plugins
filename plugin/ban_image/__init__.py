@@ -88,9 +88,11 @@ async def remove_ban_image(matcher: Matcher):
 @on_fullmatch(msg="让我看看什么不能发").handle()
 async def list_ban_images(bot: Bot, event: GroupMessageEvent):
     message = await ban_image.list_ban_image("bot", bot.self_id)
-    # await bot.send_group_msg(group_id=event.group_id, message=message)
-    await bot.call_api(
-        "send_group_forward_msg",
-        group_id=event.group_id,
-        messages=message,
-    )
+    if len(message) > 0:
+        await bot.call_api(
+            "send_group_forward_msg",
+            group_id=event.group_id,
+            messages=message,
+        )
+    else:
+        await bot.send_group_msg(group_id=event.group_id, message="当前没有违禁图片")
