@@ -1,15 +1,15 @@
-from nonebot import get_plugin_config
+from nonebot import get_plugin_config, on_fullmatch
 from nonebot.plugin import PluginMetadata
 from nonebot import on_message
 from nonebot.permission import SUPERUSER
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageSegment, Message, Bot, GROUP_OWNER, GROUP_ADMIN
 from nonebot.adapters.onebot.v11.event import Reply
 from typing import Optional
-from .algorithm import check_image_equals, ban_iamge_size, save
-
 from nonebot.matcher import Matcher
-
 from .config import Config
+from .model import BanImage
+
+ban_image = BanImage()
 
 __plugin_meta__ = PluginMetadata(
     name="ban_image",
@@ -25,13 +25,13 @@ permit_roles = GROUP_OWNER | SUPERUSER | GROUP_ADMIN
 """允许执行命令的角色
 """
 
+
 async def check_img(event: GroupMessageEvent):
     """判断是否违禁图片"""
-    global ban_iamge_size
     img_message = event.get_message().include("image")
     if len(img_message) == 0:
         return False
-    if any(check_image_equals(msg, ban_iamge_size) for msg in img_message):
+    if any(ban_image.check_image_equals(msg) for msg in img_message):
         return True
     return False
 
@@ -46,14 +46,13 @@ async def ban_img_sender(bot: Bot, event: GroupMessageEvent, matcher: Matcher):
 
 async def check_message_add(event: GroupMessageEvent):
     """检测消息合法性"""
-    global ban_iamge_size
     cmd_msg = [msg.data.get("text", "").strip() for msg in event.get_message() if msg.type == "text"]
     if "别发了" in cmd_msg:
         reply_msg: Optional[Reply] = event.reply
         if reply_msg and len(imgs := reply_msg.message.include("image")) > 0:
             # 添加到违禁图片列表
-            ban_iamge_size = ban_iamge_size | set([int(img.data.get("file_size")) for img in imgs])
-            await save(ban_iamge_size)
+            await ban_image.add_ban_image([img for img in imgs])
+            await ban_image.save()
             return True
     return False
 
@@ -69,19 +68,29 @@ async def add_ban_image(event: GroupMessageEvent, matcher: Matcher):
 
 async def check_message_del(event: GroupMessageEvent):
     """检测消息合法性"""
-    global ban_iamge_size
     cmd_msg = [msg.data.get("text", "").strip() for msg in event.get_message() if msg.type == "text"]
     if "随便发" in cmd_msg:
         reply_msg: Optional[Reply] = event.reply
         if reply_msg and len(imgs := reply_msg.message.include("image")) > 0:
             # 删除指定违禁图片
-            ban_iamge_size = ban_iamge_size - set([int(img.data.get("file_size")) for img in imgs])
-            await save(ban_iamge_size)
+            await ban_image.remove_ban_image([img for img in imgs])
+            await ban_image.save()
             return True
     return False
 
 
 @on_message(rule=check_message_del, permission=permit_roles).handle()
-async def remove_ban_image(matcher: Matcher): 
+async def remove_ban_image(matcher: Matcher):
     message = Message([MessageSegment.text("随便你们了，发吧发吧")])
     await matcher.finish(message=message)
+
+
+@on_fullmatch(msg="让我看看什么不能发").handle()
+async def list_ban_images(bot: Bot, event: GroupMessageEvent):
+    message = await ban_image.list_ban_image("bot", bot.self_id)
+    # await bot.send_group_msg(group_id=event.group_id, message=message)
+    await bot.call_api(
+        "send_group_forward_msg",
+        group_id=event.group_id,
+        messages=message,
+    )
