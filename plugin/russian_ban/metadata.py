@@ -32,7 +32,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 'func': '禁言某人',
                 'trigger_method': 'on_cmd',
-                'trigger_condition': 'mute sb',
+                'trigger_condition': '<s>mute sb</s>',
                 'brief_des': '禁言某人',
                 'detail_des': '触发命令后，需要输入QQ号或者@指定成员，然后输入禁言时长'
             },

@@ -191,7 +191,7 @@ def dict_group_by_group_id(members: dict[str, dict[str, int]]) -> dict[str, dict
 mute_sb_cmd = on_command(cmd="mute sb", aliases={"msb"})
 
 
-@mute_sb_cmd.handle()
+# @mute_sb_cmd.handle()
 @mute_sb_stop_runpreprocessor(ignoreIds=ignoreIds)
 async def mute_sb(bot: Bot, event: GroupMessageEvent, matcher: Matcher):
     """禁言某人
