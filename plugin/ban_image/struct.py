@@ -10,7 +10,7 @@ from sqlalchemy.future import select
 from sqlalchemy import delete
 from .model import GroupImageBanInfo
 
-from nonebot import require
+from nonebot import logger, require
 
 require("nonebot_plugin_localstore")
 
@@ -30,7 +30,7 @@ class BanImage:
             # 过滤指定群组所有违禁图片信息
             condition = select(GroupImageBanInfo).filter_by(group_id=self.group_id)
             infos: list[GroupImageBanInfo] = (await session.execute(condition)).scalars().all()
-            self.sizes: dict[int, str] = {info.file_size: info.img_name for info in infos}
+            self.cache: dict[str, str] = {info.file_size: info.img_name for info in infos}
             """存储图片尺寸及图片名称"""
         return self
 
@@ -47,14 +47,14 @@ class BanImage:
             for img in imgs:
                 img_name = img.data.get("file")
                 url = img.data.get("url")
-                size = int(img.data.get("file_size"))
-                # 构造数据
-                gibi = GroupImageBanInfo(group_id=self.group_id, file_size=size, img_name=img_name)
-                gibis.append(gibi)
+                size = img.data.get("file_size", img_name)
                 # 下载图片到本地
                 response = await client.get(url)
                 async with aopen(self.img_store.joinpath(img_name), "wb") as f:
                     await f.write(response.content)
+                # 构造数据
+                gibi = GroupImageBanInfo(group_id=self.group_id, file_size=size, img_name=img_name)
+                gibis.append(gibi)
         # 保存到数据库中
         session = get_session()
         async with session.begin():
@@ -80,13 +80,13 @@ class BanImage:
         self.load()
         for img in imgs:
             # 添加文件大小到缓冲区
-            file_size = img.data.get("file_size")
+            file_size = img.data.get("file_size", img.data.get("file"))
             # 删除本地图片
-            file = self.img_store.joinpath(str(self.sizes.get(file_size)))
+            file = self.img_store.joinpath(self.cache.get(file_size))
             try:
                 remove(file)
             except FileNotFoundError:
-                print(f"文件 {file} 不存在。")
+                logger.error(f"文件 {file} 不存在。")
 
     async def list_ban_image(self, name: str, uid: int) -> list:
         """展示已被禁止的图片
@@ -99,7 +99,7 @@ class BanImage:
             list: 消息
         """
         msg = []
-        for size, name in self.sizes.items():
+        for size, name in self.cache.items():
             async with aopen(self.img_store.joinpath(name), "rb") as f:
                 content = await f.read()
                 ms1 = MessageSegment.text(text=size)
@@ -125,7 +125,7 @@ class BanImage:
         Return:
             bool: 是否匹配
         """
-        return int(img.data.get("file_size")) in self.sizes.keys()
+        return img.data.get("file_size", img.data.get("file")) in self.cache.keys()
 
 
 class ExpirableDict:

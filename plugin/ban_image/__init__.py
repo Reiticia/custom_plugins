@@ -65,41 +65,44 @@ async def ban_img_sender(bot: Bot, event: GroupMessageEvent, matcher: Matcher):
     await matcher.finish(" 听不懂人话？不是叫你别发了吗？", at_sender=True)
 
 
-async def check_message_add(event: GroupMessageEvent, ban_image: BanImage = Depends(get_ban_image)):
+async def check_message_add(event: GroupMessageEvent, ):
     """检测消息合法性"""
     cmd_msg = [msg.data.get("text", "").strip() for msg in event.get_message() if msg.type == "text"]
     if "别发了" in cmd_msg:
         reply_msg: Optional[Reply] = event.reply
-        if reply_msg and len(imgs := reply_msg.message.include("image")) > 0:
-            # 添加到违禁图片列表
-            await ban_image.add_ban_image([img for img in imgs])
+        if reply_msg and len(reply_msg.message.include("image")) > 0:
             return True
     return False
 
 
 @on_message(rule=check_message_add, permission=permit_roles).handle()
-async def add_ban_image(event: GroupMessageEvent, matcher: Matcher):
+async def add_ban_image(event: GroupMessageEvent, matcher: Matcher, ban_image: BanImage = Depends(get_ban_image)):
     """添加违禁图片"""
     reply_msg: Optional[Reply] = event.reply
     reply_user_id = reply_msg.sender.user_id
-    message = Message([MessageSegment.at(reply_user_id), MessageSegment.text(" 别再发这张表情了")])
+    imgs = reply_msg.message.include("image")
+    # 添加到违禁图片列表
+    await ban_image.add_ban_image(imgs)
+    message = Message([MessageSegment.at(reply_user_id), MessageSegment.text(" 别再发这表情了")])
     await matcher.finish(message=message)
 
 
-async def check_message_del(event: GroupMessageEvent, ban_image: BanImage = Depends(get_ban_image)):
+async def check_message_del(event: GroupMessageEvent):
     """检测消息合法性"""
     cmd_msg = [msg.data.get("text", "").strip() for msg in event.get_message() if msg.type == "text"]
     if "随便发" in cmd_msg:
         reply_msg: Optional[Reply] = event.reply
-        if reply_msg and len(imgs := reply_msg.message.include("image")) > 0:
-            # 删除指定违禁图片
-            await ban_image.remove_ban_image([img for img in imgs])
+        if reply_msg and len(reply_msg.message.include("image")) > 0:
             return True
     return False
 
 
 @on_message(rule=check_message_del, permission=permit_roles).handle()
-async def remove_ban_image(matcher: Matcher):
+async def remove_ban_image(event: GroupMessageEvent, matcher: Matcher, ban_image: BanImage = Depends(get_ban_image)):
+    reply_msg: Optional[Reply] = event.reply
+    imgs = reply_msg.message.include("image")
+    # 删除指定违禁图片
+    await ban_image.remove_ban_image(imgs)
     message = Message([MessageSegment.text("随便你们了，发吧发吧")])
     await matcher.finish(message=message)
 

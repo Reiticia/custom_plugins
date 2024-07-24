@@ -9,7 +9,7 @@ class GroupImageBanInfo(Model):
     """主键"""
     group_id: Mapped[int]
     """群组id"""
-    file_size: Mapped[int]
+    file_size: Mapped[str]
     """文件大小"""
     img_name: Mapped[str]
     """文件名称"""
