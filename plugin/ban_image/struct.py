@@ -32,6 +32,7 @@ class BanImage:
             infos: list[GroupImageBanInfo] = (await session.execute(condition)).scalars().all()
             self.cache: dict[str, str] = {info.file_size: info.img_name for info in infos}
             """存储图片尺寸及图片名称"""
+            logger.debug(f"cache: {self.cache}")
         return self
 
     async def add_ban_image(self, imgs: list[MessageSegment]):
@@ -71,22 +72,25 @@ class BanImage:
         """
         if not self.img_store.exists():
             makedirs(self.img_store.as_posix())
+        for img in imgs:
+            # 添加文件大小到缓冲区
+            file_size = img.data.get("file_size", img.data.get("file"))
+            # 删除本地图片
+            file_name = self.cache.get(file_size)
+            logger.debug(f"file_name: {file_name}")
+            file = self.img_store.joinpath(file_name)
+            try:
+                remove(file)
+            except FileNotFoundError:
+                logger.error(f"文件 {file} 不存在。")
         # 删除数据库对应信息
         sizes = set([img.data.get("file_size") for img in imgs])
         session = get_session()
         async with session.begin():
             await session.execute(delete(GroupImageBanInfo).where(GroupImageBanInfo.file_size.in_(sizes)))
         await session.commit()
-        self.load()
-        for img in imgs:
-            # 添加文件大小到缓冲区
-            file_size = img.data.get("file_size", img.data.get("file"))
-            # 删除本地图片
-            file = self.img_store.joinpath(self.cache.get(file_size))
-            try:
-                remove(file)
-            except FileNotFoundError:
-                logger.error(f"文件 {file} 不存在。")
+        await self.load()
+        
 
     async def list_ban_image(self, name: str, uid: int) -> list:
         """展示已被禁止的图片
@@ -100,6 +104,7 @@ class BanImage:
         """
         msg = []
         for size, name in self.cache.items():
+            logger.debug(f"{size}: {name}")
             async with aopen(self.img_store.joinpath(name), "rb") as f:
                 content = await f.read()
                 ms1 = MessageSegment.text(text=size)
