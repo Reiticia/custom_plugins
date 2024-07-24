@@ -63,7 +63,6 @@ class BanImage:
         await session.commit()
         await self.load()
 
-
     async def remove_ban_image(self, imgs: list[MessageSegment]):
         """删除禁言图片
 
@@ -90,7 +89,21 @@ class BanImage:
             await session.execute(delete(GroupImageBanInfo).where(GroupImageBanInfo.file_size.in_(sizes)))
         await session.commit()
         await self.load()
-        
+
+    async def clear_ban_image(self):
+        # 删除文件
+        for _, name in self.cache.items():
+            file = self.img_store.joinpath(name)
+            try:
+                remove(file)
+            except FileNotFoundError:
+                logger.error(f"文件 {file} 不存在。")
+        # 删表数据
+        session = get_session()
+        async with session.begin():
+            await session.execute(delete(GroupImageBanInfo).where(GroupImageBanInfo.group_id == self.group_id))
+        await session.commit()
+        await self.load()
 
     async def list_ban_image(self, name: str, uid: int) -> list:
         """展示已被禁止的图片

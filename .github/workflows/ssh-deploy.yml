@@ -32,5 +32,4 @@ jobs:
           './plugin/*' => /home/${{ secrets.DC_USER }}/bot4q/custom_plugin
         last_ssh: |
           cd /home/${{ secrets.DC_USER }}/bot4q
-          nohup /home/${{ secrets.DC_USER }}/.local/bin/nb orm sync
           nohup /home/${{ secrets.DC_USER }}/.local/bin/nb run >> /home/${{ secrets.DC_USER }}/bot4q/bot4q.log 2>&1 &

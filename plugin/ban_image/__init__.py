@@ -1,25 +1,15 @@
-from nonebot import get_plugin_config, on_fullmatch
-from nonebot.plugin import PluginMetadata
+from nonebot import on_fullmatch
 from nonebot import on_message
 from nonebot.permission import SUPERUSER
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageSegment, Message, Bot, GROUP_OWNER, GROUP_ADMIN
 from nonebot.adapters.onebot.v11.event import Reply
 from typing import Optional
 from nonebot.matcher import Matcher
-from .config import Config
 from .struct import BanImage
 from nonebot.params import Depends
+from .metadata import __plugin_meta__ as __plugin_meta__
 
 ban_images: dict[int, BanImage] = {}
-
-__plugin_meta__ = PluginMetadata(
-    name="ban_image",
-    description="",
-    usage="",
-    config=Config,
-)
-
-config = get_plugin_config(Config)
 
 
 permit_roles = GROUP_OWNER | SUPERUSER | GROUP_ADMIN
@@ -118,3 +108,9 @@ async def list_ban_images(bot: Bot, event: GroupMessageEvent, ban_image: BanImag
         )
     else:
         await bot.send_group_msg(group_id=event.group_id, message="当前没有违禁图片")
+
+
+@on_fullmatch(msg="都可以发").handle()
+async def rm_all_ban_images(bot: Bot, event: GroupMessageEvent, ban_image: BanImage = Depends(get_ban_image)):
+    await ban_image.clear_ban_image()
+    await bot.send_group_msg(group_id=event.group_id, message="已清空违禁图片")
