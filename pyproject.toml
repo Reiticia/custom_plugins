@@ -14,6 +14,7 @@ dependencies = [
     "nonebot-plugin-waiter>=0.6.2",
     "nonebot-plugin-localstore>=0.7.0",
     "aiofiles>=24.1.0",
+    "nonebot-plugin-orm[sqlite]>=0.7.5",
 ]
 license = {text = "MIT"}
 
