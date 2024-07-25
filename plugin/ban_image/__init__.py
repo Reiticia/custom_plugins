@@ -110,7 +110,7 @@ async def list_ban_images(bot: Bot, event: GroupMessageEvent, ban_image: BanImag
         await bot.send_group_msg(group_id=event.group_id, message="当前没有违禁图片")
 
 
-@on_fullmatch(msg="都可以发").handle()
+@on_fullmatch(msg="都可以发", permission=permit_roles).handle()
 async def rm_all_ban_images(bot: Bot, event: GroupMessageEvent, ban_image: BanImage = Depends(get_ban_image)):
     await ban_image.clear_ban_image()
     await bot.send_group_msg(group_id=event.group_id, message="已清空违禁图片")
