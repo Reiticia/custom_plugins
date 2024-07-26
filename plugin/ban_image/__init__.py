@@ -1,20 +1,20 @@
-from nonebot import on_fullmatch
+from nonebot import logger, on_fullmatch
 from nonebot import on_message
 from nonebot.permission import SUPERUSER
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageSegment, Message, Bot, GROUP_OWNER, GROUP_ADMIN
 from nonebot.adapters.onebot.v11.event import Reply
 from typing import Optional
 from nonebot.matcher import Matcher
-from .struct import BanImage
+from .struct import BanImage, ExpirableDict
 from nonebot.params import Depends
 from .metadata import __plugin_meta__ as __plugin_meta__
-
-ban_images: dict[int, BanImage] = {}
 
 
 permit_roles = GROUP_OWNER | SUPERUSER | GROUP_ADMIN
 """允许执行命令的角色
 """
+
+ban_images: dict[int, BanImage] = {}
 
 
 async def get_ban_image(event: GroupMessageEvent) -> BanImage:
@@ -30,10 +30,12 @@ async def get_ban_image(event: GroupMessageEvent) -> BanImage:
     if (ban_image := ban_images.get(group_id := event.group_id)) is not None:
         return ban_image
     else:
-        ban_images.update({
-            group_id: (ban_image := await BanImage(group_id).load())
-        })
+        ban_images.update({group_id: (ban_image := await BanImage(group_id).load())})
         return ban_image
+
+
+mute_dict: dict[int, ExpirableDict] = {}
+"""分群组存储禁言字典"""
 
 
 async def check_img(event: GroupMessageEvent, ban_image: BanImage = Depends(get_ban_image)):
@@ -46,16 +48,37 @@ async def check_img(event: GroupMessageEvent, ban_image: BanImage = Depends(get_
     return False
 
 
-@on_message(rule=check_img).handle()
-async def ban_img_sender(bot: Bot, event: GroupMessageEvent, matcher: Matcher):
-    """违禁图片禁言"""
-    await bot.delete_msg(message_id=event.message_id)
+async def compute_mute_time(event: GroupMessageEvent) -> int:
+    """计算禁言时间"""
+    global mute_dict
     user_id = event.user_id
-    await bot.set_group_ban(group_id=event.group_id, user_id=user_id, duration=60)
+    group_id = event.group_id
+    # 判断这个成员是否于指定时间段内被禁言过，如果是，则加大处罚力度
+    mute_dict_group: ExpirableDict = mute_dict.get(group_id, ExpirableDict(str(group_id)))
+    key = str(user_id)
+    time = 1 if (t := mute_dict_group.get(key)) is None else t << 1
+    logger.debug(f"ttl: {mute_dict_group.ttl(key)}s")
+    mute_dict_group.set(key, time, ttl=time * 2 * 60)
+    # mute_dict[group_id] = mute_dict_group
+    mute_dict.update({
+        group_id: mute_dict_group
+    })
+    return time
+
+
+@on_message(rule=check_img).handle()
+async def ban_img_sender(bot: Bot, event: GroupMessageEvent, matcher: Matcher, time:int = Depends(compute_mute_time)):
+    """违禁图片禁言"""
+    user_id = event.user_id
+    group_id = event.group_id
+    await bot.delete_msg(message_id=event.message_id)
+    await bot.set_group_ban(group_id=group_id, user_id=user_id, duration=time * 60)
     await matcher.finish(" 听不懂人话？不是叫你别发了吗？", at_sender=True)
 
 
-async def check_message_add(event: GroupMessageEvent, ):
+async def check_message_add(
+    event: GroupMessageEvent,
+):
     """检测消息合法性"""
     cmd_msg = [msg.data.get("text", "").strip() for msg in event.get_message() if msg.type == "text"]
     if "别发了" in cmd_msg:
