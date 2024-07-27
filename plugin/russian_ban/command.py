@@ -1,15 +1,15 @@
 import re
-from collections.abc import Sequence
 from .schedule import save_mute, add_schedule, remove_schedule, muted_list_dict
 from .decorator import switch_depend, mute_sb_stop_runpreprocessor, negate_return_value
 from .rule import check_mute_sb
 from nonebot import on_command, logger
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
-from nonebot.params import CommandArg, CommandStart, Depends
+from nonebot.params import CommandArg, CommandStart
 from nonebot.message import run_preprocessor, event_preprocessor
 from sqlalchemy import select
-from nonebot_plugin_orm import SQLDepends
+from nonebot_plugin_orm import get_session
+
 
 from nonebot.adapters.onebot.v11 import (
     Bot,
@@ -458,23 +458,22 @@ def get_group_id(event: GroupMessageEvent) -> int:
 
 
 @list_schedule_cmd.handle()
-async def _(
-    event: GroupMessageEvent,
-    matcher: Matcher,
-    jobs: Sequence[ScheduleBanJob] = SQLDepends(
-        select(ScheduleBanJob).where(ScheduleBanJob.group_id == Depends(get_group_id))
-    ),
-):
+async def _(event: GroupMessageEvent, matcher: Matcher):
     """查看定时任务
 
     Args:
         event (GroupMessageEvent): 群组消息事件
     """
     group_id = event.group_id
-    if len(jobs) > 0:
-        msg = f"当前群组 {group_id} 的定时任务列表："
-        for job in jobs:
-            msg += f"\n任务 {job.job_id}：{user_id_nickname_dict.get(int(job.user_id), job.user_id)} 在 {job.start_hour}:{job.start_minute:02} 被禁言 {job.period} 分钟"
-    else:
-        msg = "当前群组没有定时任务"
-    await matcher.finish(msg)
+    session = get_session()
+    async with session.begin():
+        jobs = (
+            (await session.execute(select(ScheduleBanJob).where(ScheduleBanJob.group_id == group_id))).scalars().all()
+        )
+        if len(jobs) > 0:
+            msg = f"当前群组 {group_id} 的定时任务列表："
+            for job in jobs:
+                msg += f"\n任务 {job.job_id}：{user_id_nickname_dict.get(int(job.user_id), job.user_id)} 在 {job.start_hour}:{job.start_minute:02} 被禁言 {job.period} 分钟"
+        else:
+            msg = "当前群组没有定时任务"
+        await matcher.finish(msg)

@@ -38,12 +38,7 @@ if ban_file.exists():
 
 
 @driver.on_bot_connect
-async def _(
-    bot: Bot,
-    # jobs: Sequence[ScheduleBanJob] = SQLDepends(
-    #     select(ScheduleBanJob)
-    # ),
-):
+async def _(bot: Bot):
     """在Bot连接成功后执行对应操作
 
     Args:
