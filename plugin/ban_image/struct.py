@@ -63,7 +63,7 @@ class BanImage:
         await session.commit()
         await self.load()
 
-    async def remove_ban_image(self, imgs: list[MessageSegment]):
+    async def remove_ban_image(self, imgs: list[MessageSegment]) -> list[MessageSegment]:
         """删除禁言图片
 
         Args:
@@ -71,16 +71,22 @@ class BanImage:
         """
         if not self.img_store.exists():
             makedirs(self.img_store.as_posix())
+        fail_list: list[MessageSegment] = []
         for img in imgs:
             # 添加文件大小到缓冲区
             file_size = img.data.get("file_size", img.data.get("file"))
             # 删除本地图片
             file_name = self.cache.get(file_size)
             logger.debug(f"file_name: {file_name}")
+            # 图片不存在，则进行本地图片删除
+            if file_name is None:
+                fail_list.append(img)
+                continue
             file = self.img_store.joinpath(file_name)
             try:
                 remove(file)
             except FileNotFoundError:
+                fail_list.append(img)
                 logger.error(f"文件 {file} 不存在。")
         # 删除数据库对应信息
         sizes = set([img.data.get("file_size") for img in imgs])
@@ -89,6 +95,7 @@ class BanImage:
             await session.execute(delete(GroupImageBanInfo).where(GroupImageBanInfo.file_size.in_(sizes)))
         await session.commit()
         await self.load()
+        return fail_list
 
     async def clear_ban_image(self):
         # 删除文件

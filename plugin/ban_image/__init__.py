@@ -115,8 +115,11 @@ async def remove_ban_image(event: GroupMessageEvent, matcher: Matcher, ban_image
     reply_msg: Optional[Reply] = event.reply
     imgs = reply_msg.message.include("image")
     # 删除指定违禁图片
-    await ban_image.remove_ban_image(imgs)
-    message = Message([MessageSegment.text("随便你们了，发吧发吧")])
+    fail_list = await ban_image.remove_ban_image(imgs)
+    if len(fail_list) > 0:
+        message = Message([MessageSegment.text("部分图片删除失败")])
+    else:
+        message = Message([MessageSegment.text("随便你们了，发吧发吧")])
     await matcher.finish(message=message)
 
 
