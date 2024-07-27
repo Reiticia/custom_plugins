@@ -1,12 +1,16 @@
 import re
-from .schedule import save_mute, add_schedule, remove_schedule, muted_list_dict, schedule_dict
+from collections.abc import Sequence
+from .schedule import save_mute, add_schedule, remove_schedule, muted_list_dict
 from .decorator import switch_depend, mute_sb_stop_runpreprocessor, negate_return_value
 from .rule import check_mute_sb
 from nonebot import on_command, logger
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
-from nonebot.params import CommandArg, CommandStart
+from nonebot.params import CommandArg, CommandStart, Depends
 from nonebot.message import run_preprocessor, event_preprocessor
+from sqlalchemy import select
+from nonebot_plugin_orm import SQLDepends
+
 from nonebot.adapters.onebot.v11 import (
     Bot,
     GROUP_OWNER,
@@ -21,6 +25,7 @@ from nonebot.adapters.onebot.v11.exception import ActionFailed
 from nonebot_plugin_waiter import waiter
 from random import choices, choice
 from .config import config
+from .model import ScheduleBanJob
 from asyncio import Lock
 
 
@@ -389,6 +394,7 @@ def at_members(members: set[int]) -> Message:
     """
     return Message([MessageSegment.at(member) for member in members])
 
+
 mute_schedule_cmd = on_command(cmd="mute schedule", aliases={"ms"}, permission=permit_roles)
 
 
@@ -440,30 +446,35 @@ async def _(matcher: Matcher, arg: Message = CommandArg()):
     """
     job_ids = [job_id for job_id in arg.extract_plain_text().strip().split(" ") if job_id != ""]
     for job_id in job_ids:
-        res = schedule_dict.pop(job_id, None)
-        if res:
-            await remove_schedule(job_id=job_id, schedule_dict=schedule_dict)
-            await matcher.send(f"已移除定时任务 {job_id} ")
-        else:
-            await matcher.send(f"定时任务 {job_id} 不存在")
+        await remove_schedule(job_id=job_id)
+        await matcher.send(f"已移除定时任务 {job_id} ")
 
 
 list_schedule_cmd = on_command(cmd="list schedule", aliases={"lss"}, permission=permit_roles)
 
 
+def get_group_id(event: GroupMessageEvent) -> int:
+    return event.group_id
+
+
 @list_schedule_cmd.handle()
-async def _(event: GroupMessageEvent, matcher: Matcher):
+async def _(
+    event: GroupMessageEvent,
+    matcher: Matcher,
+    jobs: Sequence[ScheduleBanJob] = SQLDepends(
+        select(ScheduleBanJob).where(ScheduleBanJob.group_id == Depends(get_group_id))
+    ),
+):
     """查看定时任务
 
     Args:
         event (GroupMessageEvent): 群组消息事件
     """
     group_id = event.group_id
-    schedule_dict_group = {k: v for k, v in schedule_dict.items() if v["group_id"] == group_id}
-    if schedule_dict_group:
+    if len(jobs) > 0:
         msg = f"当前群组 {group_id} 的定时任务列表："
-        for job_id, job in schedule_dict_group.items():
-            msg += f"\n任务 {job_id}：{user_id_nickname_dict.get(int(job['user_id']), job['user_id'])} 在 {job['start_hour']}:{job['start_minute']:0>2} 被禁言 {job['period']} 分钟"
+        for job in jobs:
+            msg += f"\n任务 {job.job_id}：{user_id_nickname_dict.get(int(job.user_id), job.user_id)} 在 {job.start_hour}:{job.start_minute:02} 被禁言 {job.period} 分钟"
     else:
         msg = "当前群组没有定时任务"
     await matcher.finish(msg)
