@@ -15,7 +15,7 @@ from nonebot_plugin_orm import get_session
 
 require("nonebot_plugin_localstore")
 
-import nonebot_plugin_localstore as store  # noqa: E402
+import nonebot_plugin_localstore as store 
 
 driver = get_driver()
 
@@ -71,7 +71,7 @@ async def save_mute(muted_list_dict: dict[str, dict[str, int]] = {}):
 
 require("nonebot_plugin_apscheduler")
 
-from nonebot_plugin_apscheduler import scheduler  # noqa: E402
+from nonebot_plugin_apscheduler import scheduler
 
 
 @scheduler.scheduled_job("cron", hour="0", id="clear_record")

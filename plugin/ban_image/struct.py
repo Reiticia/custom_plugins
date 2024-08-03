@@ -1,4 +1,4 @@
-from os import makedirs, remove
+from os import makedirs, remove, removedirs
 from pathlib import Path
 import time
 from typing import Any, Optional
@@ -14,7 +14,7 @@ from nonebot import logger, require
 
 require("nonebot_plugin_localstore")
 
-import nonebot_plugin_localstore as store  # noqa: E402
+import nonebot_plugin_localstore as store 
 
 
 class BanImage:
@@ -105,6 +105,8 @@ class BanImage:
                 remove(file)
             except FileNotFoundError:
                 logger.error(f"文件 {file} 不存在。")
+        if self.img_store.exists():
+            removedirs(self.img_store.as_posix())
         # 删表数据
         session = get_session()
         async with session.begin():
