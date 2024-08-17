@@ -5,8 +5,9 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageSegment, Messa
 from nonebot.adapters.onebot.v11.event import Reply
 from typing import Optional
 from nonebot.matcher import Matcher
-from .struct import BanImage, ExpirableDict
+from .struct import BanImage
 from nonebot.params import Depends
+from ..common.struct import ExpirableDict
 from .metadata import __plugin_meta__ as __plugin_meta__
 
 
@@ -34,7 +35,7 @@ async def get_ban_image(event: GroupMessageEvent) -> BanImage:
         return ban_image
 
 
-mute_dict: dict[int, ExpirableDict] = {}
+mute_dict: dict[int, ExpirableDict[int]] = {}
 """分群组存储禁言字典"""
 
 
@@ -54,12 +55,11 @@ async def compute_mute_time(event: GroupMessageEvent) -> int:
     user_id = event.user_id
     group_id = event.group_id
     # 判断这个成员是否于指定时间段内被禁言过，如果是，则加大处罚力度
-    mute_dict_group: ExpirableDict = mute_dict.get(group_id, ExpirableDict(str(group_id)))
+    mute_dict_group: ExpirableDict[int] = mute_dict.get(group_id, ExpirableDict(str(group_id)))
     key = str(user_id)
     time = 1 if (t := mute_dict_group.get(key)) is None else t << 1
     logger.debug(f"ttl: {mute_dict_group.ttl(key)}s")
     mute_dict_group.set(key, time, ttl=time * 2 * 60)
-    # mute_dict[group_id] = mute_dict_group
     mute_dict.update({
         group_id: mute_dict_group
     })

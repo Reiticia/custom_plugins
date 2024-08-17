@@ -25,6 +25,7 @@ from nonebot.adapters.onebot.v11.exception import ActionFailed
 from nonebot_plugin_waiter import waiter
 from random import choices, choice
 from .config import config
+from ..common.struct import ExpirableDict
 from .model import ScheduleBanJob
 from asyncio import Lock
 
@@ -477,3 +478,44 @@ async def _(event: GroupMessageEvent, matcher: Matcher):
         else:
             msg = "当前群组没有定时任务"
         await matcher.finish(msg)
+
+
+mock_mute_dict: dict[int, ExpirableDict[int]] = {}
+"""虚假禁言列表
+"""
+
+mock_mute_sb_cmd = on_command(cmd="mock mute", aliases={"mm"}, permission=permit_roles)
+
+
+@mock_mute_sb_cmd.handle()
+async def _(bot: Bot, event: GroupMessageEvent, matcher: Matcher, arg: Message = CommandArg()):
+    """让某人在接下来的某段时间每次发言均会被撤回
+
+    Args:
+        bot (Bot): bot 对象
+        event (GroupMessageEvent): 群组消息事件
+    """
+    global mock_mute_dict
+    group_id = event.group_id
+    mock_mute_dict_group: ExpirableDict[int] = mock_mute_dict.get(group_id, ExpirableDict(str(group_id)))
+    qq = arg[0].data.get("qq")
+    period = int(arg[1].data.get("text"))
+    mock_mute_dict_group.set(str(qq), 1, period * 60)
+    mock_mute_dict.update({group_id: mock_mute_dict_group})
+    message = [MessageSegment.at(int(qq)), MessageSegment.text(f" 你已被管理员禁言{period}分钟")]
+    await matcher.finish(message)
+
+
+@event_preprocessor
+async def delete_message_judge(bot: Bot, event: GroupMessageEvent):
+    """判断某个人的消息是否应该撤回
+
+    Args:
+        event (GroupMessageEvent): 群组消息事件
+    """
+    global mock_mute_dict
+    group_id = event.group_id
+    user_id = event.user_id
+    mock_mute_dict_group: ExpirableDict[int] = mock_mute_dict.get(group_id, ExpirableDict(str(group_id)))
+    if mock_mute_dict_group.ttl(str(user_id)) > 0:
+        await bot.delete_msg(message_id=event.message_id)
