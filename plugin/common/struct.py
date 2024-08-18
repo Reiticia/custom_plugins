@@ -42,6 +42,7 @@ class ExpirableDict(Generic[T]):
             return -1
         # 键已过期
         if (ttl := expiry - int(time.time())) <= 0:
+            self.delete(key)  # 同时删除键
             return 0
         return ttl
 

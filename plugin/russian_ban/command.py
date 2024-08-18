@@ -506,6 +506,30 @@ async def _(bot: Bot, event: GroupMessageEvent, matcher: Matcher, arg: Message =
     await matcher.finish(message)
 
 
+mock_mute_sb_delete_cmd = on_command(cmd="mock mute delete", aliases={"mmd"}, permission=permit_roles)
+
+
+@mock_mute_sb_delete_cmd.handle()
+async def _(bot: Bot, event: GroupMessageEvent, matcher: Matcher, arg: Message = CommandArg()):
+    """移除某人的模拟禁言
+
+    Args:
+        bot (Bot): bot 对象
+        event (GroupMessageEvent): 群组消息事件
+    """
+    global mock_mute_dict
+    group_id = event.group_id
+    mock_mute_dict_group: ExpirableDict[int] = mock_mute_dict.get(group_id, ExpirableDict(str(group_id)))
+    qq = arg[0].data.get("qq")
+    if mock_mute_dict_group.get(str(qq)) is not None:
+        mock_mute_dict_group.delete(str(qq))
+        mock_mute_dict.update({group_id: mock_mute_dict_group})
+        message = [MessageSegment.at(int(qq)), MessageSegment.text(" 你已被管理员解除禁言")]
+        await matcher.finish(message)
+    else:
+        message = MessageSegment.text(f"已将 {user_id_nickname_dict.get(qq, qq)} 解除禁言")
+        await matcher.finish(message)
+
 @event_preprocessor
 async def delete_message_judge(bot: Bot, event: GroupMessageEvent):
     """判断某个人的消息是否应该撤回

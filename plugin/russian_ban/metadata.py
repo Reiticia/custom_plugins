@@ -71,6 +71,20 @@ __plugin_meta__ = PluginMetadata(
                 'brief_des': '移除预约禁言',
                 'detail_des': '移除指定id的预约禁言'
             },
+            {
+                'func': '模拟禁言',
+                'trigger_method': 'on_cmd',
+                'trigger_condition': 'mock mute $id',
+                'brief_des': '模拟禁言',
+                'detail_des': '将指定用户进行模拟禁言（每次发言将被撤回）'
+            },
+            {
+                'func': '移除模拟禁言',
+                'trigger_method': 'on_cmd',
+                'trigger_condition': 'mock mute delete $id',
+                'brief_des': '移除模拟禁言',
+                'detail_des': '移除指定id的模拟禁言'
+            },
         ],
         'menu_template': 'default'
     }
