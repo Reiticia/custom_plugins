@@ -2,7 +2,8 @@ import re
 from .schedule import save_mute, add_schedule, remove_schedule, muted_list_dict
 from .decorator import switch_depend, mute_sb_stop_runpreprocessor, negate_return_value
 from .rule import check_mute_sb
-from nonebot import on_command, logger
+from nonebot import on_command, logger, on_notice
+from nonebot.rule import to_me
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.params import CommandArg, CommandStart
@@ -17,6 +18,7 @@ from nonebot.adapters.onebot.v11 import (
     GROUP_ADMIN,
     GroupMessageEvent,
     PrivateMessageEvent,
+    PokeNotifyEvent,
     MessageEvent,
     Message,
     MessageSegment,
@@ -527,8 +529,20 @@ async def _(bot: Bot, event: GroupMessageEvent, matcher: Matcher, arg: Message =
         message = [MessageSegment.at(int(qq)), MessageSegment.text(" 你已被管理员解除禁言")]
         await matcher.finish(message)
     else:
-        message = MessageSegment.text(f"已将 {user_id_nickname_dict.get(qq, qq)} 解除禁言")
+        message = MessageSegment.text(f"{user_id_nickname_dict.get(int(qq), qq)} 没有被禁言")
         await matcher.finish(message)
+    
+
+@on_notice(rule=to_me).handle()
+async def _(bot: Bot, event: PokeNotifyEvent, matcher: Matcher):
+    """收到戳一戳事件，如果用户处于禁言状态，则返回其剩余的解禁时间"""
+    group_id = event.group_id
+    mock_mute_dict_group: ExpirableDict[int] = mock_mute_dict.get(group_id, ExpirableDict(str(group_id)))
+    qq = event.user_id
+    if (ttl := mock_mute_dict_group.ttl(str(qq))) > 0:
+        message = [MessageSegment.at(int(qq)), MessageSegment.text(f" 你剩余禁言时间还有 {ttl/60}min")]
+        await matcher.finish(message)
+
 
 @event_preprocessor
 async def delete_message_judge(bot: Bot, event: GroupMessageEvent):
@@ -543,3 +557,4 @@ async def delete_message_judge(bot: Bot, event: GroupMessageEvent):
     mock_mute_dict_group: ExpirableDict[int] = mock_mute_dict.get(group_id, ExpirableDict(str(group_id)))
     if mock_mute_dict_group.ttl(str(user_id)) > 0:
         await bot.delete_msg(message_id=event.message_id)
+
