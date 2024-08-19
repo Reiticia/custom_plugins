@@ -1,8 +1,8 @@
-"""create schedule table
+"""init db
 
-迁移 ID: a044fb7fd863
+迁移 ID: a19fed360ed7
 父迁移: 
-创建时间: 2024-07-27 11:59:38.831207
+创建时间: 2024-08-19 17:58:08.707725
 
 """
 from __future__ import annotations
@@ -13,7 +13,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = 'a044fb7fd863'
+revision: str = 'a19fed360ed7'
 down_revision: str | Sequence[str] | None = None
 branch_labels: str | Sequence[str] | None = ('russian_ban',)
 depends_on: str | Sequence[str] | None = None

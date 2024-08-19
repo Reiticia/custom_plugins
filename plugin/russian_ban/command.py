@@ -531,7 +531,7 @@ async def _(bot: Bot, event: GroupMessageEvent, matcher: Matcher, arg: Message =
     else:
         message = MessageSegment.text(f"{user_id_nickname_dict.get(int(qq), qq)} 没有被禁言")
         await matcher.finish(message)
-    
+
 
 @on_notice(rule=to_me).handle()
 async def _(bot: Bot, event: PokeNotifyEvent, matcher: Matcher):
@@ -540,7 +540,7 @@ async def _(bot: Bot, event: PokeNotifyEvent, matcher: Matcher):
     mock_mute_dict_group: ExpirableDict[int] = mock_mute_dict.get(group_id, ExpirableDict(str(group_id)))
     qq = event.user_id
     if (ttl := mock_mute_dict_group.ttl(str(qq))) > 0:
-        message = [MessageSegment.at(int(qq)), MessageSegment.text(f" 你剩余禁言时间还有 {ttl/60}min")]
+        message = [MessageSegment.at(int(qq)), MessageSegment.text(f" 你剩余禁言时间还有 {ttl//60}:{ttl%60:02}")]
         await matcher.finish(message)
 
 
@@ -557,4 +557,3 @@ async def delete_message_judge(bot: Bot, event: GroupMessageEvent):
     mock_mute_dict_group: ExpirableDict[int] = mock_mute_dict.get(group_id, ExpirableDict(str(group_id)))
     if mock_mute_dict_group.ttl(str(user_id)) > 0:
         await bot.delete_msg(message_id=event.message_id)
-
