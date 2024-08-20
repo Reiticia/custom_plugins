@@ -1,6 +1,6 @@
 import random
 import string
-from nonebot import logger, require, get_driver
+from nonebot import logger, get_driver
 from datetime import datetime
 
 from json import loads, dumps
@@ -13,9 +13,9 @@ from .model import ScheduleBanJob
 
 from nonebot_plugin_orm import get_session
 
-require("nonebot_plugin_localstore")
-
 import nonebot_plugin_localstore as store 
+
+from nonebot_plugin_apscheduler import scheduler
 
 driver = get_driver()
 
@@ -68,10 +68,6 @@ async def save_mute(muted_list_dict: dict[str, dict[str, int]] = {}):
     async with aopen(ban_file, mode="w") as fp:
         await fp.write(dumps(muted_list_dict, indent=4))
 
-
-require("nonebot_plugin_apscheduler")
-
-from nonebot_plugin_apscheduler import scheduler
 
 
 @scheduler.scheduled_job("cron", hour="0", id="clear_record")
