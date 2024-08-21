@@ -9,30 +9,30 @@ __plugin_meta__ = PluginMetadata(
     extra={
         'menu_data': [
             {
-                'func': '清除',
+                'func': '清除[deprecated]',
                 'trigger_method': 'on_cmd',
                 'trigger_condition': 'mute clear',
                 'brief_des': '清除禁言列表',
                 'detail_des': '清除禁言列表'
             },
             {
-                'func': '查询',
+                'func': '查询[deprecated]',
                 'trigger_method': 'on_cmd',
                 'trigger_condition': 'mute query',
                 'brief_des': '查询禁言次数',
                 'detail_des': '查询禁言次数'
             },
             {
-                'func': '历史',
+                'func': '历史[deprecated]',
                 'trigger_method': 'on_cmd',
                 'trigger_condition': 'mute history',
                 'brief_des': '查询禁言历史',
                 'detail_des': '查询禁言历史'
             },
             {
-                'func': '禁言某人',
+                'func': '禁言某人[deprecated]',
                 'trigger_method': 'on_cmd',
-                'trigger_condition': '<s>mute sb</s>',
+                'trigger_condition': 'mute sb',
                 'brief_des': '禁言某人',
                 'detail_des': '触发命令后，需要输入QQ号或者@指定成员，然后输入禁言时长'
             },

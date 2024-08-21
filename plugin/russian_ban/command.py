@@ -66,7 +66,7 @@ async def save_user_id_nickname(event: GroupMessageEvent):
     logger.debug(user_id_nickname_dict)
 
 
-@run_preprocessor
+# @run_preprocessor
 @switch_depend(dependOn=[lambda *args, **kwargs: switch, negate_return_value(check_mute_sb)], ignoreIds=ignoreIds)
 async def random_mute(bot: Bot, event: GroupMessageEvent, cs: str = CommandStart()):
     """触发指令时，对某人进行随机禁言
@@ -113,7 +113,7 @@ permit_roles = GROUP_OWNER | SUPERUSER | GROUP_ADMIN
 un_mute_all = on_command(cmd="mute clear", aliases={"mc"}, permission=permit_roles)
 
 
-@un_mute_all.handle()
+# @un_mute_all.handle()
 async def _(bot: Bot, event: MessageEvent, matcher: Matcher):
     """解除所有禁言（因触发命令而被禁言的用户，其他情况下被禁言的用户无法解除）
 
@@ -145,7 +145,7 @@ async def _(bot: Bot, event: MessageEvent, matcher: Matcher):
 query = on_command(cmd="mute query", aliases={"mq"}, permission=permit_roles)
 
 
-@query.handle()
+# @query.handle()
 async def _(event: MessageEvent, matcher: Matcher):
     """禁言列表查询（因触发命令而被禁言的用户）
 
