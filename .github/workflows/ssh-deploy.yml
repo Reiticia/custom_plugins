@@ -27,10 +27,10 @@ jobs:
         key: ${{ secrets.DC_KEY }}
         first_ssh: |
           bash /home/${{ secrets.DC_USER }}/kill_process.sh $PORT
-          rm -rf /home/${{ secrets.DC_USER }}/bot4q/custom_plugin
+          rm -rf /home/${{ secrets.DC_USER }}/customs/plugins
         scp: |
-          './plugin/*' => /home/${{ secrets.DC_USER }}/bot4q/custom_plugin
+          './plugins/*' => /home/${{ secrets.DC_USER }}/customs/plugins
         last_ssh: |
-          cd /home/${{ secrets.DC_USER }}/bot4q
+          cd /home/${{ secrets.DC_USER }}/customs
           nohup /home/${{ secrets.DC_USER }}/.local/bin/nb orm upgrade
-          nohup /home/${{ secrets.DC_USER }}/.local/bin/nb run >> /home/${{ secrets.DC_USER }}/bot4q/bot4q.log 2>&1 &
+          nohup /home/${{ secrets.DC_USER }}/.local/bin/nb run >> /home/${{ secrets.DC_USER }}/customs/customs.log 2>&1 &
