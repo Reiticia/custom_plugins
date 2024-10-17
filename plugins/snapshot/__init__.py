@@ -1,11 +1,10 @@
 import os
 from pathlib import Path
+from typing import Optional
 from nonebot.rule import to_me
 from nonebot import get_plugin_config, logger, require
 from nonebot.plugin import PluginMetadata
-from nonebot_plugin_alconna import Alconna, AlconnaMatches, Args, Arparma, Match, Option, on_alconna
-from nonebot.adapters.onebot.v11 import Message, MessageSegment
-from nonebot.permission import SUPERUSER
+from nonebot_plugin_alconna import Alconna, AlconnaMatches, Args, Arparma, Image, Match, Option, UniMessage, on_alconna
 
 from .config import Config
 
@@ -26,10 +25,11 @@ snapshot = on_alconna(
     Alconna(
         "snapshot",
         Args["url", str],
+        Option("-f|--full-page", Args["full_page", Optional[bool]]),
         Option("-x|--start-x", Args["x", float]),
         Option("-y|--start-y", Args["y", float]),
-        Option("-w|--width", Args["w", float]),
-        Option("-a|--altitude", Args["a", float]),
+        Option("-w|--width", Args["width", float]),
+        Option("-H|--height", Args["height", float]),
     ),
     aliases={"render", "截图"},
     rule=to_me,
@@ -38,16 +38,21 @@ snapshot = on_alconna(
 
 @snapshot.handle()
 async def _(url: Match[str], args: Arparma = AlconnaMatches()):
-    start_x = args.query[float]("x") if args.find("x") else 0
-    start_y = args.query[float]("y") if args.find("y") else 0
-    width = args.query[float]("w") if args.find("w") else 1920
-    height = args.query[float]("a") if args.find("a") else 1080
-    logger.debug(f"开始截图：{url.result}，坐标：({start_x}, {start_y})，大小：({width}, {height})")
-    path = await capture_screenshot(url.result, start_x, start_y, width, height)
-    logger.debug(f"截图成功：{path}")
+    if args.options.get("full-page").value is None:
+        logger.debug("开始截图全屏")
+        path = await capture_screenshot(url.result, full_page=True)
+        logger.debug(f"截图成功：{path}")
+    else:
+        start_x = args.query[float]("x") if args.find("x") else 0
+        start_y = args.query[float]("y") if args.find("y") else 0
+        width = args.query[float]("width") if args.find("width") else 1920
+        height = args.query[float]("height") if args.find("height") else 1080
+        logger.debug(f"开始截图：{url.result}，坐标：({start_x}, {start_y})，大小：({width}, {height})")
+        path = await capture_screenshot(url.result, start_x=start_x, start_y=start_y, width=width, height=height)
+        logger.debug(f"截图成功：{path}")
     bytes = get_image_bytes(path)
     clear_cache(path)
-    await snapshot.finish(Message(MessageSegment.image(bytes)))
+    await snapshot.send(await UniMessage(Image(raw=bytes)).export())
 
 
 import nonebot_plugin_localstore as store
@@ -56,7 +61,7 @@ from playwright.async_api import async_playwright
 from datetime import datetime
 
 
-async def capture_screenshot(url: str, start_x=0, start_y=0, width=1920, height=1080) -> Path:
+async def capture_screenshot(url: str, *, start_x=0, start_y=0, width=1920, height=1080, full_page=False) -> Path:
     """网页截图
 
     Args:
@@ -76,14 +81,17 @@ async def capture_screenshot(url: str, start_x=0, start_y=0, width=1920, height=
     logger.debug(f"图片保存路径：{img_store}")
     async with async_playwright() as p:
         # 启动 Chromium 浏览器（可以选择 'chromium'、'firefox' 或 'webkit'）
-        browser = await p.chromium.launch()
+        browser = await p.firefox.launch()
         # 创建一个新的页面
         page = await browser.new_page()
         # 导航到目标网址
         await page.goto(url)
         await page.wait_for_load_state("networkidle")
         # 截取整个页面的截图并保存为 img_store
-        await page.screenshot(path=img_store, clip={"x": start_x, "y": start_y, "width": width, "height": height})
+        if full_page:
+            await page.screenshot(path=img_store, full_page=True)
+        else:
+            await page.screenshot(path=img_store, clip={"x": start_x, "y": start_y, "width": width, "height": height})
         # 关闭浏览器
         await browser.close()
 
