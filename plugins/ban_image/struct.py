@@ -8,11 +8,9 @@ from sqlalchemy.future import select
 from sqlalchemy import delete
 from .model import GroupImageBanInfo
 
-from nonebot import logger, require
+from nonebot import logger
 
-require("nonebot_plugin_localstore")
-
-import nonebot_plugin_localstore as store 
+import nonebot_plugin_localstore as store
 
 
 class BanImage:
@@ -151,4 +149,3 @@ class BanImage:
             bool: 是否匹配
         """
         return img.data.get("file_size", img.data.get("file")) in self.cache.keys()
-

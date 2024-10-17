@@ -9,6 +9,10 @@ from .struct import BanImage
 from nonebot.params import Depends
 from ..common.struct import ExpirableDict
 from .metadata import __plugin_meta__ as __plugin_meta__
+from nonebot import require
+
+require("nonebot_plugin_localstore")
+require("nonebot_plugin_orm")
 
 
 permit_roles = GROUP_OWNER | SUPERUSER | GROUP_ADMIN
