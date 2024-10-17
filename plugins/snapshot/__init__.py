@@ -81,6 +81,7 @@ async def capture_screenshot(url: str, start_x=0, start_y=0, width=1920, height=
         page = await browser.new_page()
         # 导航到目标网址
         await page.goto(url)
+        await page.wait_for_load_state("networkidle")
         # 截取整个页面的截图并保存为 img_store
         await page.screenshot(path=img_store, clip={"x": start_x, "y": start_y, "width": width, "height": height})
         # 关闭浏览器
