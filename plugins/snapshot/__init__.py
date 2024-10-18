@@ -18,9 +18,7 @@ from nonebot_plugin_alconna import (
     on_alconna,
 )
 from nonebot_plugin_alconna.builtins.extensions.reply import ReplyMergeExtension
-from nonebot_plugin_apscheduler import driver
 from .browser import Browser
-from nonebot_plugin_alconna.uniseg import UniMsg
 
 from .config import Config
 
