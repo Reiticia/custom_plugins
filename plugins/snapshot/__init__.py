@@ -97,3 +97,13 @@ def get_image_bytes(image_path: Path):
     with open(image_path, "rb") as image_file:
         image_bytes = image_file.read()
     return image_bytes
+
+
+from nonebot.message import run_postprocessor
+from nonebot.matcher import Matcher
+from nonebot.exception import FinishedException
+
+@run_postprocessor
+async def do_something(matcher: Matcher, exception: Optional[Exception]):
+    if exception and not isinstance(exception, FinishedException):
+        await matcher.send(repr(exception))
