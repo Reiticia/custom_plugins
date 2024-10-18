@@ -45,7 +45,9 @@ class Browser:
         page = await browser.new_page()
         # 导航到目标网址
         await page.goto(url)
-        await page.evaluate("(x, y) => window.scrollTo(x, y);", [scroll_x, scroll_y])  # 滚动页面，使元素可见（如果有需要）
+        await page.evaluate(
+            "(x, y) => window.scrollTo(x, y);", [scroll_x, scroll_y]
+        )  # 滚动页面，使元素可见（如果有需要）
         await page.wait_for_load_state("networkidle")
         await page.wait_for_timeout(100)
         # 截取整个页面的截图并保存为 img_store
@@ -53,5 +55,4 @@ class Browser:
             await page.screenshot(path=img_store, full_page=True)
         else:
             await page.screenshot(path=img_store, clip={"x": start_x, "y": start_y, "width": width, "height": height})
-
         return img_store
