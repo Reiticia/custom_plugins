@@ -8,6 +8,7 @@ from nonebot_plugin_alconna import (
     Alconna,
     Args,
     Arparma,
+    At,
     Image,
     Match,
     Option,
@@ -45,12 +46,12 @@ async def _():
 
 
 args_key = "url"
-args_key_type = MultiVar(Text, "*")
+args_key_type = Text | At | Image
 
 snapshot = on_alconna(
     Alconna(
         "snapshot",
-        Args[args_key, args_key_type],
+        Args[args_key, MultiVar(args_key_type, "*")],
         Option("-f|--full-page", Args["full_page", Optional[bool]]),
         Option("-x|--start-x", Args["x", float]),
         Option("-y|--start-y", Args["y", float]),
@@ -74,7 +75,8 @@ async def _(alc_matches: AlcMatches, args: Arparma = AlconnaMatches()):
     height = args.query[float]("height") if args.find("height") else 1080
     scroll_x = args.query[float]("scroll_x") if args.find("scroll_x") else 0
     scroll_y = args.query[float]("scroll_y") if args.find("scroll_y") else 0
-    args: list[Text] = list(alc_matches.query(args_key, ()))
+    args: list[args_key_type] = list(alc_matches.query(args_key, ()))
+    args = [arg for arg in args if isinstance(arg, Text)]
     urls = [arg.text for arg in args if is_url(arg.text)]
     if not urls:
         await snapshot.finish("请输入网址或回复一条带网址消息")
