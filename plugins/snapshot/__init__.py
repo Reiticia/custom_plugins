@@ -1,7 +1,11 @@
-from pathlib import Path
+import re
+
 from typing import Optional
 from nonebot.rule import to_me
 from nonebot import get_plugin_config, logger, require, get_driver
+from nonebot.message import run_postprocessor
+from nonebot.matcher import Matcher
+from nonebot.exception import FinishedException
 from nonebot.plugin import PluginMetadata
 from nonebot_plugin_alconna import (
     AlcMatches,
@@ -32,7 +36,6 @@ __plugin_meta__ = PluginMetadata(
 
 config = get_plugin_config(Config)
 
-require("nonebot_plugin_localstore")
 require("nonebot_plugin_alconna")
 
 firefox = Browser()
@@ -96,11 +99,11 @@ async def snapshot_handle(
 ):
     if full_page:
         logger.debug("开始截图全屏")
-        path = await firefox.capture_screenshot(url, full_page=True)
-        logger.debug(f"截图成功：{path}")
+        screenshot_bytes = await firefox.capture_screenshot(url, full_page=True)
+        logger.debug("截图成功")
     else:
         logger.debug(f"开始截图：{url}，坐标：({x}, {y})，大小：({width}, {height})，滚动：({scroll_x}, {scroll_y})")
-        path = await firefox.capture_screenshot(
+        screenshot_bytes = await firefox.capture_screenshot(
             url,
             start_x=x,
             start_y=y,
@@ -109,42 +112,14 @@ async def snapshot_handle(
             scroll_x=scroll_x,
             scroll_y=scroll_y,
         )
-        logger.debug(f"截图成功：{path}")
-    bytes = get_image_bytes(path)
-    clear_cache(path)
-    await snapshot.send(await UniMessage(Image(raw=bytes)).export())
-
-
-def clear_cache(path: Path):
-    """清除缓存
-
-    Args:
-        path (str): 图片路径
-    """
-    if path.exists():
-        path.unlink()
-        logger.debug(f"缓存已清除：{path}")
-
-
-def get_image_bytes(image_path: Path):
-    # 打开图片文件并读取其二进制内容
-    with open(image_path, "rb") as image_file:
-        image_bytes = image_file.read()
-    return image_bytes
-
-
-from nonebot.message import run_postprocessor
-from nonebot.matcher import Matcher
-from nonebot.exception import FinishedException
+        logger.debug("截图成功")
+    await snapshot.send(await UniMessage(Image(raw=screenshot_bytes)).export())
 
 
 @run_postprocessor
 async def do_something(matcher: Matcher, exception: Optional[Exception]):
     if exception and not isinstance(exception, FinishedException):
         await matcher.send(repr(exception))
-
-
-import re
 
 
 def is_url(text: str) -> Match[str] | None:
