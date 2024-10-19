@@ -62,6 +62,7 @@ snapshot = on_alconna(
         Option("-H|--height", Args["height", float]),
     ),
     aliases={"render", "截图"},
+    response_self=True,
     extensions=[ReplyMergeExtension()],
 )
 
