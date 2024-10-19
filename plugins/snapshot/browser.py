@@ -1,9 +1,6 @@
-from pathlib import Path
 from nonebot import logger
-import nonebot_plugin_localstore as store
 
 from playwright.async_api import async_playwright
-from datetime import datetime
 
 
 class Browser:

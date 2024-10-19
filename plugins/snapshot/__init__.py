@@ -1,8 +1,7 @@
 import re
 
 from typing import Optional
-from nonebot.rule import to_me
-from nonebot import get_plugin_config, logger, require, get_driver
+from nonebot import logger, require, get_driver
 from nonebot.message import run_postprocessor
 from nonebot.matcher import Matcher
 from nonebot.exception import FinishedException
@@ -34,7 +33,6 @@ __plugin_meta__ = PluginMetadata(
     config=Config,
 )
 
-config = get_plugin_config(Config)
 
 require("nonebot_plugin_alconna")
 
@@ -64,7 +62,6 @@ snapshot = on_alconna(
         Option("-H|--height", Args["height", float]),
     ),
     aliases={"render", "截图"},
-    rule=to_me,
     extensions=[ReplyMergeExtension()],
 )
 
