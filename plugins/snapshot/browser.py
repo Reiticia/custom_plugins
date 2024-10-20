@@ -17,7 +17,7 @@ class Browser:
             await self.browser.close()  # 关闭浏览器
 
     async def capture_screenshot(
-        self, url: str, *, start_x=0, start_y=0, width=1920, height=1080, scroll_x=0, scroll_y=0, full_page=False
+        self, url: str, *, start_x=0, start_y=0, width=1920, height=1080, full_page=False
     ) -> bytes:
         """网页截图
 
@@ -47,14 +47,6 @@ class Browser:
                 await section.scroll_into_view_if_needed()  # 滚动到可见位置
             screenshot_bytes = await page.screenshot(full_page=True)
         else:
-            # 滚动
-            await page.evaluate(
-                "(x, y) => window.scrollTo(x, y);", [scroll_x, scroll_y]
-            )  # 滚动页面，使元素可见（如果有需要）
-            await page.wait_for_timeout(100)
-            # 获取当前页面滚动距离
-            logger.debug(await page.evaluate("() => window.scrollX"))
-            logger.debug(await page.evaluate("() => window.scrollY"))
             screenshot_bytes = await page.screenshot(
                 clip={"x": start_x, "y": start_y, "width": width, "height": height}
             )

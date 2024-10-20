@@ -2,6 +2,7 @@ import re
 
 from typing import Optional
 from nonebot import logger, require, get_driver
+from nonebot.permission import SUPERUSER
 from nonebot.message import run_postprocessor
 from nonebot.matcher import Matcher
 from nonebot.exception import FinishedException
@@ -15,6 +16,7 @@ from nonebot_plugin_alconna import (
     Image,
     Match,
     Option,
+    Subcommand,
     Text,
     UniMessage,
     MultiVar,
@@ -23,6 +25,7 @@ from nonebot_plugin_alconna import (
 )
 from nonebot_plugin_alconna.builtins.extensions.reply import ReplyMergeExtension
 from .browser import Browser
+import json
 
 from .config import Config
 
@@ -33,8 +36,11 @@ __plugin_meta__ = PluginMetadata(
     config=Config,
 )
 
-
 require("nonebot_plugin_alconna")
+require("nonebot_plugin_localstore")
+
+import nonebot_plugin_localstore as store
+
 
 firefox = Browser()
 
@@ -44,6 +50,22 @@ dirver = get_driver()
 @dirver.on_bot_connect
 async def _():
     await firefox.setup()
+
+
+black_list: set[str] = set()
+
+black_list_file = store.get_config_dir("snapshot") / "black_list.json"
+
+
+@dirver.on_bot_connect
+async def read_black_list():
+    global black_list, black_list_file
+    if black_list_file.exists():
+        with open(black_list_file, "r", encoding="utf-8") as f:
+            black_list = set(json.load(f))
+    else:
+        with open(black_list_file, "w", encoding="utf-8") as f:
+            json.dump(list(black_list), f)
 
 
 args_key = "url"
@@ -56,8 +78,6 @@ snapshot = on_alconna(
         Option("-f|--full-page", Args["full_page", Optional[bool]]),
         Option("-x|--start-x", Args["x", float]),
         Option("-y|--start-y", Args["y", float]),
-        Option("-sx|--scroll-x", Args["scroll_x", float]),
-        Option("-sy|--scroll-y", Args["scroll_y", float]),
         Option("-w|--width", Args["width", float]),
         Option("-H|--height", Args["height", float]),
     ),
@@ -65,6 +85,44 @@ snapshot = on_alconna(
     response_self=True,
     extensions=[ReplyMergeExtension()],
 )
+
+block = on_alconna(
+    Alconna(
+        "url block",
+        Subcommand("add", Args["pattern", str]),
+        Subcommand("remove", Args["pattern", str]),
+        Subcommand("list"),
+    ),
+    permission=SUPERUSER,
+    response_self=True,
+)
+
+
+@block.assign("add")
+async def block_add(pattern: Match[str]):
+    global black_list, black_list_file
+    black_list.add(pattern.result)
+    logger.debug(f"当前屏蔽列表：{black_list}")
+    with open(black_list_file, "w", encoding="utf-8") as f:
+        json.dump(list(black_list), f)
+    await block.finish(f"已添加 {pattern.result} 屏蔽")
+
+
+@block.assign("remove")
+async def block_remove(pattern: Match[str]):
+    global black_list, black_list_file
+    black_list.remove(pattern.result)
+    logger.debug(f"当前屏蔽列表：{black_list}")
+    with open(black_list_file, "w", encoding="utf-8") as f:
+        json.dump(list(black_list), f)
+    await block.finish(f"已移除 {pattern.result} 屏蔽")
+
+
+@block.assign("list")
+async def list_block():
+    global black_list
+    block_list = "\n".join(black_list)
+    await block.finish(f"当前屏蔽列表：\n{block_list}")
 
 
 @snapshot.handle()
@@ -74,15 +132,16 @@ async def _(alc_matches: AlcMatches, args: Arparma = AlconnaMatches()):
     start_y = args.query[float]("y") if args.find("y") else 0
     width = args.query[float]("width") if args.find("width") else 1920
     height = args.query[float]("height") if args.find("height") else 1080
-    scroll_x = args.query[float]("scroll_x") if args.find("scroll_x") else 0
-    scroll_y = args.query[float]("scroll_y") if args.find("scroll_y") else 0
     args: list[args_key_type] = list(alc_matches.query(args_key, ()))
     args = [arg for arg in args if isinstance(arg, Text)]
     urls = [arg.text for arg in args if is_url(arg.text)]
     if not urls:
         await snapshot.finish("请输入网址或回复一条带网址消息")
     for url in urls:
-        await snapshot_handle(url, is_full_page, start_x, start_y, scroll_x, scroll_y, width, height)
+        if is_blocked_url(url):
+            await snapshot.send(f"网址 {url} 已被屏蔽")
+            return
+        await snapshot_handle(url, is_full_page, start_x, start_y,  width, height)
 
 
 async def snapshot_handle(
@@ -90,8 +149,6 @@ async def snapshot_handle(
     full_page: bool = False,
     x: float = 0,
     y: float = 0,
-    scroll_x: float = 0,
-    scroll_y: float = 0,
     width: float = 1920,
     height: float = 1080,
 ):
@@ -100,15 +157,13 @@ async def snapshot_handle(
         screenshot_bytes = await firefox.capture_screenshot(url, full_page=True)
         logger.debug("截图成功")
     else:
-        logger.debug(f"开始截图：{url}，坐标：({x}, {y})，大小：({width}, {height})，滚动：({scroll_x}, {scroll_y})")
+        logger.debug(f"开始截图：{url}，坐标：({x}, {y})，大小：({width}, {height})")
         screenshot_bytes = await firefox.capture_screenshot(
             url,
             start_x=x,
             start_y=y,
             width=width,
             height=height,
-            scroll_x=scroll_x,
-            scroll_y=scroll_y,
         )
         logger.debug("截图成功")
     await snapshot.send(await UniMessage(Image(raw=screenshot_bytes)).export())
@@ -124,3 +179,14 @@ def is_url(text: str) -> Match[str] | None:
     # 正则表达式匹配 URL
     url_pattern = r"(https?://[^\s]+)"
     return re.match(url_pattern, text)
+
+
+def is_blocked_url(url: str) -> bool:
+    global black_list
+    for block_url in black_list:
+        try:
+            if re.match(block_url, url):
+                return True
+        except re.error:
+            pass
+    return False
