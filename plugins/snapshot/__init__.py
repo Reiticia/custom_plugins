@@ -21,6 +21,7 @@ from nonebot_plugin_alconna import (
     UniMessage,
     MultiVar,
     AlconnaMatches,
+    UniMsg,
     on_alconna,
 )
 from nonebot_plugin_alconna.builtins.extensions.reply import ReplyMergeExtension
@@ -38,8 +39,10 @@ __plugin_meta__ = PluginMetadata(
 
 require("nonebot_plugin_alconna")
 require("nonebot_plugin_localstore")
+require("nonebot_plugin_waiter")
 
 import nonebot_plugin_localstore as store
+from nonebot_plugin_waiter import waiter
 
 
 firefox = Browser()
@@ -141,7 +144,7 @@ async def _(alc_matches: AlcMatches, args: Arparma = AlconnaMatches()):
         if is_blocked_url(url):
             await snapshot.send(f"网址 {url} 已被屏蔽")
             return
-        await snapshot_handle(url, is_full_page, start_x, start_y,  width, height)
+        await snapshot_handle(url, is_full_page, start_x, start_y, width, height)
 
 
 async def snapshot_handle(
@@ -166,7 +169,30 @@ async def snapshot_handle(
             height=height,
         )
         logger.debug("截图成功")
-    await snapshot.send(await UniMessage(Image(raw=screenshot_bytes)).export())
+    r = await UniMessage.image(raw=screenshot_bytes).send()
+
+    @waiter(["message"], keep_session=True)
+    async def receive(msg: UniMsg):
+        return str(msg) == "save"
+
+    await UniMessage.text(text="如需保存图片请输入save").send()
+
+    # 是否撤回，默认撤回
+    async for res in receive(timeout=10, retry=3, prompt=""):
+        # 如果超时未输入
+        if res is None:
+            if r.recallable:
+                await UniMessage.text(text="超时未输入，撤回图片").send()
+                await r.recall(delay=0, index=0)
+            break
+        if res is False:
+            continue
+        await UniMessage.text(text="图片已保存").send()
+        break
+    else:
+        if r.recallable:
+            await UniMessage.text(text="已超出保存图片的消息次数，撤回图片").send()
+            await r.recall(delay=0, index=0)
 
 
 @run_postprocessor
