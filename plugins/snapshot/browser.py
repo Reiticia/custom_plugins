@@ -42,9 +42,12 @@ class Browser:
         # 截取整个页面的截图并保存为 img_store
         if full_page:
             # 针对wx公众号文章图片懒加载的特殊处理
-            sections = await page.query_selector_all("section")
-            for section in sections:
-                await section.scroll_into_view_if_needed()  # 滚动到可见位置
+            try:
+                sections = await page.query_selector_all("section")
+                for section in sections:
+                    await section.scroll_into_view_if_needed()  # 滚动到可见位置
+            except Exception as e:
+                logger.error(repr(e))
             screenshot_bytes = await page.screenshot(full_page=True)
         else:
             screenshot_bytes = await page.screenshot(
