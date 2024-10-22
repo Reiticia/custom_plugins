@@ -5,7 +5,6 @@ from .rule import check_mute_sb
 from nonebot import on_command, logger, on_notice
 from nonebot.rule import to_me
 from nonebot.matcher import Matcher
-from nonebot.permission import SUPERUSER
 from nonebot.params import CommandArg, CommandStart
 from nonebot.message import run_preprocessor, event_preprocessor
 from sqlalchemy import select
@@ -14,8 +13,6 @@ from nonebot_plugin_orm import get_session
 
 from nonebot.adapters.onebot.v11 import (
     Bot,
-    GROUP_OWNER,
-    GROUP_ADMIN,
     GroupMessageEvent,
     PrivateMessageEvent,
     PokeNotifyEvent,
@@ -23,11 +20,11 @@ from nonebot.adapters.onebot.v11 import (
     Message,
     MessageSegment,
 )
-from nonebot.adapters.onebot.v11.exception import ActionFailed
 from nonebot_plugin_waiter import waiter
 from random import choices, choice
 from .config import config
 from ..common.struct import ExpirableDict
+from ..common.permission import admin_permission
 from .model import ScheduleBanJob
 from asyncio import Lock
 
@@ -94,23 +91,15 @@ async def random_mute(bot: Bot, event: GroupMessageEvent, cs: str = CommandStart
     min_res = min_res * 60
     if min_res == 0:
         return
-    try:
-        await bot.set_group_ban(group_id=event.group_id, user_id=event.user_id, duration=min_res)
-        logger.info(f"{event.user_id}在{event.group_id}于{event.time}时被禁言{min_res}秒")
-        v["time"] = event.time + min_res
-        v["count"] += 1
-        muted_list_dict[f"{event.group_id}:{event.user_id}"] = v
-        await save_mute(muted_list_dict)
-    except ActionFailed as e:
-        msg = e.info.get("data", {}).get("message", "未知异常")
-        logger.error(f"禁言失败：{msg}")
+    await bot.set_group_ban(group_id=event.group_id, user_id=event.user_id, duration=min_res)
+    logger.info(f"{event.user_id}在{event.group_id}于{event.time}时被禁言{min_res}秒")
+    v["time"] = event.time + min_res
+    v["count"] += 1
+    muted_list_dict[f"{event.group_id}:{event.user_id}"] = v
+    await save_mute(muted_list_dict)
 
 
-permit_roles = GROUP_OWNER | SUPERUSER | GROUP_ADMIN
-"""允许执行命令的角色
-"""
-
-un_mute_all = on_command(cmd="mute clear", aliases={"mc"}, permission=permit_roles)
+un_mute_all = on_command(cmd="mute clear", aliases={"mc"}, permission=admin_permission)
 
 
 # @un_mute_all.handle()
@@ -142,7 +131,7 @@ async def _(bot: Bot, event: MessageEvent, matcher: Matcher):
     await matcher.finish("已解除所有禁言")
 
 
-query = on_command(cmd="mute query", aliases={"mq"}, permission=permit_roles)
+query = on_command(cmd="mute query", aliases={"mq"}, permission=admin_permission)
 
 
 # @query.handle()
@@ -265,7 +254,7 @@ async def mute_sb(bot: Bot, event: GroupMessageEvent, matcher: Matcher):
     await bot.set_group_ban(group_id=event.group_id, user_id=choice(random_user_id), duration=mute_time * 60)
 
 
-mute_cmd = on_command(cmd="mute", permission=permit_roles)
+mute_cmd = on_command(cmd="mute", permission=admin_permission)
 
 
 @mute_cmd.handle()
@@ -398,7 +387,7 @@ def at_members(members: set[int]) -> Message:
     return Message([MessageSegment.at(member) for member in members])
 
 
-mute_schedule_cmd = on_command(cmd="mute schedule", aliases={"ms"}, permission=permit_roles)
+mute_schedule_cmd = on_command(cmd="mute schedule", aliases={"ms"}, permission=admin_permission)
 
 
 def split_event_args(msg: Message) -> tuple[int, int, str, str]:
@@ -436,7 +425,7 @@ async def _(bot: Bot, event: GroupMessageEvent, matcher: Matcher):
     await bot.send_group_msg(group_id=group_id, message=msg)
 
 
-remove_schedule_cmd = on_command(cmd="remove schedule", aliases={"rms"}, permission=permit_roles)
+remove_schedule_cmd = on_command(cmd="remove schedule", aliases={"rms"}, permission=admin_permission)
 
 
 @remove_schedule_cmd.handle()
@@ -453,7 +442,7 @@ async def _(matcher: Matcher, arg: Message = CommandArg()):
         await matcher.send(f"已移除定时任务 {job_id} ")
 
 
-list_schedule_cmd = on_command(cmd="list schedule", aliases={"lss"}, permission=permit_roles)
+list_schedule_cmd = on_command(cmd="list schedule", aliases={"lss"}, permission=admin_permission)
 
 
 def get_group_id(event: GroupMessageEvent) -> int:
@@ -486,7 +475,7 @@ mock_mute_dict: dict[int, ExpirableDict[int]] = {}
 """虚假禁言列表
 """
 
-mock_mute_sb_cmd = on_command(cmd="mock mute", aliases={"mm"}, permission=permit_roles)
+mock_mute_sb_cmd = on_command(cmd="mock mute", aliases={"mm"}, permission=admin_permission)
 
 
 @mock_mute_sb_cmd.handle()
@@ -508,7 +497,7 @@ async def _(bot: Bot, event: GroupMessageEvent, matcher: Matcher, arg: Message =
     await matcher.finish(message)
 
 
-mock_mute_sb_delete_cmd = on_command(cmd="mock mute delete", aliases={"mmd"}, permission=permit_roles)
+mock_mute_sb_delete_cmd = on_command(cmd="mock mute delete", aliases={"mmd"}, permission=admin_permission)
 
 
 @mock_mute_sb_delete_cmd.handle()

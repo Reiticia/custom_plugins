@@ -2,7 +2,6 @@ import re
 
 from typing import Optional
 from nonebot import logger, require, get_driver
-from nonebot.permission import SUPERUSER
 from nonebot.message import run_postprocessor
 from nonebot.matcher import Matcher
 from nonebot.exception import FinishedException
@@ -29,6 +28,7 @@ from .browser import Browser
 import json
 
 from .config import Config
+from ..common.permission import admin_permission
 
 __plugin_meta__ = PluginMetadata(
     name="snapshot",
@@ -40,6 +40,7 @@ __plugin_meta__ = PluginMetadata(
 require("nonebot_plugin_alconna")
 require("nonebot_plugin_localstore")
 require("nonebot_plugin_waiter")
+require("nonebot_plugin_uninfo")
 
 import nonebot_plugin_localstore as store
 from nonebot_plugin_waiter import waiter
@@ -96,7 +97,7 @@ block = on_alconna(
         Subcommand("remove", Args["pattern", str]),
         Subcommand("list"),
     ),
-    permission=SUPERUSER,
+    permission=admin_permission,
     response_self=True,
 )
 

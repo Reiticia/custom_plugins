@@ -1,26 +1,21 @@
 from nonebot import logger, on_fullmatch
 from nonebot import on_message
-from nonebot.permission import SUPERUSER
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageSegment, Message, Bot, GROUP_OWNER, GROUP_ADMIN
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageSegment, Message, Bot
 from nonebot.adapters.onebot.v11.event import Reply
 from typing import Optional
 from nonebot.matcher import Matcher
 from .struct import BanImage
 from nonebot.params import Depends
 from ..common.struct import ExpirableDict
+from ..common.permission import admin_permission
 from .metadata import __plugin_meta__ as __plugin_meta__
 from nonebot import require
 
 require("nonebot_plugin_localstore")
 require("nonebot_plugin_orm")
-
-
-permit_roles = GROUP_OWNER | SUPERUSER | GROUP_ADMIN
-"""允许执行命令的角色
-"""
+require("nonebot_plugin_uninfo")
 
 ban_images: dict[int, BanImage] = {}
-
 
 async def get_ban_image(event: GroupMessageEvent) -> BanImage:
     """子依赖 获取对应群组的BanImage信息
@@ -92,7 +87,7 @@ async def check_message_add(
     return False
 
 
-@on_message(rule=check_message_add, permission=permit_roles).handle()
+@on_message(rule=check_message_add, permission=admin_permission).handle()
 async def add_ban_image(event: GroupMessageEvent, matcher: Matcher, ban_image: BanImage = Depends(get_ban_image)):
     """添加违禁图片"""
     reply_msg: Optional[Reply] = event.reply
@@ -114,7 +109,7 @@ async def check_message_del(event: GroupMessageEvent):
     return False
 
 
-@on_message(rule=check_message_del, permission=permit_roles).handle()
+@on_message(rule=check_message_del, permission=admin_permission).handle()
 async def remove_ban_image(event: GroupMessageEvent, matcher: Matcher, ban_image: BanImage = Depends(get_ban_image)):
     reply_msg: Optional[Reply] = event.reply
     imgs = reply_msg.message.include("image")
@@ -140,7 +135,7 @@ async def list_ban_images(bot: Bot, event: GroupMessageEvent, ban_image: BanImag
         await bot.send_group_msg(group_id=event.group_id, message="当前没有违禁图片")
 
 
-@on_fullmatch(msg="都可以发", permission=permit_roles).handle()
+@on_fullmatch(msg="都可以发", permission=admin_permission).handle()
 async def rm_all_ban_images(bot: Bot, event: GroupMessageEvent, ban_image: BanImage = Depends(get_ban_image)):
     await ban_image.clear_ban_image()
     await bot.send_group_msg(group_id=event.group_id, message="已清空违禁图片")

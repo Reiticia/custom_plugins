@@ -17,6 +17,7 @@ dependencies = [
     "nonebot-plugin-orm[sqlite]>=0.7.5",
     "playwright>=1.47.0",
     "nonebot-plugin-alconna>=0.53.0",
+    "nonebot-plugin-uninfo>=0.5.0",
 ]
 license = {text = "MIT"}
 
@@ -24,7 +25,7 @@ license = {text = "MIT"}
 adapters = [
     { name = "OneBot V11", module_name = "nonebot.adapters.onebot.v11" }
 ]
-plugins = ["nonebot_plugin_orm", "nonebot_plugin_alconna"]
+plugins = ["nonebot_plugin_orm", "nonebot_plugin_alconna", "nonebot_plugin_uninfo"]
 plugin_dirs = ["plugins"]
 builtin_plugins = ["echo"]
 

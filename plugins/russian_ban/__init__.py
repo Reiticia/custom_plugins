@@ -5,5 +5,6 @@ require("nonebot_plugin_localstore")
 require("nonebot_plugin_apscheduler")
 require("nonebot_plugin_orm")
 require("nonebot_plugin_waiter")
+require("nonebot_plugin_uninfo")
 
 from . import command
