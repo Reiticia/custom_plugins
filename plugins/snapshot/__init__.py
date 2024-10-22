@@ -80,6 +80,7 @@ snapshot = on_alconna(
         "snapshot",
         Args[args_key, MultiVar(args_key_type, "*")],
         Option("-f|--full-page", Args["full_page", Optional[bool]]),
+        Option("-s|--save", Args["save", Optional[bool]]),
         Option("-x|--start-x", Args["x", float]),
         Option("-y|--start-y", Args["y", float]),
         Option("-w|--width", Args["width", float]),
@@ -132,6 +133,7 @@ async def list_block():
 @snapshot.handle()
 async def _(alc_matches: AlcMatches, args: Arparma = AlconnaMatches()):
     is_full_page = args.options.get("full-page").value is None
+    is_save = args.options.get("save").value is None
     start_x = args.query[float]("x") if args.find("x") else 0
     start_y = args.query[float]("y") if args.find("y") else 0
     width = args.query[float]("width") if args.find("width") else 1920
@@ -145,7 +147,7 @@ async def _(alc_matches: AlcMatches, args: Arparma = AlconnaMatches()):
         if is_blocked_url(url):
             await snapshot.send(f"网址 {url} 已被屏蔽")
             return
-        await snapshot_handle(url, is_full_page, start_x, start_y, width, height)
+        await snapshot_handle(url, is_full_page, start_x, start_y, width, height, is_save)
 
 
 async def snapshot_handle(
@@ -155,22 +157,30 @@ async def snapshot_handle(
     y: float = 0,
     width: float = 1920,
     height: float = 1080,
+    save: bool = False,
 ):
     if full_page:
         logger.debug("开始截图全屏")
-        screenshot_bytes = await firefox.capture_screenshot(url, full_page=True)
+        res = await firefox.capture_screenshot(url, full_page=True)
+        if isinstance(e := res, Exception):
+            await UniMessage.text(text=repr(e)).finish()
         logger.debug("截图成功")
     else:
         logger.debug(f"开始截图：{url}，坐标：({x}, {y})，大小：({width}, {height})")
-        screenshot_bytes = await firefox.capture_screenshot(
+        res = await firefox.capture_screenshot(
             url,
             start_x=x,
             start_y=y,
             width=width,
             height=height,
         )
+        if isinstance(e := res, Exception):
+            await UniMessage.text(text=repr(e)).finish()
         logger.debug("截图成功")
-    r = await UniMessage.image(raw=screenshot_bytes).send()
+    r = await UniMessage.image(raw=res).send()
+
+    if save:
+        await UniMessage.finish()
 
     @waiter(["message"], keep_session=True)
     async def receive(msg: UniMsg):
@@ -194,12 +204,6 @@ async def snapshot_handle(
         if r.recallable:
             await UniMessage.text(text="已超出保存图片的消息次数，撤回图片").send()
             await r.recall(delay=0, index=0)
-
-
-@run_postprocessor
-async def do_something(matcher: Matcher, exception: Optional[Exception]):
-    if exception and not isinstance(exception, FinishedException):
-        await matcher.send(repr(exception))
 
 
 def is_url(text: str) -> Match[str] | None:
