@@ -54,6 +54,8 @@ class Browser:
                 screenshot_bytes = await page.screenshot(
                     clip={"x": start_x, "y": start_y, "width": width, "height": height}
                 )
+            # 关闭页面
+            await page.close()
             return screenshot_bytes
         except Exception as e:
             return e
