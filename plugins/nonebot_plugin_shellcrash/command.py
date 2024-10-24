@@ -126,6 +126,8 @@ async def add_group_or_rule(args: Arparma = AlconnaMatches()):
         else:
             await UniMessage.text("参数错误").finish()
     if group_name:
+        if len([g for g in custom_proxy_groups if g.name == group_name] + [g for g in config_proxy_groups if g.name == group_name]) > 0:
+            await UniMessage.text("组名已存在").finish()
         suggest_value = ProxyGroupType.values()
         group_type = await suggest("请输入组类型", expect=suggest_value)
         proxies = []
