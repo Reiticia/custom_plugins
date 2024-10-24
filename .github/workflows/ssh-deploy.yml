@@ -33,4 +33,4 @@ jobs:
         last_ssh: |
           cd /home/${{ secrets.DC_USER }}/customs
           nohup /home/${{ secrets.DC_USER }}/.local/bin/nb orm upgrade
-          nohup /home/${{ secrets.DC_USER }}/.local/bin/nb run >> /home/${{ secrets.DC_USER }}/customs/customs.log 2>&1 &
+          nohup sudo /home/${{ secrets.DC_USER }}/.local/bin/nb run >> /home/${{ secrets.DC_USER }}/customs/customs.log 2>&1 &

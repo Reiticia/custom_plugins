@@ -2,9 +2,6 @@ import re
 
 from typing import Optional
 from nonebot import logger, require, get_driver
-from nonebot.message import run_postprocessor
-from nonebot.matcher import Matcher
-from nonebot.exception import FinishedException
 from nonebot.plugin import PluginMetadata
 from nonebot_plugin_alconna import (
     AlcMatches,
