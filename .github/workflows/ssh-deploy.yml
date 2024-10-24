@@ -26,11 +26,12 @@ jobs:
         user: ${{ secrets.DC_USER }}
         key: ${{ secrets.DC_KEY }}
         first_ssh: |
-          bash /home/${{ secrets.DC_USER }}/kill_process.sh $PORT
-          rm -rf /home/${{ secrets.DC_USER }}/customs/plugins
+          sudo bash /home/${{ secrets.DC_USER }}/kill_process.sh $PORT
+          sudo rm -rf /home/${{ secrets.DC_USER }}/customs/plugins
         scp: |
           './plugins/*' => /home/${{ secrets.DC_USER }}/customs/plugins
         last_ssh: |
           cd /home/${{ secrets.DC_USER }}/customs
-          nohup /home/${{ secrets.DC_USER }}/.local/bin/nb orm upgrade
+          source /home/${{ secrets.DC_USER }}/customs/.venv/bin/activate
+          nohup sudo /home/${{ secrets.DC_USER }}/.local/bin/nb orm upgrade
           nohup sudo /home/${{ secrets.DC_USER }}/.local/bin/nb run >> /home/${{ secrets.DC_USER }}/customs/customs.log 2>&1 &
