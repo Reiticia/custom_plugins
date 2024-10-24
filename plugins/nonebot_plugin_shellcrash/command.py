@@ -182,10 +182,10 @@ async def remove_group_or_rule(args: Arparma = AlconnaMatches()):
         else:
             await UniMessage.text("参数错误").finish()
     if group_name:
-        res = [group for group in custom_proxy_groups if group.name != group_name]
+        custom_proxy_groups = [group for group in custom_proxy_groups if group.name != group_name]
         with open(plugin_config.proxy_groups_path, "w", encoding="utf-8") as file:
             custom_proxy_groups_str = [
-                {"name": group.name, "type": group.type.value, "proxies": group.proxies} for group in res
+                {"name": group.name, "type": group.type.value, "proxies": group.proxies} for group in custom_proxy_groups
             ]
             yaml.dump(custom_proxy_groups_str, file)
         await UniMessage.text(f"删除组成功: {group_name}").finish()

@@ -5,9 +5,6 @@ from dataclasses import dataclass
 
 class RuleType(Enum):
     """规则类型
-
-    Args:
-        StrEnum (_type_): _description_
     """
 
     DOMAIN = "DOMAIN"
@@ -55,15 +52,6 @@ class SingleRule:
 
 class ProxyGroupType(Enum):
     """代理组类型
-
-    Args:
-        Enum (_type_): _description_
-
-    Raises:
-        ValueError: _description_
-
-    Returns:
-        _type_: _description_
     """
 
     RELAY = "relay"
@@ -90,3 +78,4 @@ class ProxyGroup:
     name: str
     type: ProxyGroupType
     proxies: list[str]
+
