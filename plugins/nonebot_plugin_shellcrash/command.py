@@ -99,6 +99,7 @@ async def add_group_or_rule(args: Arparma = AlconnaMatches()):
     Args:
         args (Arparma, optional): _description_. Defaults to AlconnaMatches().
     """
+    global config_proxy_groups, custom_proxy_groups, custom_rules
     rule_name = args.query[str]("rule")
     group_name = args.query[str]("group")
     suggest_rule_policy = list(
@@ -163,6 +164,7 @@ async def remove_group_or_rule(args: Arparma = AlconnaMatches()):
     Args:
         args (Arparma, optional): _description_. Defaults to AlconnaMatches().
     """
+    global config_proxy_groups, custom_proxy_groups, custom_rules
     rule_name = args.query[str]("rule")
     group_name = args.query[str]("group")
     if rule_name:
