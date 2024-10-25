@@ -142,3 +142,5 @@ dmypy.json
 plugins/*.py
 
 template/
+
+plugins/nonebot_plugin_shellcrash
