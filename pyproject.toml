@@ -29,7 +29,7 @@ adapters = [
     { name = "OneBot V11", module_name = "nonebot.adapters.onebot.v11" }
 ]
 plugins = ["nonebot_plugin_orm", "nonebot_plugin_alconna", "nonebot_plugin_uninfo", "nonebot_plugin_htmlrender"]
-plugin_dirs = ["plugins"]
+plugin_dirs = ["plugins", "no_deploy"]
 builtin_plugins = ["echo"]
 
 [tool.pdm]

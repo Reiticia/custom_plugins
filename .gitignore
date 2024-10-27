@@ -139,8 +139,5 @@ dmypy.json
 .pytype/
 
 # End of https://www.toptal.com/developers/gitignore/api/python
-plugins/*.py
 
 template/
-
-plugins/nonebot_plugin_shellcrash
