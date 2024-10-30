@@ -113,10 +113,10 @@ class ExpirableDict(Generic[K, V]):
             raise StopIteration  # 结束迭代
 
     def keys(self) -> list[K]:
-        return [k for k in self.__data.keys() if self.exists(k)]  # 取出所有未过期的 key
+        return [k for k in [*self.__data.keys()] if self.exists(k)]  # 取出所有未过期的 key
 
     def values(self) -> list[V]:
-        return [v for k, v in self.__data.items() if self.exists(k)]  # 取出所有未过期的 value
+        return [v for k, v in [*self.__data.items()] if self.exists(k)]  # 取出所有未过期的 value
 
     def items(self) -> list[tuple[K, V]]:
-        return [(k, v) for k, v in self.__data.items() if self.exists(k)]  # 取出所有未过期的 key-value 对
+        return [(k, v) for k, v in [*self.__data.items()] if self.exists(k)]  # 取出所有未过期的 key-value 对
