@@ -98,3 +98,25 @@ class ExpirableDict(Generic[K, V]):
             self.delete(key)
 
         return res
+
+    def __iter__(self):
+        self.__index = 0  # 初始化索引
+        return self
+
+    def __next__(self) -> K:
+        keys = self.keys()  # 取出所有未过期的 key
+        if self.__index < len(keys):
+            result = keys[self.__index]
+            self.__index += 1
+            return result
+        else:
+            raise StopIteration  # 结束迭代
+
+    def keys(self) -> list[K]:
+        return [k for k in self.__data.keys() if self.exists(k)]  # 取出所有未过期的 key
+
+    def values(self) -> list[V]:
+        return [v for k, v in self.__data.items() if self.exists(k)]  # 取出所有未过期的 value
+
+    def items(self) -> list[tuple[K, V]]:
+        return [(k, v) for k, v in self.__data.items() if self.exists(k)]  # 取出所有未过期的 key-value 对

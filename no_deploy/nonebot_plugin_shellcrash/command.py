@@ -64,9 +64,9 @@ async def _():
         print(f"Error loading YAML file: {e}")
         return None
 
-    logger.debug(config_proxy_groups)
-    logger.debug(custom_proxy_groups)
-    logger.debug(custom_rules)
+    # logger.debug(config_proxy_groups)
+    # logger.debug(custom_proxy_groups)
+    # logger.debug(custom_rules)
 
 
 clash_setting = on_alconna(
