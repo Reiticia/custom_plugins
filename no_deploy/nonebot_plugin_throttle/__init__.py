@@ -39,7 +39,7 @@ async def _(event: Event):
     expirable_dict = throttle_dict.get(session_id, ExpirableDict(name=session_id))
     # ttl > 0 则说明在一段时间内处理过该用户的消息，则不再处理
     if (ttl := expirable_dict.ttl(user_id)) > 0:
-        logger.debug(f"用户{user_id}在{plugin_config.throttle_time_out - ttl}秒内已处理过消息，不再处理")
+        logger.warning(f"用户{user_id}在{plugin_config.throttle_time_out - ttl}秒内已处理过消息，不再处理")
         raise IgnoredException("节流处理")
     else:
         expirable_dict.set(user_id, user_id, plugin_config.throttle_time_out)
