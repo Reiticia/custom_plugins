@@ -30,6 +30,7 @@ jobs:
           rm -rf /home/${{ secrets.DC_USER }}/customs/plugins
         scp: |
           './plugins/*' => /home/${{ secrets.DC_USER }}/customs/plugins
+          './common/*' => /home/${{ secrets.DC_USER }}/customs/common
         last_ssh: |
           cd /home/${{ secrets.DC_USER }}/customs
           source /home/${{ secrets.DC_USER }}/customs/.venv/bin/activate

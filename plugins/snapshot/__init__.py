@@ -25,7 +25,7 @@ from .browser import Browser
 import json
 
 from .config import Config
-from ..common.permission import admin_permission
+from common.permission import admin_permission
 
 __plugin_meta__ = PluginMetadata(
     name="snapshot",

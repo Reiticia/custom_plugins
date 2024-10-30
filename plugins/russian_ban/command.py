@@ -23,8 +23,8 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot_plugin_waiter import waiter
 from random import choices, choice
 from .config import config
-from ..common.struct import ExpirableDict
-from ..common.permission import admin_permission
+from common.struct import ExpirableDict
+from common.permission import admin_permission
 from .model import ScheduleBanJob
 from asyncio import Lock
 
@@ -471,7 +471,7 @@ async def _(event: GroupMessageEvent, matcher: Matcher):
         await matcher.finish(msg)
 
 
-mock_mute_dict: dict[int, ExpirableDict[int]] = {}
+mock_mute_dict: dict[int, ExpirableDict[str, int]] = {}
 """虚假禁言列表
 """
 
@@ -488,7 +488,7 @@ async def _(bot: Bot, event: GroupMessageEvent, matcher: Matcher, arg: Message =
     """
     global mock_mute_dict
     group_id = event.group_id
-    mock_mute_dict_group: ExpirableDict[int] = mock_mute_dict.get(group_id, ExpirableDict(str(group_id)))
+    mock_mute_dict_group = mock_mute_dict.get(group_id, ExpirableDict(str(group_id)))
     qq = arg[0].data.get("qq")
     period = int(arg[1].data.get("text"))
     mock_mute_dict_group.set(str(qq), 1, period * 60)
@@ -510,7 +510,7 @@ async def _(bot: Bot, event: GroupMessageEvent, matcher: Matcher, arg: Message =
     """
     global mock_mute_dict
     group_id = event.group_id
-    mock_mute_dict_group: ExpirableDict[int] = mock_mute_dict.get(group_id, ExpirableDict(str(group_id)))
+    mock_mute_dict_group = mock_mute_dict.get(group_id, ExpirableDict(str(group_id)))
     qq = arg[0].data.get("qq")
     if mock_mute_dict_group.get(str(qq)) is not None:
         mock_mute_dict_group.delete(str(qq))
@@ -526,7 +526,7 @@ async def _(bot: Bot, event: GroupMessageEvent, matcher: Matcher, arg: Message =
 async def _(bot: Bot, event: PokeNotifyEvent, matcher: Matcher):
     """收到戳一戳事件，如果用户处于禁言状态，则返回其剩余的解禁时间"""
     group_id = event.group_id
-    mock_mute_dict_group: ExpirableDict[int] = mock_mute_dict.get(group_id, ExpirableDict(str(group_id)))
+    mock_mute_dict_group = mock_mute_dict.get(group_id, ExpirableDict(str(group_id)))
     qq = event.user_id
     if (ttl := mock_mute_dict_group.ttl(str(qq))) > 0:
         message = [MessageSegment.at(int(qq)), MessageSegment.text(f" 你剩余禁言时间还有 {ttl//60}:{ttl%60:02}")]
@@ -543,6 +543,6 @@ async def delete_message_judge(bot: Bot, event: GroupMessageEvent):
     global mock_mute_dict
     group_id = event.group_id
     user_id = event.user_id
-    mock_mute_dict_group: ExpirableDict[int] = mock_mute_dict.get(group_id, ExpirableDict(str(group_id)))
+    mock_mute_dict_group = mock_mute_dict.get(group_id, ExpirableDict(str(group_id)))
     if mock_mute_dict_group.ttl(str(user_id)) > 0:
         await bot.delete_msg(message_id=event.message_id)
