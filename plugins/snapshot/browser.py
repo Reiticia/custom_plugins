@@ -18,7 +18,7 @@ class Browser:
 
     async def capture_screenshot(
         self, url: str, *, start_x=0, start_y=0, width=1920, height=1080, full_page=False
-    )  -> bytes | Exception:
+    ) -> bytes | Exception:
         """网页截图
 
         Args:
@@ -38,17 +38,9 @@ class Browser:
             # 创建一个新的页面
             page = await browser.new_page()
             # 导航到目标网址
-            await page.goto(url)
-            await page.wait_for_load_state("networkidle")
+            _resp = await page.goto(url, wait_until="networkidle")
             # 截取整个页面的截图并保存为 img_store
             if full_page:
-                # 针对wx公众号文章图片懒加载的特殊处理
-                try:
-                    sections = await page.query_selector_all("section")
-                    for section in sections:
-                        await section.scroll_into_view_if_needed()  # 滚动到可见位置
-                except Exception as e:
-                    logger.error(repr(e))
                 screenshot_bytes = await page.screenshot(full_page=True)
             else:
                 screenshot_bytes = await page.screenshot(
