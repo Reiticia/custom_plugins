@@ -1,6 +1,8 @@
+
 from nonebot import logger
 
 from playwright.async_api import async_playwright
+from playwright.async_api._generated import Page
 
 
 class Browser:
@@ -36,11 +38,14 @@ class Browser:
             # 启动 Chromium 浏览器（可以选择 'chromium'、'firefox' 或 'webkit'）
             browser = self.browser
             # 创建一个新的页面
-            page = await browser.new_page()
+            page: Page = await browser.new_page()
             # 导航到目标网址
             _resp = await page.goto(url, wait_until="networkidle")
             # 截取整个页面的截图并保存为 img_store
             if full_page:
+                # 解决网页图片懒加载问题
+                await self.__auto_scroll(page)  # 使用滚轮
+                # page.wait_for_load_state()
                 screenshot_bytes = await page.screenshot(full_page=True)
             else:
                 screenshot_bytes = await page.screenshot(
@@ -51,3 +56,21 @@ class Browser:
             return screenshot_bytes
         except Exception as e:
             return e
+
+    async def __auto_scroll(self, page: Page):
+        await page.evaluate('''async () => {
+            await new Promise((resolve, reject) => {
+                var totalHeight = 0;
+                var distance = 100;
+                var timer = setInterval(() => {
+                    var scrollHeight = document.body.scrollHeight;
+                    window.scrollBy(0, distance);
+                    totalHeight += distance;
+
+                    if(totalHeight >= scrollHeight){
+                        clearInterval(timer);
+                        resolve();
+                    }
+                }, 100);
+            });
+        }''')
