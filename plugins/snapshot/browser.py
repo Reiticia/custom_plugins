@@ -1,4 +1,3 @@
-
 from nonebot import logger
 
 from playwright.async_api import async_playwright
@@ -58,7 +57,7 @@ class Browser:
             return e
 
     async def __auto_scroll(self, page: Page):
-        await page.evaluate('''async () => {
+        await page.evaluate("""async () => {
             await new Promise((resolve, reject) => {
                 var totalHeight = 0;
                 var distance = 100;
@@ -69,8 +68,9 @@ class Browser:
 
                     if(totalHeight >= scrollHeight){
                         clearInterval(timer);
+                        window.scrollTo(0, 0);
                         resolve();
                     }
                 }, 100);
             });
-        }''')
+        }""")
