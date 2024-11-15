@@ -23,7 +23,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
         await delete_msg.finish("你好歹告诉我删啥吧")
     # 权限认证
     if (
-        event.user_id not in bot.config.superusers
+        str(event.user_id) not in bot.config.superusers
         and event.user_id != reply.sender.user_id
         and event.sender.role == "member"
     ):
