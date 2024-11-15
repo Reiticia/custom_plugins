@@ -29,7 +29,9 @@ async def _(bot: Bot, event: GroupMessageEvent):
     ):
         await delete_msg.finish("你只能删你自己的消息")
     bot_info = await bot.get_group_member_info(group_id=event.group_id, user_id=event.self_id)
-    if bot_info["role"] == "member" or (bot_info["role"] == "admin" and reply.sender.role in ["owner", "admin"]):
+    if bot_info["role"] == "member" or (
+        bot_info["role"] == "admin" and reply.sender.role in ["owner", "admin"] and str(reply.sender.user_id) != bot.self_id
+    ):
         await delete_msg.finish("我是废物，你找别人帮你撤回吧")
     await bot.delete_msg(message_id=reply.message_id)
     await bot.delete_msg(message_id=event.message_id)
