@@ -9,7 +9,7 @@ from sqlalchemy import delete
 from .model import GroupImageBanInfo
 
 from nonebot import logger
-
+from common import generate_random_string
 import nonebot_plugin_localstore as store
 
 
@@ -25,7 +25,7 @@ class BanImage:
         async with session.begin():
             # 过滤指定群组所有违禁图片信息
             condition = select(GroupImageBanInfo).filter_by(group_id=self.group_id)
-            infos: list[GroupImageBanInfo] = (await session.execute(condition)).scalars().all()
+            infos = (await session.execute(condition)).scalars().all()
             self.cache: dict[str, str] = {info.file_size: info.img_name for info in infos}
             """存储图片尺寸及图片名称"""
             logger.debug(f"cache: {self.cache}")
@@ -42,11 +42,12 @@ class BanImage:
         gibis = []
         async with AsyncClient() as client:
             for img in imgs:
-                img_name = img.data.get("file")
+                ext_name = str(img.data.get("file")).split(".")[-1]
+                img_name = generate_random_string(16) + "." + ext_name
                 url = img.data.get("url")
                 size = img.data.get("file_size", img_name)
                 # 下载图片到本地
-                response = await client.get(url)
+                response = await client.get(str(url))
                 async with aopen(self.img_store.joinpath(img_name), "wb") as f:
                     await f.write(response.content)
                 # 构造数据

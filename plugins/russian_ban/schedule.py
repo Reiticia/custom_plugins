@@ -1,5 +1,4 @@
-import random
-import string
+from typing import Optional
 from nonebot import logger, get_driver
 from datetime import datetime
 
@@ -16,6 +15,7 @@ from nonebot_plugin_orm import get_session
 import nonebot_plugin_localstore as store 
 
 from nonebot_plugin_apscheduler import scheduler
+from common import generate_random_string
 
 driver = get_driver()
 
@@ -79,7 +79,7 @@ async def clear_mute_list_n_history():
     await save_mute(muted_list_dict)
 
 
-async def ban_reserve(bot: Bot, user_id: int, group_id: int, time: int, job_id: int, once: bool):
+async def ban_reserve(bot: Bot, user_id: int, group_id: int, time: int, job_id: str, once: bool):
     """定时任务：在某时间点禁言某人多少分钟
 
     Args:
@@ -99,19 +99,6 @@ async def ban_reserve(bot: Bot, user_id: int, group_id: int, time: int, job_id: 
             await session.execute(delete(ScheduleBanJob).where(ScheduleBanJob.job_id == job_id))
         await session.commit()
 
-
-def generate_random_string(length: int) -> str:
-    """生成指定长度的随机字符串
-
-    Args:
-        length (int): 长度
-
-    Returns:
-        str: 结果
-    """
-    return "".join(random.choices(string.ascii_letters + string.digits, k=length))
-
-
 async def add_schedule(
     *,
     bot: Bot,
@@ -121,7 +108,7 @@ async def add_schedule(
     hour: int,
     minute: int,
     once: bool = True,
-    job_id: str = None,
+    job_id: Optional[str] = None,
 ):
     """添加一个禁言定时任务
 

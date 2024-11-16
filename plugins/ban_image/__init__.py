@@ -91,12 +91,13 @@ async def check_message_add(
 async def add_ban_image(event: GroupMessageEvent, matcher: Matcher, ban_image: BanImage = Depends(get_ban_image)):
     """添加违禁图片"""
     reply_msg: Optional[Reply] = event.reply
-    reply_user_id = reply_msg.sender.user_id
-    imgs = reply_msg.message.include("image")
-    # 添加到违禁图片列表
-    await ban_image.add_ban_image(imgs)
-    message = Message([MessageSegment.at(reply_user_id), MessageSegment.text(" 别再发这表情了")])
-    await matcher.finish(message=message)
+    if reply_msg :
+        reply_user_id = reply_msg.sender.user_id
+        imgs = reply_msg.message.include("image")
+        # 添加到违禁图片列表
+        await ban_image.add_ban_image(imgs)
+        message = Message([MessageSegment.at(str(reply_user_id)), MessageSegment.text(" 别再发这表情了")])
+        await matcher.finish(message=message)
 
 
 async def check_message_del(event: GroupMessageEvent):
@@ -112,19 +113,20 @@ async def check_message_del(event: GroupMessageEvent):
 @on_message(rule=check_message_del, permission=admin_permission).handle()
 async def remove_ban_image(event: GroupMessageEvent, matcher: Matcher, ban_image: BanImage = Depends(get_ban_image)):
     reply_msg: Optional[Reply] = event.reply
-    imgs = reply_msg.message.include("image")
-    # 删除指定违禁图片
-    fail_list = await ban_image.remove_ban_image(imgs)
-    if len(fail_list) > 0:
-        message = Message([MessageSegment.text("部分图片删除失败")])
-    else:
-        message = Message([MessageSegment.text("随便你们了，发吧发吧")])
-    await matcher.finish(message=message)
+    if reply_msg :
+        imgs = reply_msg.message.include("image")
+        # 删除指定违禁图片
+        fail_list = await ban_image.remove_ban_image(imgs)
+        if len(fail_list) > 0:
+            message = Message([MessageSegment.text("部分图片删除失败")])
+        else:
+            message = Message([MessageSegment.text("随便你们了，发吧发吧")])
+        await matcher.finish(message=message)
 
 
 @on_fullmatch(msg="让我看看什么不能发").handle()
 async def list_ban_images(bot: Bot, event: GroupMessageEvent, ban_image: BanImage = Depends(get_ban_image)):
-    message = await ban_image.list_ban_image("bot", bot.self_id)
+    message = await ban_image.list_ban_image("bot", int(bot.self_id))
     if len(message) > 0:
         await bot.call_api(
             "send_group_forward_msg",
