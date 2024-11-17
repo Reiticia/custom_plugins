@@ -61,7 +61,7 @@ class ProxyGroupType(Enum):
     SELECT = "select"
 
     @classmethod
-    def value_of(cls, value) -> "RuleType":
+    def value_of(cls, value) -> "ProxyGroupType":
         for _, t in cls.__members__.items():
             if t.value == value:
                 return t
