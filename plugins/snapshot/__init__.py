@@ -74,6 +74,7 @@ args_key_type = Text | At | Image
 
 snapshot = on_alconna(
     Alconna(
+        Args["reply_user?", At | int],
         "snapshot",
         Args[args_key, MultiVar(args_key_type, "*")],
         Option("-f|--full-page", Args["full_page", Optional[bool]]),
@@ -129,8 +130,8 @@ async def list_block():
 
 @snapshot.handle()
 async def _(alc_matches: AlcMatches, args: Arparma = AlconnaMatches()):
-    is_full_page = args.options.get("full-page").value is None
-    is_save = args.options.get("save").value is None
+    is_full_page = x.value is None if (x := args.options.get("full-page")) else False
+    is_save = x.value is None if (x := args.options.get("save")) else False
     start_x = args.query[float]("x") if args.find("x") else 0
     start_y = args.query[float]("y") if args.find("y") else 0
     width = args.query[float]("width") if args.find("width") else 1920
