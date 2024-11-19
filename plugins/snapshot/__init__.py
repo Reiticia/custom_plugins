@@ -3,6 +3,7 @@ import re
 from typing import Optional
 from nonebot import logger, require, get_driver
 from nonebot.plugin import PluginMetadata
+from re import Match as reMatch
 from nonebot_plugin_alconna import (
     AlcMatches,
     Alconna,
@@ -132,13 +133,17 @@ async def list_block():
 async def _(alc_matches: AlcMatches, args: Arparma = AlconnaMatches()):
     is_full_page = x.value is None if (x := args.options.get("full-page")) else False
     is_save = x.value is None if (x := args.options.get("save")) else False
-    start_x = args.query[float]("x") if args.find("x") else 0
-    start_y = args.query[float]("y") if args.find("y") else 0
-    width = args.query[float]("width") if args.find("width") else 1920
-    height = args.query[float]("height") if args.find("height") else 1080
-    args: list[args_key_type] = list(alc_matches.query(args_key, ()))
-    args = [arg for arg in args if isinstance(arg, Text)]
-    urls = [arg.text for arg in args if is_url(arg.text)]
+    start_x = float(str(args.query[float]("x") if args.find("x") else 0))
+    start_y = float(str(args.query[float]("y") if args.find("y") else 0))
+    width = float(str(args.query[float]("width") if args.find("width") else 1920))
+    height = float(str(args.query[float]("height") if args.find("height") else 1080))
+    args_res: list[args_key_type] = list(alc_matches.query(args_key, ()))
+    text_args = [arg.text for arg in args_res if isinstance(arg, Text)]
+    url_args: list[str] = []
+    for arg in text_args:
+        arg_arr = arg.split(" ")
+        url_args.extend(arg_arr)
+    urls = [arg for arg in url_args if is_url(arg)]
     if not urls:
         await snapshot.finish("请输入网址或回复一条带网址消息")
     for url in urls:
@@ -165,20 +170,21 @@ async def snapshot_handle(
         logger.debug("截图成功")
     else:
         logger.debug(f"开始截图：{url}，坐标：({x}, {y})，大小：({width}, {height})")
-        res = await firefox.capture_screenshot(
-            url,
-            start_x=x,
-            start_y=y,
-            width=width,
-            height=height,
-        )
-        if isinstance(e := res, Exception):
+        try:
+            res = await firefox.capture_screenshot(
+                url,
+                start_x=int(x),
+                start_y=int(y),
+                width=int(width),
+                height=int(height),
+            )
+        except Exception as e:
             await UniMessage.text(text=repr(e)).finish()
         logger.debug("截图成功")
     r = await UniMessage.image(raw=res).send()
 
     if save:
-        await UniMessage.finish()
+        await UniMessage().finish()
 
     @waiter(["message"], keep_session=True)
     async def receive(msg: UniMsg):
@@ -204,7 +210,7 @@ async def snapshot_handle(
             await r.recall(delay=0, index=0)
 
 
-def is_url(text: str) -> Match[str] | None:
+def is_url(text: str) -> reMatch[str] | None:
     # 正则表达式匹配 URL
     url_pattern = r"(https?://[^\s]+)"
     return re.match(url_pattern, text)

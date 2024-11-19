@@ -40,7 +40,6 @@ async def global_self_message(bot: Bot, event: Event):
                 **d,
                 post_type="message",
                 original_message=d["message"],
-                anonymous=plugin_config.self_report_tome,
                 to_me=plugin_config.self_report_tome,
                 reply=None,
             )

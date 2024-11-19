@@ -1,3 +1,4 @@
+from typing import Any, cast
 from nonebot import logger, get_driver
 from nonebot.permission import SUPERUSER
 from nonebot_plugin_alconna import Alconna, AlconnaMatches, Args, Arparma, Option, Subcommand, UniMessage, on_alconna
@@ -26,7 +27,8 @@ async def _():
     try:
         with open(plugin_config.config_path, "r", encoding="utf-8") as file:
             data = yaml.load(file)
-            for proxy_group in data["proxy-groups"]:
+            data_typing = cast(dict[str, Any], data)
+            for proxy_group in data_typing["proxy-groups"]:
                 group = ProxyGroup(
                     name=proxy_group["name"],
                     type=ProxyGroupType.value_of(proxy_group["type"]),
@@ -40,7 +42,8 @@ async def _():
     try:
         with open(plugin_config.proxy_groups_path, "r", encoding="utf-8") as file:
             data = yaml.load(file)
-            for proxy_group in data:
+            data_typing = cast(list[Any], data)
+            for proxy_group in data_typing:
                 group = ProxyGroup(
                     name=proxy_group["name"],
                     type=ProxyGroupType.value_of(proxy_group["type"]),

@@ -54,12 +54,13 @@ user_id_nickname_dict: dict[int, str] = {}
 
 @event_preprocessor
 async def save_user_id_nickname(event: GroupMessageEvent):
+    global user_id_nickname_dict
     """保存用户ID与昵称对应关系
 
     Args:
         event (GroupMessageEvent): 群组消息事件
     """
-    user_id_nickname_dict.update({event.user_id: event.sender.card or event.sender.nickname})
+    user_id_nickname_dict |= {event.user_id: event.sender.card or event.sender.nickname or ""}
     logger.debug(user_id_nickname_dict)
 
 
@@ -117,10 +118,10 @@ async def _(bot: Bot, event: MessageEvent, matcher: Matcher):
         if value["time"] > event.time:
             # 如果消息事件是群组消息事件，则解除对应群组的所有禁言
             if isinstance(event, GroupMessageEvent) and str(event.group_id) == group_id:
-                await bot.set_group_ban(group_id=group_id, user_id=user_id, duration=0)
+                await bot.set_group_ban(group_id=int(group_id), user_id=int(user_id), duration=0)
             # 如果消息事件是私聊消息事件，则解除所有禁言
             if isinstance(event, PrivateMessageEvent):
-                await bot.set_group_ban(group_id=group_id, user_id=user_id, duration=0)
+                await bot.set_group_ban(group_id=int(group_id), user_id=int(user_id), duration=0)
     # 如果消息事件是群组消息事件，则清空该群组禁言列表
     if isinstance(event, GroupMessageEvent):
         muted_list_dict = {k: v for k, v in muted_list_dict.items() if k.split(":")[0] != str(event.group_id)}
@@ -164,7 +165,7 @@ async def _(event: MessageEvent, matcher: Matcher):
             await matcher.finish(msg)
 
 
-def dict_group_by_group_id(members: dict[str, dict[str, int]]) -> dict[str, dict[str : dict[str, int]]]:
+def dict_group_by_group_id(members: dict[str, dict[str, int]]) -> dict[str, dict[str, dict[str, int]]]:
     """将禁言列表按群组id进行分组
 
     Args:
@@ -273,7 +274,8 @@ async def _(bot: Bot, event: GroupMessageEvent, matcher: Matcher):
         await bot.set_group_ban(group_id=event.group_id, user_id=qq, duration=int(time) * 60)
     if message_length == 1:
         match = re.fullmatch(r"mute\s*all\s*(\d+)", message.extract_plain_text().strip())
-        await bot.set_group_whole_ban(group_id=event.group_id, enable=(int(match.group(1)) > 0))
+        if match:
+            await bot.set_group_whole_ban(group_id=event.group_id, enable=(int(match.group(1)) > 0))
 
 
 mute_voting_cmd = on_command(cmd="mute voting", aliases={"mv"})
@@ -402,11 +404,13 @@ def split_event_args(msg: Message) -> tuple[int, int, str, str]:
     qq = int(msg[1].data.get("qq", ""))
     pattern = r"^(\d+)\s*at\s*([01]?\d|2[0-3])(:[0-5]?\d)?$"
     match = re.match(pattern, msg[2].data.get("text", "").strip())
-    period = int(match.group(1))
-    hour = str(match.group(2))
-    minute = str(match.group(3)[1:]) if match.group(3) else "0"
-    return qq, period, hour, minute
-
+    if match: 
+        period = int(match.group(1))
+        hour = str(match.group(2))
+        minute = str(match.group(3)[1:]) if match.group(3) else "0"
+        return qq, period, hour, minute
+    else:
+        return -1, -1, "", ""
 
 @mute_schedule_cmd.handle()
 async def _(bot: Bot, event: GroupMessageEvent, matcher: Matcher):
@@ -419,7 +423,7 @@ async def _(bot: Bot, event: GroupMessageEvent, matcher: Matcher):
     message = event.get_message()
     qq, period, hour, minute = split_event_args(message)
     group_id = event.group_id
-    await add_schedule(bot=bot, group_id=group_id, user_id=qq, period=period, hour=hour, minute=minute)
+    await add_schedule(bot=bot, group_id=group_id, user_id=qq, period=period, hour=int(hour), minute=int(minute))
     msg = f"已设置{user_id_nickname_dict.get(qq, qq)}在{hour}:{minute:0>2}被禁言{period}分钟"
     logger.info(msg)
     await bot.send_group_msg(group_id=group_id, message=msg)
@@ -490,11 +494,11 @@ async def _(bot: Bot, event: GroupMessageEvent, matcher: Matcher, arg: Message =
     group_id = event.group_id
     mock_mute_dict_group = mock_mute_dict.get(group_id, ExpirableDict(str(group_id)))
     qq = arg[0].data.get("qq")
-    period = int(arg[1].data.get("text"))
+    period = int(arg[1].data.get("text") or 0)
     mock_mute_dict_group.set(str(qq), 1, period * 60)
     mock_mute_dict.update({group_id: mock_mute_dict_group})
-    message = [MessageSegment.at(int(qq)), MessageSegment.text(f" 你已被管理员禁言{period}分钟")]
-    await matcher.finish(message)
+    message = [MessageSegment.at(int(qq or 0)), MessageSegment.text(f" 你已被管理员禁言{period}分钟")]
+    await matcher.finish(Message(message))
 
 
 mock_mute_sb_delete_cmd = on_command(cmd="mock mute delete", aliases={"mmd"}, permission=admin_permission)
@@ -502,6 +506,7 @@ mock_mute_sb_delete_cmd = on_command(cmd="mock mute delete", aliases={"mmd"}, pe
 
 @mock_mute_sb_delete_cmd.handle()
 async def _(bot: Bot, event: GroupMessageEvent, matcher: Matcher, arg: Message = CommandArg()):
+    global user_id_nickname_dict
     """移除某人的模拟禁言
 
     Args:
@@ -515,22 +520,22 @@ async def _(bot: Bot, event: GroupMessageEvent, matcher: Matcher, arg: Message =
     if mock_mute_dict_group.get(str(qq)) is not None:
         mock_mute_dict_group.delete(str(qq))
         mock_mute_dict.update({group_id: mock_mute_dict_group})
-        message = [MessageSegment.at(int(qq)), MessageSegment.text(" 你已被管理员解除禁言")]
-        await matcher.finish(message)
+        message = [MessageSegment.at(int(qq or 0)), MessageSegment.text(" 你已被管理员解除禁言")]
+        await matcher.finish(Message(message))
     else:
-        message = MessageSegment.text(f"{user_id_nickname_dict.get(int(qq), qq)} 没有被禁言")
-        await matcher.finish(message)
+        message = MessageSegment.text(f"{user_id_nickname_dict.get(int(qq or 0), str(qq))} 没有被禁言")
+        await matcher.finish(Message(message))
 
 
-@on_notice(rule=to_me).handle()
+@on_notice(rule=to_me()).handle()
 async def _(bot: Bot, event: PokeNotifyEvent, matcher: Matcher):
     """收到戳一戳事件，如果用户处于禁言状态，则返回其剩余的解禁时间"""
     group_id = event.group_id
-    mock_mute_dict_group = mock_mute_dict.get(group_id, ExpirableDict(str(group_id)))
+    mock_mute_dict_group = mock_mute_dict.get(group_id or 0, ExpirableDict(str(group_id)))
     qq = event.user_id
     if (ttl := mock_mute_dict_group.ttl(str(qq))) > 0:
         message = [MessageSegment.at(int(qq)), MessageSegment.text(f" 你剩余禁言时间还有 {ttl//60}:{ttl%60:02}")]
-        await matcher.finish(message)
+        await matcher.finish(Message(message))
 
 
 @event_preprocessor

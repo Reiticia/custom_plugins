@@ -53,8 +53,8 @@ class ExpirableDict(Generic[K, V]):
 
     def __add__(self, other: "ExpirableDict[K,V]") -> "ExpirableDict[K,V]":
         result = ExpirableDict[K, V](name=self.name)
-        result.__data = {k: v.copy() for k, v in self.__data.items()}
-        result.__expiry = {k: v.copy() for k, v in self.__expiry.items()}
+        result.__data = {k: v for k, v in self.__data.items()}
+        result.__expiry = {k: v for k, v in self.__expiry.items()}
 
         for key, value in other.__data.items():
             if key not in result.__data:
@@ -68,8 +68,8 @@ class ExpirableDict(Generic[K, V]):
 
     def __sub__(self, other: "ExpirableDict[K,V]") -> "ExpirableDict[K,V]":
         result = ExpirableDict[K, V](name=self.name)
-        result.__data = {k: v.copy() for k, v in self.__data.items()}
-        result.__expiry = {k: v.copy() for k, v in self.__expiry.items()}
+        result.__data = {k: v for k, v in self.__data.items()}
+        result.__expiry = {k: v for k, v in self.__expiry.items()}
 
         for key, _ in other.__data.items():
             if key in result.__data:
