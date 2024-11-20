@@ -3,9 +3,12 @@ from typing import Any, Awaitable, Callable, Optional, TypeVar
 from nonebot import logger
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
 
-F = TypeVar("F", bound=Callable[..., Awaitable[None]])
+T = TypeVar("T")
+T_Wrapper = Callable[..., Awaitable[T]]
+T_Decorator = Callable[..., T]
 
-def switch_depend(*, dependOn: list[Callable[..., bool]], ignoreIds: set[int]) -> Callable[[F], F]:
+
+def switch_depend(*, dependOn: list[Callable[..., bool]], ignoreIds: set[int]) -> T_Decorator[T_Wrapper[None]]:
     """装饰 random_mute 方法，使某些特殊情况下的事件不被处理
 
     Args:
@@ -14,7 +17,8 @@ def switch_depend(*, dependOn: list[Callable[..., bool]], ignoreIds: set[int]) -
     Returns:
         Callable[[F], F]: 处理后的方法
     """
-    def decorator(func: F) -> F:
+
+    def decorator(func: T_Wrapper[None]) -> T_Wrapper[None]:
         """装饰器本体
 
         Args:
@@ -23,6 +27,7 @@ def switch_depend(*, dependOn: list[Callable[..., bool]], ignoreIds: set[int]) -
         Returns:
             F: 处理后的方法
         """
+
         @wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> None:
             """装饰器处理方法
@@ -38,11 +43,13 @@ def switch_depend(*, dependOn: list[Callable[..., bool]], ignoreIds: set[int]) -
                 logger.debug("忽略操作")
                 return
             return await func(*args, **kwargs)
-        return wrapper # type: ignore
+
+        return wrapper
+
     return decorator
 
 
-def mute_sb_stop_runpreprocessor(*, ignoreIds: set[int]) -> Callable[[F], F]:
+def mute_sb_stop_runpreprocessor(*, ignoreIds: set[int]) -> T_Decorator[T_Wrapper[None]]:
     """装饰 mute_sb 处理函数，在其处理函数结束运行时将 ignoreIds 中对应的 user_id 移除
 
     Args:
@@ -51,7 +58,8 @@ def mute_sb_stop_runpreprocessor(*, ignoreIds: set[int]) -> Callable[[F], F]:
     Returns:
         Callable[[F], F]: 装饰后的新函数
     """
-    def decorator(func: F) -> F:
+
+    def decorator(func: T_Wrapper[None]) -> T_Wrapper[None]:
         @wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> None:
             event: Optional[GroupMessageEvent] = kwargs.get("event", None)
@@ -64,7 +72,9 @@ def mute_sb_stop_runpreprocessor(*, ignoreIds: set[int]) -> Callable[[F], F]:
                     ignoreIds.remove(event.user_id)
                     logger.debug(f"移除用户 {event.user_id} 的操作, 当前忽略列表: {ignoreIds}")
                 return res
-        return wrapper # type: ignore
+
+        return wrapper
+
     return decorator
 
 
@@ -74,8 +84,10 @@ def negate_return_value(func: Callable[..., bool]) -> Callable[..., bool]:
     Args:
         func (Callable[..., bool]): 原函数
     """
+
     def wrapper(*args, **kwargs) -> bool:
         print(args, kwargs)
         result = func(*args, **kwargs)
         return not result
+
     return wrapper
