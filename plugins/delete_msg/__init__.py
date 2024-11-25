@@ -27,7 +27,9 @@ async def _(bot: Bot, event: GroupMessageEvent):
         and event.user_id != reply.sender.user_id
         and (
             event.sender.role == "member"  # 普通成员意图撤回其他人的消息
-            or event.sender.role == reply.sender.role == "admin"  # 管理员意图撤回其他管理员的消息
+            or (
+                event.sender.role == "admin" and reply.sender.role in ["admin", "owner"]
+            )  # 管理员意图撤回其他管理员的消息
         )
     ):
         await delete_msg.finish("你的权限不足以删除该消息")
