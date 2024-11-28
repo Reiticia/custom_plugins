@@ -43,4 +43,3 @@ async def _(bot: Bot, event: GroupMessageEvent):
         await delete_msg.finish("我是废物，你找别人帮你撤回吧")
     await bot.delete_msg(message_id=reply.message_id)
     await bot.delete_msg(message_id=event.message_id)
-    await delete_msg.finish("已对所有群成员使用记忆消除术")
