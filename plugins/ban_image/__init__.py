@@ -101,13 +101,13 @@ async def add_ban_image(event: GroupMessageEvent, matcher: Matcher, ban_image: B
 
 async def check_message_del(event: GroupMessageEvent):
     """检测消息合法性"""
-    cmd_msgs = [str(msg.data.get("text", "").strip()) for msg in event.get_message() if msg.type == "text"]
+    cmd_msgs = [str(msg.data.get("text", "")).strip() for msg in event.get_message() if msg.type == "text"]
     for cmd_msg in cmd_msgs:
         if "随便发" in cmd_msg:
             reply_msg: Optional[Reply] = event.reply
             if reply_msg and len(reply_msg.message.include("image")) > 0:
                 return True
-            if not reply_msg and all(num.isdigit() for num in cmd_msg.removeprefix("随便发").split(" ")):
+            if not reply_msg and all(num.isdigit() for num in cmd_msg.removeprefix("随便发").strip().split(" ")):
                 return True
     else:
         return False
@@ -123,9 +123,9 @@ async def remove_ban_image(event: GroupMessageEvent, matcher: Matcher, ban_image
         fail_list = await ban_image.remove_ban_image(imgs=imgs)
     else:
         fit_msg = next(
-            txt.removeprefix("随便发").split(" ")
+            txt.removeprefix("随便发").strip().split(" ")
             for msg in event.get_message()
-            if msg.type == "text" and "随便发" in (txt := str(msg.data.get("text", "").strip()))
+            if msg.type == "text" and "随便发" in (txt := str(msg.data.get("text", "")).strip())
         )
         fail_list = await ban_image.remove_ban_image(sizes=set(fit_msg))
     if len(fail_list) > 0:
