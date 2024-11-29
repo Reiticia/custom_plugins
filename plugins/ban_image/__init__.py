@@ -17,6 +17,7 @@ require("nonebot_plugin_uninfo")
 
 ban_images: dict[int, BanImage] = {}
 
+
 async def get_ban_image(event: GroupMessageEvent) -> BanImage:
     """子依赖 获取对应群组的BanImage信息
 
@@ -59,14 +60,12 @@ async def compute_mute_time(event: GroupMessageEvent) -> int:
     time = 1 if (t := mute_dict_group.get(key)) is None else t << 1
     logger.debug(f"ttl: {mute_dict_group.ttl(key)}s")
     mute_dict_group.set(key, time, ttl=time * 2 * 60)
-    mute_dict.update({
-        group_id: mute_dict_group
-    })
+    mute_dict.update({group_id: mute_dict_group})
     return time
 
 
 @on_message(rule=check_img).handle()
-async def ban_img_sender(bot: Bot, event: GroupMessageEvent, matcher: Matcher, time:int = Depends(compute_mute_time)):
+async def ban_img_sender(bot: Bot, event: GroupMessageEvent, matcher: Matcher, time: int = Depends(compute_mute_time)):
     """违禁图片禁言"""
     user_id = event.user_id
     group_id = event.group_id
@@ -91,7 +90,7 @@ async def check_message_add(
 async def add_ban_image(event: GroupMessageEvent, matcher: Matcher, ban_image: BanImage = Depends(get_ban_image)):
     """添加违禁图片"""
     reply_msg: Optional[Reply] = event.reply
-    if reply_msg :
+    if reply_msg:
         reply_user_id = reply_msg.sender.user_id
         imgs = reply_msg.message.include("image")
         # 添加到违禁图片列表
@@ -102,26 +101,38 @@ async def add_ban_image(event: GroupMessageEvent, matcher: Matcher, ban_image: B
 
 async def check_message_del(event: GroupMessageEvent):
     """检测消息合法性"""
-    cmd_msg = [msg.data.get("text", "").strip() for msg in event.get_message() if msg.type == "text"]
-    if "随便发" in cmd_msg:
-        reply_msg: Optional[Reply] = event.reply
-        if reply_msg and len(reply_msg.message.include("image")) > 0:
-            return True
-    return False
+    cmd_msgs = [str(msg.data.get("text", "").strip()) for msg in event.get_message() if msg.type == "text"]
+    for cmd_msg in cmd_msgs:
+        if "随便发" in cmd_msg:
+            reply_msg: Optional[Reply] = event.reply
+            if reply_msg and len(reply_msg.message.include("image")) > 0:
+                return True
+            if not reply_msg and all(num.isdigit() for num in cmd_msg.removeprefix("随便发").split(" ")):
+                return True
+    else:
+        return False
 
 
 @on_message(rule=check_message_del, permission=admin_permission).handle()
 async def remove_ban_image(event: GroupMessageEvent, matcher: Matcher, ban_image: BanImage = Depends(get_ban_image)):
+    """移除违禁图片"""
     reply_msg: Optional[Reply] = event.reply
-    if reply_msg :
+    if reply_msg:
         imgs = reply_msg.message.include("image")
         # 删除指定违禁图片
-        fail_list = await ban_image.remove_ban_image(imgs)
-        if len(fail_list) > 0:
-            message = Message([MessageSegment.text("部分图片删除失败")])
-        else:
-            message = Message([MessageSegment.text("随便你们了，发吧发吧")])
-        await matcher.finish(message=message)
+        fail_list = await ban_image.remove_ban_image(imgs=imgs)
+    else:
+        fit_msg = next(
+            txt.removeprefix("随便发").split(" ")
+            for msg in event.get_message()
+            if msg.type == "text" and "随便发" in (txt := str(msg.data.get("text", "").strip()))
+        )
+        fail_list = await ban_image.remove_ban_image(sizes=set(fit_msg))
+    if len(fail_list) > 0:
+        message = Message([MessageSegment.text(f"部分图片删除失败: {fail_list}")])
+    else:
+        message = Message([MessageSegment.text("随便你们了，发吧发吧")])
+    await matcher.finish(message=message)
 
 
 @on_fullmatch(msg="让我看看什么不能发").handle()
