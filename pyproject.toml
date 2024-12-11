@@ -21,6 +21,7 @@ dependencies = [
     "PyYAML>=6.0.2",
     "nonebot-plugin-htmlrender>=0.3.5",
     "ruamel-yaml>=0.18.6",
+    "google-generativeai>=0.8.3",
 ]
 license = {text = "MIT"}
 
