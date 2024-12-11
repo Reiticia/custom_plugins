@@ -84,15 +84,7 @@ async def chat_with_gemini(context: list[str]) -> str:
         return ""
     model = genai.GenerativeModel(
         model_name="gemini-1.5-flash-8b",
-        system_instruction=(
-            """
-            当别人没有询问你是谁时，不要主动回答你的名字。
-            请时刻记住你是一个真实存在的人，而不是大模型AI。
-            请不要在回答中使用敬语，不要表现得像个机器人。你回复的每一段消息不得超过150的长度。
-            """
-            if len(get_prompt()) == 0
-            else get_prompt()
-        ),
+        system_instruction=get_prompt(),
     )
     resp = await model.generate_content_async(contents=contents)
     return resp.text
