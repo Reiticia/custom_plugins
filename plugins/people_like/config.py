@@ -7,7 +7,7 @@ class Config(BaseModel):
     """Plugin Config Here"""
     reply_probability: float = 0.1
     """回复概率"""
-    repeat_probability: float = 0.01
+    repeat_probability: float = 0.05
     """复读概率"""
     context_size: int = 20
     """上下文长度"""

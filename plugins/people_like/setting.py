@@ -17,6 +17,11 @@ _CONFIG_DIR = store.get_config_dir("people_like")
 PROMPT: str = ""
 
 
+def get_prompt() -> str:
+    global PROMPT
+    return PROMPT
+
+
 @on_command(cmd="promptset", permission=SUPERUSER, rule=to_me()).handle()
 async def _(args: Message = CommandArg()):
     global PROMPT
