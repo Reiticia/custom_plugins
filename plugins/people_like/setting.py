@@ -6,6 +6,7 @@ from nonebot.permission import SUPERUSER
 from nonebot.matcher import Matcher
 from nonebot.rule import to_me
 from aiofiles import open
+from typing import Optional
 
 
 require("nonebot_plugin_localstore")
@@ -17,9 +18,9 @@ _CONFIG_DIR = store.get_config_dir("people_like")
 PROMPT: str = ""
 
 
-def get_prompt() -> str:
+def get_prompt() -> Optional[str]:
     global PROMPT
-    return PROMPT
+    return None if not PROMPT else PROMPT
 
 
 @on_command(cmd="promptset", permission=SUPERUSER, rule=to_me()).handle()
