@@ -3,8 +3,9 @@ from asyncio import sleep
 from nonebot import logger, on_message
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot
-from .setting import get_prompt
+from .setting import get_prompt, get_top_k, get_top_p
 import google.generativeai as genai
+from google.generativeai.types import GenerationConfig
 
 from .config import Config, plugin_config
 
@@ -86,5 +87,10 @@ async def chat_with_gemini(context: list[str]) -> str:
         model_name="gemini-1.5-flash-8b",
         system_instruction=get_prompt(),
     )
-    resp = await model.generate_content_async(contents=contents)
+    resp = await model.generate_content_async(
+        contents=contents,
+        generation_config=GenerationConfig(
+            top_p=get_top_p(), top_k=get_top_k(), max_output_tokens=plugin_config.reply_msg_max_length
+        ),
+    )
     return resp.text

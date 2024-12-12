@@ -35,13 +35,19 @@ async def _(matcher: Matcher):
     await matcher.send(PROMPT)
 
 
-TOP_P: float = 0.0
+TOP_P: Optional[float] = None
+
+
+def get_top_p() -> Optional[float]:
+    global TOP_P
+    return TOP_P
 
 
 @on_command(cmd="pset", permission=SUPERUSER, rule=to_me()).handle()
-async def _(args: Message = CommandArg()):
+async def _(matcher: Matcher, args: Message = CommandArg()):
     global TOP_P
     TOP_P = float(args.extract_plain_text())
+    await matcher.send(str(TOP_P))
 
 
 @on_command(cmd="pget", permission=SUPERUSER, rule=to_me()).handle()
@@ -50,13 +56,19 @@ async def _(matcher: Matcher):
     await matcher.send(str(TOP_P))
 
 
-TOP_K: float = 0.0
+TOP_K: Optional[int] = None
+
+
+def get_top_k() -> Optional[int]:
+    global TOP_K
+    return TOP_K
 
 
 @on_command(cmd="kset", permission=SUPERUSER, rule=to_me()).handle()
-async def _(args: Message = CommandArg()):
+async def _(matcher: Matcher, args: Message = CommandArg()):
     global TOP_K
-    TOP_K = float(args.extract_plain_text())
+    TOP_K = int(args.extract_plain_text())
+    await matcher.send(str(TOP_K))
 
 
 @on_command(cmd="kget", permission=SUPERUSER, rule=to_me()).handle()
