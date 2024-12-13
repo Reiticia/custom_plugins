@@ -2,7 +2,7 @@ import random
 from asyncio import sleep
 from nonebot import logger, on_message
 from nonebot.plugin import PluginMetadata
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Message
 from .setting import get_prompt, get_top_k, get_top_p
 import google.generativeai as genai
 from google.generativeai.types import GenerationConfig
@@ -33,17 +33,15 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
         return
     msgs = group_map.get(gid, [])
     target: str = ""
-    for ms in event.message:
-        if ms.type == "text":
-            target += ms.data["text"]
-        if ms.type == "at":
-            info = await bot.get_group_member_info(group_id=gid, user_id=int(ms.data["qq"]))
-            target += f"(人名：{info.get('card', info.get('nickname', ''))})"
-        if ms.type == "face":
-            pass
-        if ms.type == "image":
-            # 待办 TODO
-            ...
+    for ms in (em := event.message):
+        match ms.type:
+            case "text":
+                target += ms.data["text"]
+            case "at":
+                info = await bot.get_group_member_info(group_id=gid, user_id=int(ms.data["qq"]))
+                target += f"@{info.get('card', info.get('nickname', ''))} "
+            case _:
+                pass
     msgs = handle_context_list(msgs, target)
     group_map.update({gid: msgs})
     # 触发回复
@@ -56,8 +54,11 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
         group_map.update({gid: msgs})
         return
     # 触发复读
+    logger.debug(em)
     if random.random() < plugin_config.repeat_probability:
-        await on_msg.send(event.message)
+        # 过滤掉图片消息，留下meme消息，mface消息，text消息
+        new_message: Message = Message([ms for ms in em if ms.type != "image" or ms.__dict__.get("subType") != 0])
+        await on_msg.send(new_message)
         msgs = handle_context_list(msgs, target)
         group_map.update({gid: msgs})
         return
@@ -65,11 +66,14 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
 
 def handle_context_list(context: list[str], new_msg: str) -> list[str]:
     """处理消息上下文列表"""
-    context.append(new_msg)
-    # 如果长度超出指定长度，则删除最前面的元素
-    if len(context) > plugin_config.context_size:
-        context.pop(0)
-    return context
+    if new_msg:
+        context.append(new_msg)
+        # 如果长度超出指定长度，则删除最前面的元素
+        if len(context) > plugin_config.context_size:
+            context.pop(0)
+        return context
+    else:
+        return context
 
 
 async def chat_with_gemini(context: list[str]) -> str:
@@ -78,7 +82,7 @@ async def chat_with_gemini(context: list[str]) -> str:
     if len(contents) == 0:
         return ""
     model = genai.GenerativeModel(
-        model_name="gemini-1.5-flash-8b",
+        model_name="gemini-2.0-flash-exp",
         system_instruction=get_prompt(),
     )
     resp = await model.generate_content_async(
