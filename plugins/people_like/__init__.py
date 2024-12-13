@@ -29,6 +29,8 @@ on_msg = on_message()
 async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
     global group_map
     gid = event.group_id
+    if gid in plugin_config.black_list:
+        return
     msgs = group_map.get(gid, [])
     target: str = ""
     for ms in event.message:
