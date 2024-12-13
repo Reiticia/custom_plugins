@@ -32,7 +32,7 @@ async def _(args: Message = CommandArg()):
 @on_command(cmd="promptget", permission=SUPERUSER, rule=to_me()).handle()
 async def _(matcher: Matcher):
     global PROMPT
-    await matcher.send(PROMPT)
+    await matcher.send("nothing" if not PROMPT else PROMPT)
 
 
 TOP_P: Optional[float] = None

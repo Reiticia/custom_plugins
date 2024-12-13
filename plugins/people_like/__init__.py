@@ -48,18 +48,10 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
     if random.random() < plugin_config.reply_probability:
         resp = await chat_with_gemini(msgs)
         logger.info(f"群{gid}回复：{resp}")
-        resp_msgs = resp.strip().split("。")
-        first = True
-        for msg in resp_msgs:
-            # 间隔时间
-            sleep_time = 0 if first else (int(len(msg) / 10) + 1) * plugin_config.msg_send_interval_per_10
-            first = False
-            msg = msg.strip()
-            if len(msg) != 0:
-                await sleep(sleep_time)
-                await on_msg.send(msg)
-                msgs = handle_context_list(msgs, msg)
-                group_map.update({gid: msgs})
+        resp = resp.strip()
+        await on_msg.send(resp)
+        msgs = handle_context_list(msgs, resp)
+        group_map.update({gid: msgs})
         return
     # 触发复读
     if random.random() < plugin_config.repeat_probability:
