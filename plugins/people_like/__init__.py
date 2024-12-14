@@ -49,9 +49,13 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
         resp = await chat_with_gemini(msgs)
         logger.info(f"群{gid}回复：{resp}")
         resp = resp.strip()
-        await on_msg.send(resp)
-        msgs = handle_context_list(msgs, resp)
-        group_map.update({gid: msgs})
+        for resp in resp.split("。"):
+            resp = resp.strip()
+            await on_msg.send(resp)
+            time = (len(resp) / 10 + 1) * plugin_config.msg_send_interval_per_10
+            await sleep(time)
+            msgs = handle_context_list(msgs, resp)
+            group_map.update({gid: msgs})
         return
     # 触发复读
     logger.debug(em)
@@ -87,8 +91,6 @@ async def chat_with_gemini(context: list[str]) -> str:
     )
     resp = await model.generate_content_async(
         contents=contents,
-        generation_config=GenerationConfig(
-            top_p=get_top_p(), top_k=get_top_k(), max_output_tokens=plugin_config.reply_msg_max_length
-        ),
+        generation_config=GenerationConfig(top_p=get_top_p(), top_k=get_top_k()),
     )
     return resp.text
