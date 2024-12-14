@@ -47,14 +47,13 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
     # 触发回复
     if random.random() < plugin_config.reply_probability:
         resp = await chat_with_gemini(msgs)
-        logger.info(f"群{gid}回复：{resp}")
         resp = resp.strip()
-        for resp in resp.split("。"):
-            resp = resp.strip()
-            await on_msg.send(resp)
-            time = (len(resp) / 10 + 1) * plugin_config.msg_send_interval_per_10
+        logger.info(f"群{gid}回复：{resp}")
+        for split_msg in [s_s for s in resp.split("。") if len(s_s := s.strip()) != 0]:
+            await on_msg.send(split_msg)
+            time = (len(split_msg) / 10 + 1) * plugin_config.msg_send_interval_per_10
             await sleep(time)
-            msgs = handle_context_list(msgs, resp)
+            msgs = handle_context_list(msgs, split_msg)
             group_map.update({gid: msgs})
         return
     # 触发复读
