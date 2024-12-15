@@ -25,17 +25,17 @@ async def download_img(bot: Bot, event: GroupMessageEvent, matcher: Matcher):
         matcher (Matcher): _description_
     """
     print("match")
-    reply_msg:Optional[Reply] = event.reply
+    reply_msg: Optional[Reply] = event.reply
     if reply_msg and len(imgs := reply_msg.message.include("image")) > 0:
         # 添加到违禁图片列表
         for img in imgs:
             for key, value in img.data.items():
                 print(f"{key}--{value}")
-    # message = [
-    #     {
-    #         "type": "node",
-    #         "data": {"name": "null", "uin": bot.self_id, "content": Message(MessageSegment.text(i))},
-    #     }
-    #     for i in range(5)
-    # ]
-    # await bot.call_api("send_group_forward_msg", group_id=event.group_id, messages=message)
+
+
+@on_message().handle()
+async def _(e: GroupMessageEvent):
+    for msg in e.message.include("json"):
+        print("=============")
+        print(msg.data)
+        print("=============")

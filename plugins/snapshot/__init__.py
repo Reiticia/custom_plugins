@@ -12,6 +12,7 @@ from nonebot_plugin_alconna import (
     At,
     Image,
     Match,
+    Hyper,
     Option,
     Subcommand,
     Text,
@@ -71,7 +72,7 @@ async def read_black_list():
 
 
 args_key = "url"
-args_key_type = Text | At | Image
+args_key_type = Text | At | Image | Hyper
 
 snapshot = on_alconna(
     Alconna(
@@ -138,7 +139,18 @@ async def _(alc_matches: AlcMatches, args: Arparma = AlconnaMatches()):
     width = float(str(args.query[float]("width") if args.find("width") else 1920))
     height = float(str(args.query[float]("height") if args.find("height") else 1080))
     args_res: list[args_key_type] = list(alc_matches.query(args_key, ()))
-    text_args = [arg.text for arg in args_res if isinstance(arg, Text)]
+    # 过滤出卡片消息的所有 jumpurl
+    jumpUrls: list[str] = []
+    for arg in [arg for arg in args_res if isinstance(arg, Hyper)]:
+        if isinstance(arg.content, dict):
+            logger.debug(f"卡片消息：{arg.content}")
+            meta: dict[str, dict] = arg.content.get("meta", {})
+            for v in meta.values():
+                jumpUrl: str = v.get("jumpUrl", "")
+                if jumpUrl:
+                    jumpUrls.append(jumpUrl)
+    # 过滤出所有的文本消息段
+    text_args = [arg.text for arg in args_res if isinstance(arg, Text)] + jumpUrls
     url_args: list[str] = []
     for arg in text_args:
         arg_arr = arg.split(" ")
