@@ -60,7 +60,9 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
     logger.debug(em)
     if random.random() < plugin_config.repeat_probability:
         # 过滤掉图片消息，留下meme消息，mface消息，text消息
-        new_message: Message = Message([ms for ms in em if ms.type != "image" or ms.__dict__.get("subType") != 0])
+        new_message: Message = Message(
+            [ms for ms in em if ms.type not in ["image", "voice", "video"] or ms.__dict__.get("subType") != 0]
+        )
         await on_msg.send(new_message)
         msgs = handle_context_list(msgs, target)
         group_map.update({gid: msgs})
