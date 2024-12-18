@@ -1,6 +1,7 @@
 import random
 from asyncio import sleep
-from nonebot import logger, on_message
+from nonebot import logger, on_keyword, on_message
+from nonebot.rule import to_me
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Message
 from .setting import get_prompt, get_top_k, get_top_p
@@ -16,7 +17,7 @@ __plugin_meta__ = PluginMetadata(
     config=Config,
 )
 
-group_map: dict[int, list[str]] = {}
+GROUP_MESSAGE_SEQUENT: dict[int, list[str]] = {}
 """群号，消息上下文列表
 """
 
@@ -24,14 +25,28 @@ genai.configure(api_key=plugin_config.gemini_key)
 
 on_msg = on_message()
 
+shutup = on_keyword(keywords={"闭嘴"}, rule=to_me())
+GROUP_SPEAK_DISABLE: dict[int, bool] = {}
+
+
+@shutup.handle()
+async def _(event: GroupMessageEvent):
+    global GROUP_SPEAK_DISABLE
+    gid = event.group_id
+    GROUP_SPEAK_DISABLE.update({gid: True})
+    await shutup.send("行，我闭嘴了")
+    await sleep(300)
+    GROUP_SPEAK_DISABLE.update({gid: False})
+    await shutup.send("嘿嘿，我又来了")
+
 
 @on_msg.handle()
 async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
-    global group_map
+    global GROUP_MESSAGE_SEQUENT, GROUP_SPEAK_DISABLE
     gid = event.group_id
     if gid in plugin_config.black_list:
         return
-    msgs = group_map.get(gid, [])
+    msgs = GROUP_MESSAGE_SEQUENT.get(gid, [])
     target: str = ""
     for ms in (em := event.message):
         match ms.type:
@@ -39,13 +54,13 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
                 target += ms.data["text"]
             case "at":
                 info = await bot.get_group_member_info(group_id=gid, user_id=int(ms.data["qq"]))
-                target += f"@{info.get('card', info.get('nickname', ''))} "
+                target += f"@{info.get('card', info.get('nickname', str(info.get('user_id'))))} "
             case _:
                 pass
     msgs = handle_context_list(msgs, target)
-    group_map.update({gid: msgs})
+    GROUP_MESSAGE_SEQUENT.update({gid: msgs})
     # 触发回复
-    if random.random() < plugin_config.reply_probability:
+    if random.random() < plugin_config.reply_probability and not GROUP_SPEAK_DISABLE.get(gid, False):
         resp = await chat_with_gemini(msgs)
         resp = resp.strip()
         logger.info(f"群{gid}回复：{resp}")
@@ -53,20 +68,15 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
             await on_msg.send(split_msg)
             time = (len(split_msg) / 10 + 1) * plugin_config.msg_send_interval_per_10
             await sleep(time)
-            msgs = handle_context_list(msgs, split_msg)
-            group_map.update({gid: msgs})
         return
     # 触发复读
     logger.debug(em)
-    if random.random() < plugin_config.repeat_probability:
+    if random.random() < plugin_config.repeat_probability and not GROUP_SPEAK_DISABLE.get(gid, False):
         # 过滤掉图片消息，留下meme消息，mface消息，text消息
         new_message: Message = Message(
             [ms for ms in em if ms.type not in ["image", "voice", "video"] or ms.__dict__.get("subType") != 0]
         )
         await on_msg.send(new_message)
-        msgs = handle_context_list(msgs, target)
-        group_map.update({gid: msgs})
-        return
 
 
 def handle_context_list(context: list[str], new_msg: str) -> list[str]:
