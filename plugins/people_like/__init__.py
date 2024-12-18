@@ -25,7 +25,7 @@ genai.configure(api_key=plugin_config.gemini_key)
 
 on_msg = on_message()
 
-shutup = on_keyword(keywords={"闭嘴"}, rule=to_me())
+shutup = on_keyword(keywords={"闭嘴", "shut up", "shutup", "Shut Up", "Shut up"}, rule=to_me())
 GROUP_SPEAK_DISABLE: dict[int, bool] = {}
 
 
