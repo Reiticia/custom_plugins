@@ -1,4 +1,5 @@
 import random
+import re
 from asyncio import sleep
 from nonebot import logger, on_keyword, on_message
 from nonebot.rule import to_me
@@ -44,11 +45,16 @@ async def _(event: GroupMessageEvent):
 async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
     global GROUP_MESSAGE_SEQUENT, GROUP_SPEAK_DISABLE
     gid = event.group_id
+    # 黑名单内，不检查
     if gid in plugin_config.black_list:
+        return
+    em = event.message
+    # 8位及以上数字字母组合为无意义消息，可能为密码或邀请码之类，过滤不做处理
+    if re.match(r'^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$', em.extract_plain_text()):
         return
     msgs = GROUP_MESSAGE_SEQUENT.get(gid, [])
     target: str = ""
-    for ms in (em := event.message):
+    for ms in em :
         match ms.type:
             case "text":
                 target += ms.data["text"]

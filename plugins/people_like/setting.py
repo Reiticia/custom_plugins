@@ -1,5 +1,5 @@
 import json
-from nonebot import on_command, require
+from nonebot import on_command, require, get_driver
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
 from nonebot.permission import SUPERUSER
@@ -7,6 +7,9 @@ from nonebot.matcher import Matcher
 from nonebot.rule import to_me
 from aiofiles import open
 from typing import Optional
+from nonebot.adapters.onebot.v11 import Bot
+
+driver = get_driver()
 
 
 require("nonebot_plugin_localstore")
@@ -77,32 +80,33 @@ async def _(matcher: Matcher):
     await matcher.send(str(TOP_K))
 
 
-@on_command(cmd="profilewrite", permission=SUPERUSER, rule=to_me()).handle()
-async def _(matcher: Matcher, args: Message = CommandArg()):
+@on_command(cmd="write", permission=SUPERUSER, rule=to_me()).handle()
+async def _(matcher: Matcher):
     global TOP_P, TOP_K, PROMPT, _CONFIG_DIR
     content = {
         "TOP_P": TOP_P,
         "TOP_K": TOP_K,
         "PROMPT": PROMPT,
     }
-    f = _CONFIG_DIR / f"{args.extract_plain_text()}.json"
+    f = _CONFIG_DIR / "people_like.json"
     async with open(f, "w", encoding="utf-8") as f:
         await f.write(json.dumps(content))
-    await matcher.send(f"配置文件 {f} 已保存")
+    await matcher.send("配置文件 people_like.json 已保存")
 
 
-@on_command(cmd="profileread", permission=SUPERUSER, rule=to_me()).handle()
-async def _(matcher: Matcher, args: Message = CommandArg()):
+@driver.on_bot_connect
+async def _(bot: Bot):
     global TOP_P, TOP_K, PROMPT, _CONFIG_DIR
-    content = {
-        "TOP_P": TOP_P,
-        "TOP_K": TOP_K,
-        "PROMPT": PROMPT,
-    }
-    f = _CONFIG_DIR / f"{args.extract_plain_text()}.json"
-    async with open(f, "r", encoding="utf-8") as f:
-        content = json.loads(await f.read())
-    TOP_P = content["TOP_P"]
-    TOP_K = content["TOP_K"]
-    PROMPT = content["PROMPT"]
-    await matcher.send(f"配置文件 {f} 已读取")
+    f = _CONFIG_DIR / "people_like.json"
+    try:
+        async with open(f, "r", encoding="utf-8") as f:
+            content = json.loads(await f.read())
+            TOP_P = content["TOP_P"]
+            TOP_K = content["TOP_K"]
+            PROMPT = content["PROMPT"]
+    except FileNotFoundError:
+        for user in [user for user in bot.config.superusers if user != bot.self_id]:
+            await bot.send_private_msg(user_id=int(user), message="配置文件 people_like.json 不存在")
+    else:
+        for user in [user for user in bot.config.superusers if user != bot.self_id]:
+            await bot.send_private_msg(user_id=int(user), message="配置文件 people_like.json 已读取")
