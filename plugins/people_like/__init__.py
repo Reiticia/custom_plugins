@@ -1,6 +1,7 @@
 import random
 import re
 from asyncio import sleep
+from xml.etree.ElementInclude import include
 from nonebot import logger, on_keyword, on_message
 from nonebot.rule import to_me
 from nonebot.plugin import PluginMetadata
@@ -35,10 +36,8 @@ async def _(event: GroupMessageEvent):
     global GROUP_SPEAK_DISABLE
     gid = event.group_id
     GROUP_SPEAK_DISABLE.update({gid: True})
-    await shutup.send("行，我闭嘴了")
     await sleep(300)
     GROUP_SPEAK_DISABLE.update({gid: False})
-    await shutup.send("嘿嘿，我又来了")
 
 
 @on_msg.handle()
@@ -50,11 +49,11 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
         return
     em = event.message
     # 8位及以上数字字母组合为无意义消息，可能为密码或邀请码之类，过滤不做处理
-    if re.match(r'^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$', em.extract_plain_text()):
+    if re.match(r"^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$", em.extract_plain_text()):
         return
     msgs = GROUP_MESSAGE_SEQUENT.get(gid, [])
     target: str = ""
-    for ms in em :
+    for ms in em:
         match ms.type:
             case "text":
                 target += ms.data["text"]
@@ -71,9 +70,13 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
         resp = resp.strip()
         logger.info(f"群{gid}回复：{resp}")
         for split_msg in [s_s for s in resp.split("。") if len(s_s := s.strip()) != 0]:
-            await on_msg.send(split_msg)
-            time = (len(split_msg) / 10 + 1) * plugin_config.msg_send_interval_per_10
-            await sleep(time)
+            for ignore in ["不太清楚", "不清楚", "不太理解", "不理解"]:
+                if ignore in split_msg:  # 如果回复的消息中包含关键词，则不回复
+                    break
+            else:
+                await on_msg.send(split_msg)
+                time = (len(split_msg) / 10 + 1) * plugin_config.msg_send_interval_per_10
+                await sleep(time)
         return
     # 触发复读
     logger.debug(em)
