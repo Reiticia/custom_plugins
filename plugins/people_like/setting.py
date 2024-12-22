@@ -1,5 +1,5 @@
 import json
-from nonebot import on_command, require, get_driver
+from nonebot import on_command, get_driver
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
 from nonebot.permission import SUPERUSER
@@ -10,9 +10,6 @@ from typing import Optional
 from nonebot.adapters.onebot.v11 import Bot
 
 driver = get_driver()
-
-
-require("nonebot_plugin_localstore")
 
 import nonebot_plugin_localstore as store  # noqa: E402
 

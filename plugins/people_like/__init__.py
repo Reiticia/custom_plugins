@@ -1,15 +1,18 @@
+from pathlib import Path
 import random
 import re
 from asyncio import sleep
-from xml.etree.ElementInclude import include
-from nonebot import logger, on_keyword, on_message
+from nonebot import logger, on_keyword, on_message, require
+
 from nonebot.rule import to_me
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Message
-from .setting import get_prompt, get_top_k, get_top_p
 import google.generativeai as genai
 from google.generativeai.types import GenerationConfig
 
+require("nonebot_plugin_localstore")
+
+from .setting import get_prompt, get_top_k, get_top_p
 from .config import Config, plugin_config
 
 __plugin_meta__ = PluginMetadata(
@@ -43,6 +46,8 @@ async def _(event: GroupMessageEvent):
 @on_msg.handle()
 async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
     global GROUP_MESSAGE_SEQUENT, GROUP_SPEAK_DISABLE
+    do_not_send_words = Path(__file__).parent / "do_not_send.txt"
+    words = [s.strip() for s in do_not_send_words.read_text(encoding="utf-8").splitlines()]
     gid = event.group_id
     # 黑名单内，不检查
     if gid in plugin_config.black_list:
@@ -70,7 +75,7 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
         resp = resp.strip()
         logger.info(f"群{gid}回复：{resp}")
         for split_msg in [s_s for s in resp.split("。") if len(s_s := s.strip()) != 0]:
-            for ignore in ["不太清楚", "不清楚", "不太理解", "不理解"]:
+            for ignore in words:
                 if ignore in split_msg:  # 如果回复的消息中包含关键词，则不回复
                     break
             else:
