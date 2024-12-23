@@ -14,7 +14,7 @@ def gen_permission():
     if plugin_config.all:
         return admin_permission
     else:
-        return GROUP_MEMBER
+        return admin_permission | GROUP_MEMBER
 
 
 @on_regex(pattern="^(本群)?(开始|开启|打开|即刻)?戒严$", permission=gen_permission()).handle()

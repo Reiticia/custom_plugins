@@ -75,10 +75,7 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
         resp = resp.strip()
         logger.info(f"群{gid}回复：{resp}")
         for split_msg in [s_s for s in resp.split("。") if len(s_s := s.strip()) != 0]:
-            for ignore in words:
-                if ignore in split_msg:  # 如果回复的消息中包含关键词，则不回复
-                    break
-            else:
+            if all(ignore not in split_msg for ignore in words):
                 await on_msg.send(split_msg)
                 time = (len(split_msg) / 10 + 1) * plugin_config.msg_send_interval_per_10
                 await sleep(time)
