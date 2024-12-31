@@ -77,14 +77,31 @@ async def _(matcher: Matcher):
     await matcher.send(str(TOP_K))
 
 
+LEN: Optional[int] = None
+
+
+def get_len() -> Optional[int]:
+    global LEN
+    return LEN
+
+
+@on_command(cmd="lenset", permission=SUPERUSER, rule=to_me()).handle()
+async def _(matcher: Matcher, args: Message = CommandArg()):
+    global LEN
+    LEN = int(args.extract_plain_text())
+    await matcher.send(str(LEN))
+
+
+@on_command(cmd="lenget", permission=SUPERUSER, rule=to_me()).handle()
+async def _(matcher: Matcher):
+    global LEN
+    await matcher.send(str(LEN))
+
+
 @on_command(cmd="write", permission=SUPERUSER, rule=to_me()).handle()
 async def _(matcher: Matcher):
-    global TOP_P, TOP_K, PROMPT, _CONFIG_DIR
-    content = {
-        "TOP_P": TOP_P,
-        "TOP_K": TOP_K,
-        "PROMPT": PROMPT,
-    }
+    global TOP_P, TOP_K, PROMPT, LEN, _CONFIG_DIR
+    content = {"TOP_P": TOP_P, "TOP_K": TOP_K, "PROMPT": PROMPT, "LEN": LEN}
     f = _CONFIG_DIR / "people_like.json"
     async with open(f, "w", encoding="utf-8") as f:
         await f.write(json.dumps(content))
@@ -93,17 +110,15 @@ async def _(matcher: Matcher):
 
 @driver.on_bot_connect
 async def _(bot: Bot):
-    global TOP_P, TOP_K, PROMPT, _CONFIG_DIR
+    global TOP_P, TOP_K, PROMPT, LEN, _CONFIG_DIR
     f = _CONFIG_DIR / "people_like.json"
     try:
         async with open(f, "r", encoding="utf-8") as f:
-            content = json.loads(await f.read())
-            TOP_P = content["TOP_P"]
-            TOP_K = content["TOP_K"]
-            PROMPT = content["PROMPT"]
+            content: dict = json.loads(await f.read())
+            TOP_P = content.get("TOP_P")
+            TOP_K = content.get("TOP_K")
+            PROMPT = content.get("PROMPT", "")
+            LEN = content.get("LEN")
     except FileNotFoundError:
         for user in [user for user in bot.config.superusers if user != bot.self_id]:
             await bot.send_private_msg(user_id=int(user), message="配置文件 people_like.json 不存在")
-    else:
-        for user in [user for user in bot.config.superusers if user != bot.self_id]:
-            await bot.send_private_msg(user_id=int(user), message="配置文件 people_like.json 已读取")

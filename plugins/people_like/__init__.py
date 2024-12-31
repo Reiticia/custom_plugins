@@ -12,7 +12,7 @@ from google.generativeai.types import GenerationConfig
 
 require("nonebot_plugin_localstore")
 
-from .setting import get_prompt, get_top_k, get_top_p
+from .setting import get_prompt, get_top_k, get_top_p, get_len
 from .config import Config, plugin_config
 
 __plugin_meta__ = PluginMetadata(
@@ -67,6 +67,8 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
                 target += f"@{info.get('card', info.get('nickname', str(info.get('user_id'))))} "
             case _:
                 pass
+    if not target:
+        return
     msgs = handle_context_list(msgs, target)
     GROUP_MESSAGE_SEQUENT.update({gid: msgs})
     # 触发回复
@@ -113,6 +115,10 @@ async def chat_with_gemini(context: list[str]) -> str:
     )
     resp = await model.generate_content_async(
         contents=contents,
-        generation_config=GenerationConfig(top_p=get_top_p(), top_k=get_top_k()),
+        generation_config=GenerationConfig(
+            top_p=get_top_p(),
+            top_k=get_top_k(),
+            max_output_tokens=c_len if ((c_len := get_len()) and c_len > 0) else None,
+        ),
     )
     return resp.text
