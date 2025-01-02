@@ -63,13 +63,22 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
     logger.debug(em)
     if random.random() < plugin_config.repeat_probability and not GROUP_SPEAK_DISABLE.get(gid, False):
         # 过滤掉图片消息，留下meme消息，mface消息，text消息
-        new_message: Message = Message(
-            [ms for ms in em if ms.type not in ["image", "voice", "video"] or ms.__dict__.get("subType") != 0]
-        )
+        new_message: Message = Message()
+        for ms in em:
+            if ms.type == "image" and ms.__dict__.get("subType") == 0:
+                # 图片消息，不处理
+                continue
+            if ms.type == "voice" or ms.type == "video":
+                # 语音、视频消息，不处理
+                continue
+            if ms.type == "json":
+                # json消息，不处理
+                continue
+            new_message.append(ms)
         await on_msg.finish(new_message)
 
     msgs = GROUP_MESSAGE_SEQUENT.get(gid, [])
-    target: str = event.sender.card or event.sender.nickname or str(event.sender.user_id) + ": "
+    target: str = ""
     for ms in em:
         match ms.type:
             case "text":
@@ -86,9 +95,6 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
     # 如果内存中记录到的消息不足指定数量，则不进行处理
     if len(msgs) < plugin_config.context_size:
         return
-    # 机器人账号在该群的名片信息
-    bot_info = await bot.get_group_member_info(group_id=gid, user_id=int(bot.self_id))
-    bot_tag: str = bot_info.get("card", bot_info.get("nickname", str(bot_info.get("user_id")))) + ": "
     # 触发回复
     if random.random() < plugin_config.reply_probability and not GROUP_SPEAK_DISABLE.get(gid, False):
         resp = await chat_with_gemini(msgs)
@@ -97,7 +103,7 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
         for split_msg in [s_s for s in resp.split("。") if len(s_s := s.strip()) != 0]:
             if all(ignore not in split_msg for ignore in words):
                 await on_msg.send(split_msg)
-                target = bot_tag + split_msg
+                target = split_msg
                 msgs = handle_context_list(msgs, target, Character.BOT)
                 time = (len(split_msg) / 10 + 1) * plugin_config.msg_send_interval_per_10
                 await sleep(time)
