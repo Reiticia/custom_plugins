@@ -59,6 +59,22 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
     # 8位及以上数字字母组合为无意义消息，可能为密码或邀请码之类，过滤不做处理
     if re.match(r"^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$", em.extract_plain_text()):
         return
+    msgs = GROUP_MESSAGE_SEQUENT.get(gid, [])
+    target: str = ""
+    for ms in em:
+        match ms.type:
+            case "text":
+                target += ms.data["text"]
+            case "at":
+                info = await bot.get_group_member_info(group_id=gid, user_id=int(ms.data["qq"]))
+                target += f"@{info.get('card', info.get('nickname', str(info.get('user_id'))))} "
+            case _:
+                pass
+    if not target:
+        return
+    msgs = handle_context_list(msgs, target)
+    GROUP_MESSAGE_SEQUENT.update({gid: msgs})
+
     # 触发复读
     logger.debug(em)
     if random.random() < plugin_config.repeat_probability and not GROUP_SPEAK_DISABLE.get(gid, False):
@@ -76,22 +92,7 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
                 continue
             new_message.append(ms)
         await on_msg.finish(new_message)
-
-    msgs = GROUP_MESSAGE_SEQUENT.get(gid, [])
-    target: str = ""
-    for ms in em:
-        match ms.type:
-            case "text":
-                target += ms.data["text"]
-            case "at":
-                info = await bot.get_group_member_info(group_id=gid, user_id=int(ms.data["qq"]))
-                target += f"@{info.get('card', info.get('nickname', str(info.get('user_id'))))} "
-            case _:
-                pass
-    if not target:
-        return
-    msgs = handle_context_list(msgs, target)
-    GROUP_MESSAGE_SEQUENT.update({gid: msgs})
+    
     # 如果内存中记录到的消息不足指定数量，则不进行处理
     if len(msgs) < plugin_config.context_size:
         return
