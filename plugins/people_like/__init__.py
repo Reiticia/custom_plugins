@@ -101,7 +101,7 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
         resp = resp.strip()
         logger.info(f"群{gid}回复：{resp}")
         for split_msg in [s_s for s in resp.split("。") if len(s_s := s.strip()) != 0]:
-            if all(ignore not in split_msg for ignore in words):
+            if all(ignore not in split_msg for ignore in words) and not GROUP_SPEAK_DISABLE.get(gid, False):
                 await on_msg.send(split_msg)
                 target = split_msg
                 msgs = handle_context_list(msgs, target, Character.BOT)
