@@ -9,11 +9,11 @@ from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Message
 import google.generativeai as genai
 from google.generativeai.types import GenerationConfig
-from pyparsing import C
 
 require("nonebot_plugin_localstore")
+require("nonebot_plugin_waiter")
 
-from .setting import get_prompt, get_top_k, get_top_p, get_len
+from .setting import get
 from .config import Config, plugin_config
 from .model import Character, ChatMsg
 
@@ -92,13 +92,13 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
                 continue
             new_message.append(ms)
         await on_msg.finish(new_message)
-    
+
     # 如果内存中记录到的消息不足指定数量，则不进行处理
     if len(msgs) < plugin_config.context_size:
         return
     # 触发回复
     if random.random() < plugin_config.reply_probability and not GROUP_SPEAK_DISABLE.get(gid, False):
-        resp = await chat_with_gemini(msgs)
+        resp = await chat_with_gemini(gid, msgs)
         resp = resp.strip()
         logger.info(f"群{gid}回复：{resp}")
         for split_msg in [s_s for s in resp.split("。") if len(s_s := s.strip()) != 0]:
@@ -110,7 +110,6 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
                 await sleep(time)
         else:
             GROUP_MESSAGE_SEQUENT.update({gid: msgs})
-
 
 
 def handle_context_list(context: list[ChatMsg], new_msg: str, character: Character = Character.USER) -> list[ChatMsg]:
@@ -125,8 +124,9 @@ def handle_context_list(context: list[ChatMsg], new_msg: str, character: Charact
         return context
 
 
-async def chat_with_gemini(context: list[ChatMsg]) -> str:
+async def chat_with_gemini(group_id: int, context: list[ChatMsg]) -> str:
     """与gemini聊天"""
+    default_prompt = "请使用纯文本方式根据上文内容回复一句话，不得使用markdown语法"
     contents = []
     for msg in context:
         if len(c := msg.content) > 0:
@@ -137,16 +137,20 @@ async def chat_with_gemini(context: list[ChatMsg]) -> str:
                     contents.append({"role": "model", "parts": [c]})
     if len(contents) == 0:
         return ""
+    prompt = get(group_id, "prompt", default_prompt)
+    top_p = float(p) if (p := get(group_id, "top_p")) is not None else None
+    top_k = int(p) if (p := get(group_id, "top_k")) is not None else None
+    c_len = i_p if (p := get(group_id, "length", "100")) is not None and (i_p := int(p)) > 0 else None
     model = genai.GenerativeModel(
         model_name="gemini-2.0-flash-exp",
-        system_instruction=get_prompt(),
+        system_instruction=prompt,
     )
     resp = await model.generate_content_async(
         contents=contents,
         generation_config=GenerationConfig(
-            top_p=get_top_p(),
-            top_k=get_top_k(),
-            max_output_tokens=c_len if ((c_len := get_len()) and c_len > 0) else None,
+            top_p=top_p,
+            top_k=top_k,
+            max_output_tokens=c_len,
         ),
     )
     return resp.text
