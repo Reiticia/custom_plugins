@@ -70,7 +70,9 @@ async def set_property(matcher: Matcher):
     PROPERTIES.update({group_id: g_v})
     # 保存到文件
     await save_profile(matcher)
-    ret: str = f"群{group_id}的属性{property_name}已设置为{value}"
+    ret: str = f"""群：{group_id}
+键：{property_name}
+值：{value}"""
     await matcher.finish(ret)
 
 

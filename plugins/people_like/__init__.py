@@ -2,13 +2,16 @@ from pathlib import Path
 import random
 import re
 from asyncio import sleep
-from nonebot import logger, on_keyword, on_message, require
+from typing import Any
+from nonebot import get_bot, logger, on_keyword, on_message, require
 
 from nonebot.rule import to_me
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Message
 import google.generativeai as genai
 from google.generativeai.types import GenerationConfig
+
+from common.struct import ExpirableDict
 
 require("nonebot_plugin_localstore")
 require("nonebot_plugin_waiter")
@@ -32,7 +35,7 @@ genai.configure(api_key=plugin_config.gemini_key)
 
 on_msg = on_message()
 
-shutup = on_keyword(keywords={"闭嘴", "shut up", "shutup", "Shut Up", "Shut up"}, rule=to_me())
+shutup = on_keyword(keywords={"闭嘴", "shut up", "shutup", "Shut Up", "Shut up", "滚", "一边去"}, rule=to_me())
 GROUP_SPEAK_DISABLE: dict[int, bool] = {}
 
 
@@ -66,8 +69,7 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
             case "text":
                 target += ms.data["text"]
             case "at":
-                info = await bot.get_group_member_info(group_id=gid, user_id=int(ms.data["qq"]))
-                target += f"@{info.get('card', info.get('nickname', str(info.get('user_id'))))} "
+                target += f"@{await get_user_nickname_of_group(gid, int(ms.data['qq']))} "
             case _:
                 pass
     if not target:
@@ -112,6 +114,44 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
             GROUP_MESSAGE_SEQUENT.update({gid: msgs})
 
 
+_USER_OF_GROUP_NICKNAME: dict[int, ExpirableDict[int, str]] = dict()
+_BOT_OF_GROUP_NICKNAME: ExpirableDict[int, str] = ExpirableDict("bot_of_group_nickname")
+
+
+async def get_user_nickname_of_group(group_id: int, user_id: int) -> str:
+    """读取程序内存中缓存的用户在指定群组的昵称"""
+    global _USER_OF_GROUP_NICKNAME
+    gd = _USER_OF_GROUP_NICKNAME.get(group_id, ExpirableDict(str(group_id)))
+    name = gd.get(user_id)
+    if name is None:
+        bot = get_bot()
+        info: dict[str, Any] = dict(await bot.call_api("get_group_member_info", group_id=group_id, user_id=user_id))
+        nickname: str = str(info.get("card", info.get("nickname", str(info.get("user_id")))))
+        # 缓存一天
+        gd.set(user_id, nickname, 60 * 60 * 24)
+        _USER_OF_GROUP_NICKNAME.update({group_id: gd})
+        return nickname
+    else:
+        return name
+
+
+async def get_bot_nickname_of_group(group_id: int) -> str:
+    """读取程序内存中缓存的Bot在指定群组的昵称"""
+    global _BOT_OF_GROUP_NICKNAME
+    name = _BOT_OF_GROUP_NICKNAME.get(group_id)
+    if name is None:
+        bot = get_bot()
+        info: dict[str, Any] = dict(
+            await bot.call_api("get_group_member_info", group_id=group_id, user_id=int(bot.self_id))
+        )
+        nickname: str = str(info.get("card", info.get("nickname", str(info.get("user_id")))))
+        # 缓存一天
+        _BOT_OF_GROUP_NICKNAME.set(group_id, nickname, 60 * 60 * 24)
+        return nickname
+    else:
+        return name
+
+
 def handle_context_list(context: list[ChatMsg], new_msg: str, character: Character = Character.USER) -> list[ChatMsg]:
     """处理消息上下文列表"""
     if new_msg:
@@ -126,7 +166,8 @@ def handle_context_list(context: list[ChatMsg], new_msg: str, character: Charact
 
 async def chat_with_gemini(group_id: int, context: list[ChatMsg]) -> str:
     """与gemini聊天"""
-    default_prompt = "请使用纯文本方式根据上文内容回复一句话，不得使用markdown语法"
+    nickname = get_bot_nickname_of_group(group_id)
+    default_prompt = f"你是{nickname}，请使用纯文本方式根据上文内容回复一句话，不得使用markdown语法"
     contents = []
     for msg in context:
         if len(c := msg.content) > 0:
