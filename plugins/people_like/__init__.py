@@ -1,13 +1,13 @@
-from pathlib import Path
 import random
 import re
+from pathlib import Path
 from asyncio import sleep
 from typing import Any
-from nonebot import get_bot, logger, on_keyword, on_message, require
+from nonebot import get_bot, logger, on_keyword, on_message, require, get_driver
 
 from nonebot.rule import to_me
 from nonebot.plugin import PluginMetadata
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Message
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Message, MessageEvent
 import google.generativeai as genai
 from google.generativeai.types import GenerationConfig
 
@@ -33,10 +33,43 @@ GROUP_MESSAGE_SEQUENT: dict[int, list[ChatMsg]] = {}
 
 genai.configure(api_key=plugin_config.gemini_key)
 
-on_msg = on_message()
+GROUP_SPEAK_DISABLE: dict[int, bool] = {}
+
+driver = get_driver()
+
+
+@driver.on_bot_connect
+async def cache_message(bot: Bot):
+    global GROUP_MESSAGE_SEQUENT
+    # 获取所有群组
+    group_list = await bot.get_group_list()
+    for group in group_list:
+        if (gid := group["group_id"]) in plugin_config.black_list:
+            continue
+        msgs = GROUP_MESSAGE_SEQUENT.get(gid, [])
+        # 获取群消息历史
+        history: dict[str, Any] = await bot.call_api(
+            "get_group_msg_history", group_id=int(gid), message_seq=0, limit=30, reverseOrder=False
+        )
+        # 读取历史消息填充到缓存中
+        messages = history["messages"]
+        for event_dict in messages:
+            event_dict["post_type"] = "message"
+            event = GroupMessageEvent(**event_dict)
+            is_bot_msg = event.user_id == int(bot.self_id)
+            target = await extract_msg_in_group_message_event(event)
+            if not target:
+                continue
+            # 判断是否是机器人自己发的消息
+            if is_bot_msg:
+                msgs = handle_context_list(msgs, target, Character.BOT)
+            else:
+                msgs = handle_context_list(msgs, target)
+        GROUP_MESSAGE_SEQUENT.update({gid: msgs})
+        logger.info(f"群{gid}消息缓存完成")
+
 
 shutup = on_keyword(keywords={"闭嘴", "shut up", "shutup", "Shut Up", "Shut up", "滚", "一边去"}, rule=to_me())
-GROUP_SPEAK_DISABLE: dict[int, bool] = {}
 
 
 @shutup.handle()
@@ -46,6 +79,9 @@ async def _(event: GroupMessageEvent):
     GROUP_SPEAK_DISABLE.update({gid: True})
     await sleep(300)
     GROUP_SPEAK_DISABLE.update({gid: False})
+
+
+on_msg = on_message()
 
 
 @on_msg.handle()
@@ -63,15 +99,7 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
     if re.match(r"^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$", em.extract_plain_text()):
         return
     msgs = GROUP_MESSAGE_SEQUENT.get(gid, [])
-    target: str = ""
-    for ms in em:
-        match ms.type:
-            case "text":
-                target += ms.data["text"]
-            case "at":
-                target += f"@{await get_user_nickname_of_group(gid, int(ms.data['qq']))} "
-            case _:
-                pass
+    target = await extract_msg_in_group_message_event(event)
     if not target:
         return
     msgs = handle_context_list(msgs, target)
@@ -99,7 +127,14 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
     if len(msgs) < plugin_config.context_size:
         return
     # 触发回复
-    if random.random() < plugin_config.reply_probability and not GROUP_SPEAK_DISABLE.get(gid, False):
+    # 规则：
+    # 1. 该群聊没人被闭嘴
+    # 2. 满足回复时的概率 plugin_config.reply_probability
+    # 3. 如果是提及机器人的消息 则回复概率为原回复概率 plugin_config.reply_probability 的 4 倍
+    if (
+        (r := random.random()) < plugin_config.reply_probability
+        or (event.is_tome() and r < plugin_config.reply_probability * 4)
+    ) and not GROUP_SPEAK_DISABLE.get(gid, False):
         resp = await chat_with_gemini(gid, msgs)
         resp = resp.strip()
         logger.info(f"群{gid}回复：{resp}")
@@ -112,6 +147,22 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
                 await sleep(time)
         else:
             GROUP_MESSAGE_SEQUENT.update({gid: msgs})
+
+
+async def extract_msg_in_group_message_event(event: GroupMessageEvent) -> str:
+    """提取群消息事件中的消息内容"""
+    em = event.message
+    gid = event.group_id
+    target: str = ""
+    for ms in em:
+        match ms.type:
+            case "text":
+                target += ms.data["text"]
+            case "at":
+                target += f"@{await get_user_nickname_of_group(gid, int(ms.data['qq']))} "
+            case _:
+                pass
+    return target
 
 
 _USER_OF_GROUP_NICKNAME: dict[int, ExpirableDict[int, str]] = dict()
