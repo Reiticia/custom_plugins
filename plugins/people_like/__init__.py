@@ -1,5 +1,9 @@
 import random
 import re
+import PIL.Image
+import aiofiles
+import tempfile
+from httpx import AsyncClient
 from pathlib import Path
 from asyncio import sleep
 from typing import Any
@@ -7,9 +11,10 @@ from nonebot import get_bot, logger, on_keyword, on_message, require, get_driver
 
 from nonebot.rule import to_me
 from nonebot.plugin import PluginMetadata
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Message, MessageEvent
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Message
 import google.generativeai as genai
 from google.generativeai.types import GenerationConfig
+from google.generativeai.types.content_types import PartType
 
 from common.struct import ExpirableDict
 
@@ -85,7 +90,7 @@ on_msg = on_message()
 
 
 @on_msg.handle()
-async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
+async def receive_group_msg(event: GroupMessageEvent) -> None:
     global GROUP_MESSAGE_SEQUENT, GROUP_SPEAK_DISABLE
     do_not_send_words = Path(__file__).parent / "do_not_send.txt"
     words = [s.strip() for s in do_not_send_words.read_text(encoding="utf-8").splitlines()]
@@ -141,25 +146,35 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
         for split_msg in [s_s for s in resp.split("。") if len(s_s := s.strip()) != 0]:
             if all(ignore not in split_msg for ignore in words) and not GROUP_SPEAK_DISABLE.get(gid, False):
                 await on_msg.send(split_msg)
-                target = split_msg
+                target = [split_msg]
                 msgs = handle_context_list(msgs, target, Character.BOT)
                 time = (len(split_msg) / 10 + 1) * plugin_config.msg_send_interval_per_10
                 await sleep(time)
         else:
             GROUP_MESSAGE_SEQUENT.update({gid: msgs})
 
+_HTTP_CLIENT = AsyncClient()
 
-async def extract_msg_in_group_message_event(event: GroupMessageEvent) -> str:
+async def extract_msg_in_group_message_event(event: GroupMessageEvent) -> list[PartType]:
     """提取群消息事件中的消息内容"""
     em = event.message
     gid = event.group_id
-    target: str = ""
+    target: list[PartType] = []
     for ms in em:
         match ms.type:
             case "text":
-                target += ms.data["text"]
+                target.append(ms.data["text"])
             case "at":
-                target += f"@{await get_user_nickname_of_group(gid, int(ms.data['qq']))} "
+                target.append(f"@{await get_user_nickname_of_group(gid, int(ms.data['qq']))} ")
+            case "image":
+                # 下载图片进行处理
+                data = await _HTTP_CLIENT.get(ms.data["url"])
+                if data.status_code == 200:
+                    with tempfile.NamedTemporaryFile() as file:
+                        file.write(data.content)
+                        file.seek(0)
+                        organ = PIL.Image.open(file)
+                        target.append(organ)
             case _:
                 pass
     return target
@@ -203,7 +218,7 @@ async def get_bot_nickname_of_group(group_id: int) -> str:
         return name
 
 
-def handle_context_list(context: list[ChatMsg], new_msg: str, character: Character = Character.USER) -> list[ChatMsg]:
+def handle_context_list(context: list[ChatMsg], new_msg: list[PartType], character: Character = Character.USER) -> list[ChatMsg]:
     """处理消息上下文列表"""
     if new_msg:
         context.append(ChatMsg(sender=character, content=new_msg))
@@ -224,9 +239,9 @@ async def chat_with_gemini(group_id: int, context: list[ChatMsg]) -> str:
         if len(c := msg.content) > 0:
             match msg.sender:
                 case Character.USER:
-                    contents.append({"role": "user", "parts": [c]})
+                    contents.append({"role": "user", "parts": c})
                 case Character.BOT:
-                    contents.append({"role": "model", "parts": [c]})
+                    contents.append({"role": "model", "parts": c})
     if len(contents) == 0:
         return ""
     prompt = get(group_id, "prompt", default_prompt)
