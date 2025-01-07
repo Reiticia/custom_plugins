@@ -2,7 +2,7 @@ import random
 import re
 import PIL.Image
 import aiofiles
-import tempfile
+import os
 from httpx import AsyncClient
 from pathlib import Path
 from asyncio import sleep
@@ -16,11 +16,15 @@ import google.generativeai as genai
 from google.generativeai.types import GenerationConfig
 from google.generativeai.types.content_types import PartType
 
+from common import generate_random_string
 from common.struct import ExpirableDict
 
 require("nonebot_plugin_localstore")
 require("nonebot_plugin_waiter")
+require("nonebot_plugin_apscheduler")
 
+import nonebot_plugin_localstore as store
+from nonebot_plugin_apscheduler import scheduler
 from .setting import get
 from .config import Config, plugin_config
 from .model import Character, ChatMsg
@@ -153,10 +157,15 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
         else:
             GROUP_MESSAGE_SEQUENT.update({gid: msgs})
 
+
 _HTTP_CLIENT = AsyncClient()
+
+_CACHE_DIR = store.get_cache_dir("people_like")
+
 
 async def extract_msg_in_group_message_event(event: GroupMessageEvent) -> list[PartType]:
     """提取群消息事件中的消息内容"""
+    global _HTTP_CLIENT, _CACHE_DIR
     em = event.message
     gid = event.group_id
     target: list[PartType] = []
@@ -170,14 +179,33 @@ async def extract_msg_in_group_message_event(event: GroupMessageEvent) -> list[P
                 # 下载图片进行处理
                 data = await _HTTP_CLIENT.get(ms.data["url"])
                 if data.status_code == 200:
-                    with tempfile.NamedTemporaryFile() as file:
-                        file.write(data.content)
-                        file.seek(0)
-                        organ = PIL.Image.open(file)
-                        target.append(organ)
+                    file_name = _CACHE_DIR / generate_random_string(12)
+                    async with aiofiles.open(file_name, "wb") as f:
+                        await f.write(data.content)
+                    organ = PIL.Image.open(file_name)
+                    target.append(organ)
+                    # 添加一个定时任务删除缓存图片
+                    task_id = generate_random_string(8)
+                    scheduler.add_job(remove_cache_image, "interval", days=1, id=task_id, args=[file_name, task_id])
             case _:
                 pass
     return target
+
+
+@driver.on_startup
+async def clear_cache_image():
+    """启动时清理缓存的图片"""
+    global _CACHE_DIR
+    for filename in os.listdir(_CACHE_DIR):
+        filename = _CACHE_DIR / filename
+        if os.path.isfile(filename):
+            os.remove(filename)
+
+
+async def remove_cache_image(filename: Path, task_id: str):
+    """删除缓存图片"""
+    filename.unlink()
+    scheduler.remove_job(task_id)
 
 
 _USER_OF_GROUP_NICKNAME: dict[int, ExpirableDict[int, str]] = dict()
@@ -218,7 +246,9 @@ async def get_bot_nickname_of_group(group_id: int) -> str:
         return name
 
 
-def handle_context_list(context: list[ChatMsg], new_msg: list[PartType], character: Character = Character.USER) -> list[ChatMsg]:
+def handle_context_list(
+    context: list[ChatMsg], new_msg: list[PartType], character: Character = Character.USER
+) -> list[ChatMsg]:
     """处理消息上下文列表"""
     if new_msg:
         context.append(ChatMsg(sender=character, content=new_msg))
