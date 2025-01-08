@@ -148,6 +148,7 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
         resp = resp.strip()
         logger.info(f"群{gid}回复：{resp}")
         for split_msg in [s_s for s in resp.split("。") if len(s_s := s.strip()) != 0]:
+            split_msg = remove_first_bracket_at_start(split_msg)  # 修正输出
             if all(ignore not in split_msg for ignore in words) and not GROUP_SPEAK_DISABLE.get(gid, False):
                 # 先睡，睡完再发
                 await sleep_sometime(len(split_msg))
@@ -156,6 +157,11 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
                 msgs = handle_context_list(msgs, target, Character.BOT)
         else:
             GROUP_MESSAGE_SEQUENT.update({gid: msgs})
+
+
+def remove_first_bracket_at_start(text: str) -> str:
+    """使用正则表达式匹配字符串开头的方括号及其内容，并将其替换为空字符串"""
+    return re.sub(r"^\[.*?\]", "", text)
 
 
 async def sleep_sometime(size: int):
@@ -175,6 +181,8 @@ async def extract_msg_in_group_message_event(event: GroupMessageEvent) -> list[P
     em = event.message
     gid = event.group_id
     target: list[PartType] = []
+    sender_nickname = await get_user_nickname_of_group(gid, int(event.user_id))
+    target.append(f"[{sender_nickname}]")
     for ms in em:
         match ms.type:
             case "text":
@@ -269,7 +277,13 @@ def handle_context_list(
 async def chat_with_gemini(group_id: int, context: list[ChatMsg]) -> str:
     """与gemini聊天"""
     nickname = get_bot_nickname_of_group(group_id)
-    default_prompt = f"你是{nickname}，请使用纯文本方式根据上文内容回复一句话，不得使用markdown语法。\n"
+    default_prompt = f"""你是{nickname}。
+下面发送的每一段对话至少包含两段。第一段固定为说话人的昵称（也叫称呼）用[]进行包裹。
+从第二段开始为正式的对话内容，可能包含纯文本或者图片；如果是文本内容且为@开头的文本，则表示在此条消息中提及到了某个人，一般这个人可能是前文中出现过的说话人昵称。
+你需要根据对话上下文的内容给出适合的回复内容。
+不要在你的回复中出现markdown语法。
+不要在句首使用我规定的说话人语法，正常回复即可。\n
+"""
     contents = []
     for msg in context:
         if len(c := msg.content) > 0:
