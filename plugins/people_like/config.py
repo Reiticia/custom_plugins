@@ -14,8 +14,8 @@ class Config(BaseModel):
     """复读概率"""
     context_size: int = 20
     """上下文长度"""
-    msg_send_interval_per_10: int = 1
-    """每超过 10 个字符，回复间隔增加 1 s"""
+    one_word_max_used_time_of_second: int = 1
+    """一个字最多花费多少时间"""
     gemini_key: Optional[str]
     """Gemini API Key"""
 

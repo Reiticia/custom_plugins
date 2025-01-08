@@ -137,7 +137,7 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
         return
     # 触发回复
     # 规则：
-    # 1. 该群聊没人被闭嘴
+    # 1. 该群聊没有被闭嘴
     # 2. 满足回复时的概率 plugin_config.reply_probability
     # 3. 如果是提及机器人的消息 则回复概率为原回复概率 plugin_config.reply_probability 的 4 倍
     if (
@@ -150,13 +150,18 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
         for split_msg in [s_s for s in resp.split("。") if len(s_s := s.strip()) != 0]:
             if all(ignore not in split_msg for ignore in words) and not GROUP_SPEAK_DISABLE.get(gid, False):
                 # 先睡，睡完再发
-                time = (len(split_msg) / 10 + 1) * plugin_config.msg_send_interval_per_10
-                await sleep(time)
+                await sleep_sometime(len(split_msg))
                 await on_msg.send(split_msg)
                 target = [split_msg]
                 msgs = handle_context_list(msgs, target, Character.BOT)
         else:
             GROUP_MESSAGE_SEQUENT.update({gid: msgs})
+
+
+async def sleep_sometime(size: int):
+    """根据字数休眠一段时间"""
+    time = random.random() * plugin_config.one_word_max_used_time_of_second * size
+    await sleep(time)
 
 
 _HTTP_CLIENT = AsyncClient()
@@ -264,7 +269,7 @@ def handle_context_list(
 async def chat_with_gemini(group_id: int, context: list[ChatMsg]) -> str:
     """与gemini聊天"""
     nickname = get_bot_nickname_of_group(group_id)
-    default_prompt = f"你是{nickname}，请使用纯文本方式根据上文内容回复一句话，不得使用markdown语法"
+    default_prompt = f"你是{nickname}，请使用纯文本方式根据上文内容回复一句话，不得使用markdown语法。\n"
     contents = []
     for msg in context:
         if len(c := msg.content) > 0:
@@ -275,10 +280,11 @@ async def chat_with_gemini(group_id: int, context: list[ChatMsg]) -> str:
                     contents.append({"role": "model", "parts": c})
     if len(contents) == 0:
         return ""
-    prompt = get(group_id, "prompt", default_prompt)
+    prompt = get(group_id, "prompt", "")
+    prompt = default_prompt + str(prompt)
     top_p = float(p) if (p := get(group_id, "top_p")) is not None else None
     top_k = int(p) if (p := get(group_id, "top_k")) is not None else None
-    c_len = i_p if (p := get(group_id, "length", "100")) is not None and (i_p := int(p)) > 0 else None
+    c_len = i_p if (p := get(group_id, "length", None)) is not None and (i_p := int(p)) > 0 else None
     model = genai.GenerativeModel(
         model_name="gemini-2.0-flash-exp",
         system_instruction=prompt,
