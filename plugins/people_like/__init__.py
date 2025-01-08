@@ -149,11 +149,12 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
         logger.info(f"群{gid}回复：{resp}")
         for split_msg in [s_s for s in resp.split("。") if len(s_s := s.strip()) != 0]:
             if all(ignore not in split_msg for ignore in words) and not GROUP_SPEAK_DISABLE.get(gid, False):
+                # 先睡，睡完再发
+                time = (len(split_msg) / 10 + 1) * plugin_config.msg_send_interval_per_10
+                await sleep(time)
                 await on_msg.send(split_msg)
                 target = [split_msg]
                 msgs = handle_context_list(msgs, target, Character.BOT)
-                time = (len(split_msg) / 10 + 1) * plugin_config.msg_send_interval_per_10
-                await sleep(time)
         else:
             GROUP_MESSAGE_SEQUENT.update({gid: msgs})
 
