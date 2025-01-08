@@ -3,6 +3,7 @@ from nonebot import on_command, get_driver
 from nonebot.permission import SUPERUSER
 from nonebot.matcher import Matcher
 from nonebot.rule import to_me
+from nonebot.adapters.onebot.v11 import Bot
 from aiofiles import open
 from typing import Optional
 from nonebot_plugin_waiter import prompt, suggest
@@ -23,10 +24,12 @@ _EXPECT_PROP_NAMES = ["prompt", "top_p", "top_k", "length"]
 
 
 @on_command(cmd="gp", permission=SUPERUSER, rule=to_me()).handle()
-async def get_property(matcher: Matcher):
+async def get_property(bot: Bot, matcher: Matcher):
     """通过指令获取群组属性"""
     global PROPERTIES, _EXPECT_PROP_NAMES
-    resp = await prompt("请输入群号", timeout=60)
+    # 获取所有群组
+    group_list: list[str] = [str(group["group_id"]) for group in await bot.get_group_list()]
+    resp = await suggest("请输入群号", timeout=60, expect=group_list)
     if not resp:
         await matcher.finish("操作超时，指令中断")
     if not str(resp).isdigit():
@@ -42,10 +45,12 @@ async def get_property(matcher: Matcher):
 
 
 @on_command(cmd="sp", permission=SUPERUSER, rule=to_me()).handle()
-async def set_property(matcher: Matcher):
+async def set_property(bot: Bot, matcher: Matcher):
     """通过指令设置群组属性"""
     global PROPERTIES
-    resp = await prompt("请输入群号", timeout=60)
+    # 获取所有群组
+    group_list: list[str] = [str(group["group_id"]) for group in await bot.get_group_list()]
+    resp = await suggest("请输入群号", timeout=60, expect=group_list)
     if not resp:
         await matcher.finish("操作超时，指令中断")
     if not str(resp).isdigit():
@@ -55,12 +60,14 @@ async def set_property(matcher: Matcher):
     if not resp:
         await matcher.finish("操作超时，指令中断")
     property_name = str(resp).upper()
-    resp = await prompt("请输入要设置的属性值", timeout=60)
+    resp = await prompt("请输入要设置的属性值（取消操作请输入cancel）", timeout=60)
     if not resp:
         await matcher.finish("操作超时，指令中断")
     value = str(resp)
     if value.lower() == "none":
         value = None
+    elif value.lower() == "cancel":
+        await matcher.finish("操作取消")
     # 赋值
     g_v = PROPERTIES.get(group_id, {})
     if value is None:
