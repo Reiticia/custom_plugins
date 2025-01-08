@@ -276,7 +276,7 @@ def handle_context_list(
 
 async def chat_with_gemini(group_id: int, context: list[ChatMsg]) -> str:
     """与gemini聊天"""
-    nickname = get_bot_nickname_of_group(group_id)
+    nickname = await get_bot_nickname_of_group(group_id)
     default_prompt = f"""你是{nickname}。
 下面发送的每一段对话至少包含两段。第一段固定为说话人的昵称（也叫称呼）用[]进行包裹。
 从第二段开始为正式的对话内容，可能包含纯文本或者图片；如果是文本内容且为@开头的文本，则表示在此条消息中提及到了某个人，一般这个人可能是前文中出现过的说话人昵称。
