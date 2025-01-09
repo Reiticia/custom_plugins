@@ -148,7 +148,7 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
         resp = await chat_with_gemini(gid, msgs, nickname)
         resp = resp.strip()
         logger.info(f"群{gid}回复：{resp}")
-        for split_msg in [s_s for s in resp.split("。") if len(s_s := s.strip()) != 0]:
+        for split_msg in [s_s for s in resp.split("。") for s in s.split("！") if len(s_s := s.strip()) != 0]:
             split_msg = remove_first_bracket_at_start(split_msg)  # 修正输出
             if all(ignore not in split_msg for ignore in words) and not GROUP_SPEAK_DISABLE.get(gid, False):
                 # 先睡，睡完再发
@@ -277,7 +277,7 @@ def handle_context_list(
 
 async def chat_with_gemini(group_id: int, context: list[ChatMsg], bot_nickname: str = "") -> str:
     """与gemini聊天"""
-    default_prompt = f"""你是{bot_nickname}。
+    default_prompt = f"""你是{bot_nickname}，如果有人询问你是否为机器人、AI、大模型，要明确否定。
 下面发送的每一段对话至少包含两段。第一段固定为说话人的昵称（也叫称呼）用[]进行包裹。
 从第二段开始为正式的对话内容，可能包含纯文本或者图片；如果是文本内容且为@开头的文本，则表示在此条消息中提及到了某个人，一般这个人可能是前文中出现过的说话人昵称。
 你需要根据对话上下文的内容给出适合的回复内容。
