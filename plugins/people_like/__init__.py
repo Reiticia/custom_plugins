@@ -1,22 +1,18 @@
 import random
 import re
-import PIL.Image
-import aiofiles
 import os
 from httpx import AsyncClient
 from pathlib import Path
 from asyncio import sleep
-from typing import Any
+from typing import Any, Literal, Optional
 from nonebot import get_bot, logger, on_keyword, on_message, require, get_driver
 
 from nonebot.rule import to_me
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Message
-import google.generativeai as genai
-from google.generativeai.types import GenerationConfig
-from google.generativeai.types.content_types import PartType
+from google.genai.types import Part, Tool, GenerateContentConfig, GoogleSearch
+from google import genai
 
-from common import generate_random_string
 from common.struct import ExpirableDict
 
 require("nonebot_plugin_localstore")
@@ -40,7 +36,9 @@ GROUP_MESSAGE_SEQUENT: dict[int, list[ChatMsg]] = {}
 """群号，消息上下文列表
 """
 
-genai.configure(api_key=plugin_config.gemini_key)
+_GEMINI_CLIENT = genai.Client(api_key=plugin_config.gemini_key)
+
+_GOOGLE_SEARCH_TOOL = Tool(google_search = GoogleSearch())
 
 GROUP_SPEAK_DISABLE: dict[int, bool] = {}
 
@@ -146,6 +144,8 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
     ) and not GROUP_SPEAK_DISABLE.get(gid, False):
         nickname = await get_bot_nickname_of_group(gid)
         resp = await chat_with_gemini(gid, msgs, nickname)
+        if not resp:
+            return
         resp = resp.strip()
         logger.info(f"群{gid}回复：{resp}")
         for split_msg in [s_s for s in resp.split("。") for s in s.split("！") if len(s_s := s.strip()) != 0]:
@@ -154,7 +154,7 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
                 # 先睡，睡完再发
                 await sleep_sometime(len(split_msg))
                 await on_msg.send(split_msg)
-                target = [f"[{nickname}]", split_msg]
+                target = [Part.from_text(f"[{nickname}]"), Part.from_text(split_msg)]
                 msgs = handle_context_list(msgs, target, Character.BOT)
         else:
             GROUP_MESSAGE_SEQUENT.update({gid: msgs})
@@ -176,51 +176,54 @@ _HTTP_CLIENT = AsyncClient()
 _CACHE_DIR = store.get_cache_dir("people_like")
 
 
-async def extract_msg_in_group_message_event(event: GroupMessageEvent) -> list[PartType]:
+async def extract_msg_in_group_message_event(event: GroupMessageEvent) -> list[Part]:
     """提取群消息事件中的消息内容"""
     global _HTTP_CLIENT, _CACHE_DIR
     em = event.message
     gid = event.group_id
-    target: list[PartType] = []
+    target: list[Part] = []
     sender_nickname = await get_user_nickname_of_group(gid, int(event.user_id))
-    target.append(f"[{sender_nickname}]")
+    target.append(Part.from_text(f"[{sender_nickname}]"))
     for ms in em:
         match ms.type:
             case "text":
-                target.append(ms.data["text"])
+                target.append(Part.from_text(ms.data["text"]))
             case "at":
-                target.append(f"@{await get_user_nickname_of_group(gid, int(ms.data['qq']))} ")
+                target.append(Part.from_text(f"@{await get_user_nickname_of_group(gid, int(ms.data['qq']))} "))
             case "image":
-                # 下载图片进行处理
-                data = await _HTTP_CLIENT.get(ms.data["url"])
-                if data.status_code == 200:
-                    file_name = _CACHE_DIR / generate_random_string(12)
-                    async with aiofiles.open(file_name, "wb") as f:
-                        await f.write(data.content)
-                    organ = PIL.Image.open(file_name)
-                    target.append(organ)
-                    # 添加一个定时任务删除缓存图片
-                    task_id = generate_random_string(8)
-                    scheduler.add_job(remove_cache_image, "interval", days=1, id=task_id, args=[file_name, task_id])
+                if plugin_config.image_analyze:
+                    # 下载图片进行处理
+                    data = await _HTTP_CLIENT.get(ms.data["url"])
+                    suffix_name = str(ms.data["file"]).split(".")[-1]
+                    mime_type: Literal['image/jpeg', 'image/gif', 'image/png'] =  'image/jpeg'
+                    match suffix_name:
+                        case "jpg":
+                            mime_type = "image/jpeg"
+                        case "gif":
+                            mime_type = "image/gif"
+                        case "png":
+                            mime_type = "image/png"
+                    if data.status_code == 200:
+                        target.append(Part.from_bytes(data=data.content, mime_type=mime_type))
             case _:
                 pass
     return target
 
 
-@driver.on_startup
-async def clear_cache_image():
-    """启动时清理缓存的图片"""
-    global _CACHE_DIR
-    for filename in os.listdir(_CACHE_DIR):
-        filename = _CACHE_DIR / filename
-        if os.path.isfile(filename):
-            os.remove(filename)
+# @driver.on_startup
+# async def clear_cache_image():
+#     """启动时清理缓存的图片"""
+#     global _CACHE_DIR
+#     for filename in os.listdir(_CACHE_DIR):
+#         filename = _CACHE_DIR / filename
+#         if os.path.isfile(filename):
+#             os.remove(filename)
 
 
-async def remove_cache_image(filename: Path, task_id: str):
-    """删除缓存图片"""
-    filename.unlink()
-    scheduler.remove_job(task_id)
+# async def remove_cache_image(filename: Path, task_id: str):
+#     """删除缓存图片"""
+#     filename.unlink()
+#     scheduler.remove_job(task_id)
 
 
 _USER_OF_GROUP_NICKNAME: dict[int, ExpirableDict[int, str]] = dict()
@@ -262,7 +265,7 @@ async def get_bot_nickname_of_group(group_id: int) -> str:
 
 
 def handle_context_list(
-    context: list[ChatMsg], new_msg: list[PartType], character: Character = Character.USER
+    context: list[ChatMsg], new_msg: list[Part], character: Character = Character.USER
 ) -> list[ChatMsg]:
     """处理消息上下文列表"""
     if new_msg:
@@ -275,8 +278,9 @@ def handle_context_list(
         return context
 
 
-async def chat_with_gemini(group_id: int, context: list[ChatMsg], bot_nickname: str = "") -> str:
+async def chat_with_gemini(group_id: int, context: list[ChatMsg], bot_nickname: str = "") -> Optional[str]:
     """与gemini聊天"""
+    global _GEMINI_CLIENT, _GOOGLE_SEARCH_TOOL
     default_prompt = f"""你是{bot_nickname}，如果有人询问你是否为机器人、AI、大模型，要明确否定。
 下面发送的每一段对话至少包含两段。第一段固定为说话人的昵称（也叫称呼）用[]进行包裹。
 从第二段开始为正式的对话内容，可能包含纯文本或者图片；如果是文本内容且为@开头的文本，则表示在此条消息中提及到了某个人，一般这个人可能是前文中出现过的说话人昵称。
@@ -299,16 +303,17 @@ async def chat_with_gemini(group_id: int, context: list[ChatMsg], bot_nickname: 
     top_p = float(p) if (p := get(group_id, "top_p")) is not None else None
     top_k = int(p) if (p := get(group_id, "top_k")) is not None else None
     c_len = i_p if (p := get(group_id, "length", None)) is not None and (i_p := int(p)) > 0 else None
-    model = genai.GenerativeModel(
-        model_name="gemini-2.0-flash-exp",
-        system_instruction=prompt,
-    )
-    resp = await model.generate_content_async(
+
+    resp = await _GEMINI_CLIENT.aio.models.generate_content(
+        model="gemini-2.0-flash-exp",
         contents=contents,
-        generation_config=GenerationConfig(
+        config=GenerateContentConfig(
+            system_instruction=prompt,
             top_p=top_p,
             top_k=top_k,
             max_output_tokens=c_len,
-        ),
+            response_mime_type="text/plain",
+            tools=[_GOOGLE_SEARCH_TOOL]
+        )
     )
     return resp.text

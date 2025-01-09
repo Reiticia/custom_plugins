@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
-from google.generativeai.types.content_types import PartType
+from google.genai.types import Part
 
 class Character(Enum):
     BOT = 1
@@ -9,4 +9,4 @@ class Character(Enum):
 @dataclass
 class ChatMsg:
     sender: Character
-    content: list[PartType]
+    content: list[Part]

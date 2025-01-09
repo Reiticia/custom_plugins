@@ -16,6 +16,8 @@ class Config(BaseModel):
     """上下文长度"""
     one_word_max_used_time_of_second: int = 1
     """一个字最多花费多少时间"""
+    image_analyze: bool = True
+    """是否开启图片分析"""
     gemini_key: Optional[str]
     """Gemini API Key"""
 
