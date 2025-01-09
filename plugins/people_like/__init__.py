@@ -144,7 +144,8 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
         (r := random.random()) < plugin_config.reply_probability
         or (event.is_tome() and r < plugin_config.reply_probability * 4)
     ) and not GROUP_SPEAK_DISABLE.get(gid, False):
-        resp = await chat_with_gemini(gid, msgs)
+        nickname = await get_bot_nickname_of_group(gid)
+        resp = await chat_with_gemini(gid, msgs, nickname)
         resp = resp.strip()
         logger.info(f"群{gid}回复：{resp}")
         for split_msg in [s_s for s in resp.split("。") if len(s_s := s.strip()) != 0]:
@@ -153,7 +154,7 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
                 # 先睡，睡完再发
                 await sleep_sometime(len(split_msg))
                 await on_msg.send(split_msg)
-                target = [split_msg]
+                target = [f"[{nickname}]", split_msg]
                 msgs = handle_context_list(msgs, target, Character.BOT)
         else:
             GROUP_MESSAGE_SEQUENT.update({gid: msgs})
@@ -274,10 +275,9 @@ def handle_context_list(
         return context
 
 
-async def chat_with_gemini(group_id: int, context: list[ChatMsg]) -> str:
+async def chat_with_gemini(group_id: int, context: list[ChatMsg], bot_nickname: str = "") -> str:
     """与gemini聊天"""
-    nickname = await get_bot_nickname_of_group(group_id)
-    default_prompt = f"""你是{nickname}。
+    default_prompt = f"""你是{bot_nickname}。
 下面发送的每一段对话至少包含两段。第一段固定为说话人的昵称（也叫称呼）用[]进行包裹。
 从第二段开始为正式的对话内容，可能包含纯文本或者图片；如果是文本内容且为@开头的文本，则表示在此条消息中提及到了某个人，一般这个人可能是前文中出现过的说话人昵称。
 你需要根据对话上下文的内容给出适合的回复内容。
