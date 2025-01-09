@@ -51,7 +51,7 @@ def _check_super_user_or_self(bot: Bot, event: MessageEvent):
     return event.get_user_id() in bot.config.superusers or event.get_user_id() == str(event.self_id)
 
 def _check_self(bot: Bot, event: Event):
-    event.get_type() == "message_sent" or event.get_user_id() == bot.self_id
+    return event.get_type() == "message_sent" or event.get_user_id() == bot.self_id
 
 
 @on_command(cmd="echo", rule=Rule(_check_super_user_or_self)).handle()

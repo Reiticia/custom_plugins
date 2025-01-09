@@ -10,7 +10,7 @@ from nonebot import get_bot, logger, on_keyword, on_message, require, get_driver
 from nonebot.rule import to_me
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Message
-from google.genai.types import Part, Tool, GenerateContentConfig, GoogleSearch, ToolListUnion
+from google.genai.types import Part, Tool, GenerateContentConfig, GoogleSearch, SafetySetting, ToolListUnion
 from google import genai
 
 from common.struct import ExpirableDict
@@ -306,6 +306,13 @@ async def chat_with_gemini(group_id: int, context: list[ChatMsg], bot_nickname: 
             max_output_tokens=c_len,
             response_mime_type="text/plain",
             tools=tools,
+            safety_settings=[
+                SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"),
+                SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"),
+                SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
+                SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
+                SafetySetting(category="HARM_CATEGORY_CIVIC_INTEGRITY", threshold="BLOCK_NONE"),
+            ],
         ),
     )
     return resp.text
