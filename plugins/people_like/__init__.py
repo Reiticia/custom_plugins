@@ -10,7 +10,7 @@ from nonebot import get_bot, logger, on_keyword, on_message, require, get_driver
 from nonebot.rule import to_me
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Message
-from google.genai.types import Part, Tool, GenerateContentConfig, GoogleSearch
+from google.genai.types import Part, Tool, GenerateContentConfig, GoogleSearch, ToolListUnion
 from google import genai
 
 from common.struct import ExpirableDict
@@ -21,7 +21,7 @@ require("nonebot_plugin_apscheduler")
 
 import nonebot_plugin_localstore as store
 from nonebot_plugin_apscheduler import scheduler
-from .setting import get
+from .setting import get_value_or_default
 from .config import Config, plugin_config
 from .model import Character, ChatMsg
 
@@ -38,7 +38,7 @@ GROUP_MESSAGE_SEQUENT: dict[int, list[ChatMsg]] = {}
 
 _GEMINI_CLIENT = genai.Client(api_key=plugin_config.gemini_key)
 
-_GOOGLE_SEARCH_TOOL = Tool(google_search = GoogleSearch())
+_GOOGLE_SEARCH_TOOL = Tool(google_search=GoogleSearch())
 
 GROUP_SPEAK_DISABLE: dict[int, bool] = {}
 
@@ -139,8 +139,12 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
     # 2. 满足回复时的概率 plugin_config.reply_probability
     # 3. 如果是提及机器人的消息 则回复概率为原回复概率 plugin_config.reply_probability 的 4 倍
     if (
-        (r := random.random()) < plugin_config.reply_probability
-        or (event.is_tome() and r < plugin_config.reply_probability * 4)
+        (r := random.random())
+        < float(get_value_or_default(gid, "reply_probability", str(plugin_config.reply_probability)))
+        or (
+            event.is_tome()
+            and r < float(get_value_or_default(gid, "at_reply_probability", str(plugin_config.reply_probability * 4)))
+        )
     ) and not GROUP_SPEAK_DISABLE.get(gid, False):
         nickname = await get_bot_nickname_of_group(gid)
         resp = await chat_with_gemini(gid, msgs, nickname)
@@ -195,7 +199,7 @@ async def extract_msg_in_group_message_event(event: GroupMessageEvent) -> list[P
                     # 下载图片进行处理
                     data = await _HTTP_CLIENT.get(ms.data["url"])
                     suffix_name = str(ms.data["file"]).split(".")[-1]
-                    mime_type: Literal['image/jpeg', 'image/gif', 'image/png'] =  'image/jpeg'
+                    mime_type: Literal["image/jpeg", "image/gif", "image/png"] = "image/jpeg"
                     match suffix_name:
                         case "jpg":
                             mime_type = "image/jpeg"
@@ -208,22 +212,6 @@ async def extract_msg_in_group_message_event(event: GroupMessageEvent) -> list[P
             case _:
                 pass
     return target
-
-
-# @driver.on_startup
-# async def clear_cache_image():
-#     """启动时清理缓存的图片"""
-#     global _CACHE_DIR
-#     for filename in os.listdir(_CACHE_DIR):
-#         filename = _CACHE_DIR / filename
-#         if os.path.isfile(filename):
-#             os.remove(filename)
-
-
-# async def remove_cache_image(filename: Path, task_id: str):
-#     """删除缓存图片"""
-#     filename.unlink()
-#     scheduler.remove_job(task_id)
 
 
 _USER_OF_GROUP_NICKNAME: dict[int, ExpirableDict[int, str]] = dict()
@@ -298,11 +286,15 @@ async def chat_with_gemini(group_id: int, context: list[ChatMsg], bot_nickname: 
                     contents.append({"role": "model", "parts": c})
     if len(contents) == 0:
         return ""
-    prompt = get(group_id, "prompt", "")
-    prompt = default_prompt + str(prompt)
-    top_p = float(p) if (p := get(group_id, "top_p")) is not None else None
-    top_k = int(p) if (p := get(group_id, "top_k")) is not None else None
-    c_len = i_p if (p := get(group_id, "length", None)) is not None and (i_p := int(p)) > 0 else None
+    prompt = get_value_or_default(group_id, "prompt", "")
+    prompt = default_prompt + prompt
+    top_p = float(p) if (p := get_value_or_default(group_id, "top_p")) else None
+    top_k = int(p) if (p := get_value_or_default(group_id, "top_k")) else None
+    c_len = i_p if (p := get_value_or_default(group_id, "length", "0")) and (i_p := int(p)) > 0 else None
+
+    enable_search = bool(get_value_or_default(group_id, "search"))
+
+    tools: Optional[ToolListUnion] = [_GOOGLE_SEARCH_TOOL] if enable_search else None
 
     resp = await _GEMINI_CLIENT.aio.models.generate_content(
         model="gemini-2.0-flash-exp",
@@ -313,7 +305,7 @@ async def chat_with_gemini(group_id: int, context: list[ChatMsg], bot_nickname: 
             top_k=top_k,
             max_output_tokens=c_len,
             response_mime_type="text/plain",
-            tools=[_GOOGLE_SEARCH_TOOL]
-        )
+            tools=tools,
+        ),
     )
     return resp.text

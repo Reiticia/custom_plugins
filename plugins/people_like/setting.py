@@ -3,9 +3,8 @@ from nonebot import on_command, get_driver
 from nonebot.permission import SUPERUSER
 from nonebot.matcher import Matcher
 from nonebot.rule import to_me
-from nonebot.adapters.onebot.v11 import Bot
+from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent
 from aiofiles import open
-from typing import Optional
 from nonebot_plugin_waiter import prompt, suggest
 
 driver = get_driver()
@@ -20,21 +19,24 @@ PROPERTIES: dict[str, dict[str, str]] = json.loads(
     "{}" if not _PROFILE.exists() else text if (text := _PROFILE.read_text()) is not None else "{}"
 )
 
-_EXPECT_PROP_NAMES = ["prompt", "top_p", "top_k", "length"]
+_EXPECT_PROP_NAMES = ["prompt", "top_p", "top_k", "length", "search", "reply_probability", "at_reply_probability"]
 
 
 @on_command(cmd="gp", permission=SUPERUSER, rule=to_me()).handle()
-async def get_property(bot: Bot, matcher: Matcher):
+async def get_property(bot: Bot, matcher: Matcher, e: MessageEvent):
     """通过指令获取群组属性"""
     global PROPERTIES, _EXPECT_PROP_NAMES
-    # 获取所有群组
-    group_list: list[str] = [str(group["group_id"]) for group in await bot.get_group_list()]
-    resp = await suggest("请输入群号", timeout=60, expect=group_list)
-    if not resp:
-        await matcher.finish("操作超时，指令中断")
-    if not str(resp).isdigit():
-        await matcher.finish("输入无效，指令中断")
-    group_id = str(resp)
+    if not isinstance(e, GroupMessageEvent):
+        # 获取所有群组
+        group_list: list[str] = [str(group["group_id"]) for group in await bot.get_group_list()]
+        resp = await suggest("请输入群号", timeout=60, expect=group_list)
+        if not resp:
+            await matcher.finish("操作超时，指令中断")
+        if not str(resp).isdigit():
+            await matcher.finish("输入无效，指令中断")
+        group_id = str(resp)
+    else:
+        group_id = str(e.group_id)
     resp = await suggest("请选择要获取的属性名", timeout=60, expect=_EXPECT_PROP_NAMES)
     if not resp:
         await matcher.finish("操作超时，指令中断")
@@ -45,17 +47,20 @@ async def get_property(bot: Bot, matcher: Matcher):
 
 
 @on_command(cmd="sp", permission=SUPERUSER, rule=to_me()).handle()
-async def set_property(bot: Bot, matcher: Matcher):
+async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
     """通过指令设置群组属性"""
     global PROPERTIES
-    # 获取所有群组
-    group_list: list[str] = [str(group["group_id"]) for group in await bot.get_group_list()]
-    resp = await suggest("请输入群号", timeout=60, expect=group_list)
-    if not resp:
-        await matcher.finish("操作超时，指令中断")
-    if not str(resp).isdigit():
-        await matcher.finish("输入无效，指令中断")
-    group_id = str(resp)
+    if not isinstance(e, GroupMessageEvent):
+        # 获取所有群组
+        group_list: list[str] = [str(group["group_id"]) for group in await bot.get_group_list()]
+        resp = await suggest("请输入群号", timeout=60, expect=group_list)
+        if not resp:
+            await matcher.finish("操作超时，指令中断")
+        if not str(resp).isdigit():
+            await matcher.finish("输入无效，指令中断")
+        group_id = str(resp)
+    else:
+        group_id = str(e.group_id)
     resp = await suggest("请选择要设置的属性名", timeout=60, expect=_EXPECT_PROP_NAMES)
     if not resp:
         await matcher.finish("操作超时，指令中断")
@@ -83,7 +88,7 @@ async def set_property(bot: Bot, matcher: Matcher):
     await matcher.finish(ret)
 
 
-def get(group_id: int, key: str, default: Optional[str] = None) -> Optional[str]:
+def get_value_or_default(group_id: int, key: str, default: str = "") -> str:
     """获取群组属性"""
     global PROPERTIES
     return PROPERTIES.get(str(group_id), {}).get(key.upper(), default)
