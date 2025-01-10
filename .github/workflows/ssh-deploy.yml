@@ -40,8 +40,7 @@ jobs:
           cd /home/${{ secrets.DC_USER }}/customs
           source /home/${{ secrets.DC_USER }}/customs/.venv/bin/activate
           nohup /home/${{ secrets.DC_USER }}/.local/bin/nb orm upgrade
-          nohup /home/${{ secrets.DC_USER }}/.local/bin/nb run >> /home/${{ secrets.DC_USER }}/customs/customs.log 2>&1 &
+          nohup /home/${{ secrets.DC_USER }}/.local/bin/nb run >> /home/${{ secrets.DC_USER }}/customs/customs.log 2>&1 &;
           cd /home/${{ secrets.DC_USER }}/direct
           source /home/${{ secrets.DC_USER }}/direct/.venv/bin/activate
-          nohup /home/${{ secrets.DC_USER }}/.local/bin/nb orm upgrade
-          nohup /home/${{ secrets.DC_USER }}/.local/bin/nb run >> /home/${{ secrets.DC_USER }}/direct/direct.log 2>&1 &
+          nohup /home/${{ secrets.DC_USER }}/.local/bin/nb run >> /home/${{ secrets.DC_USER }}/direct/direct.log 2>&1 &;
