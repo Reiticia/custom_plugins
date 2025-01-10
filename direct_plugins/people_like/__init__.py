@@ -149,8 +149,10 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
             return
         resp = resp.strip()
         logger.info(f"群{gid}回复：{resp}")
-        for split_msg in [s_s for s in resp.split("。") for s in s.split("！") if len(s_s := s.strip()) != 0]:
+        for split_msg in [s_s for s in resp.split("\n") if len(s_s := s.strip()) != 0]:
             split_msg = remove_first_bracket_at_start(split_msg)  # 修正输出
+            if split_msg.endswith("。"):
+                split_msg = split_msg[0:-1]
             if all(ignore not in split_msg for ignore in words) and not GROUP_SPEAK_DISABLE.get(gid, False):
                 # 先睡，睡完再发
                 await sleep_sometime(len(split_msg))
