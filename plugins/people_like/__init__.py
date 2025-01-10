@@ -88,7 +88,7 @@ async def _(event: GroupMessageEvent):
     GROUP_SPEAK_DISABLE.update({gid: False})
 
 
-on_msg = on_message()
+on_msg = on_message(priority=5)
 
 
 @on_msg.handle()

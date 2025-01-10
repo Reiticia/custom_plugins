@@ -22,7 +22,7 @@ PROPERTIES: dict[str, dict[str, str]] = json.loads(
 _EXPECT_PROP_NAMES = ["prompt", "top_p", "top_k", "length", "search", "reply_probability", "at_reply_probability"]
 
 
-@on_command(cmd="gp", permission=SUPERUSER, rule=to_me()).handle()
+@on_command(cmd="gp", permission=SUPERUSER, rule=to_me(), priority=1, block=True).handle()
 async def get_property(bot: Bot, matcher: Matcher, e: MessageEvent):
     """通过指令获取群组属性"""
     global PROPERTIES, _EXPECT_PROP_NAMES
@@ -46,7 +46,7 @@ async def get_property(bot: Bot, matcher: Matcher, e: MessageEvent):
     await matcher.finish(ret)
 
 
-@on_command(cmd="sp", permission=SUPERUSER, rule=to_me()).handle()
+@on_command(cmd="sp", permission=SUPERUSER, rule=to_me(), priority=1, block=True).handle()
 async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
     """通过指令设置群组属性"""
     global PROPERTIES
