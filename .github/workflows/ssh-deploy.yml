@@ -20,19 +20,28 @@ jobs:
     - name: scp ssh pipelines
       uses: cross-the-world/ssh-scp-ssh-pipelines@latest
       env:
-        PORT: ${{ secrets.PORT }}
+        PORT_FORWARD: ${{ secrets.FORWARD_PORT }}
+        PORT_DIRECT: ${{ secrets.DIRECT_PORT }}
       with:
         host: ${{ secrets.DC_HOST }}
         user: ${{ secrets.DC_USER }}
         key: ${{ secrets.DC_KEY }}
         first_ssh: |
-          bash /home/${{ secrets.DC_USER }}/kill_process.sh $PORT
+          bash /home/${{ secrets.DC_USER }}/kill_process.sh $PORT_FORWARD
+          bash /home/${{ secrets.DC_USER }}/kill_process.sh $PORT_DIRECT
           rm -rf /home/${{ secrets.DC_USER }}/customs/plugins
+          rm -rf /home/${{ secrets.DC_USER }}/direct/plugins
         scp: |
-          './plugins/*' => /home/${{ secrets.DC_USER }}/customs/plugins
+          './forward_plugins/*' => /home/${{ secrets.DC_USER }}/customs/plugins
+          './direct_plugins/*' => /home/${{ secrets.DC_USER }}/direct/plugins
           './common/*' => /home/${{ secrets.DC_USER }}/customs/common
+          './common/*' => /home/${{ secrets.DC_USER }}/direct/common
         last_ssh: |
           cd /home/${{ secrets.DC_USER }}/customs
           source /home/${{ secrets.DC_USER }}/customs/.venv/bin/activate
           nohup /home/${{ secrets.DC_USER }}/.local/bin/nb orm upgrade
           nohup /home/${{ secrets.DC_USER }}/.local/bin/nb run >> /home/${{ secrets.DC_USER }}/customs/customs.log 2>&1 &
+          cd /home/${{ secrets.DC_USER }}/direct
+          source /home/${{ secrets.DC_USER }}/direct/.venv/bin/activate
+          nohup /home/${{ secrets.DC_USER }}/.local/bin/nb orm upgrade
+          nohup /home/${{ secrets.DC_USER }}/.local/bin/nb run >> /home/${{ secrets.DC_USER }}/direct/direct.log 2>&1 &

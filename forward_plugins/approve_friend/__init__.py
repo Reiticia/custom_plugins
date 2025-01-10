@@ -1,4 +1,4 @@
-from nonebot import get_plugin_config, on, logger, on_request
+from nonebot import get_plugin_config, logger, on_request
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import FriendRequestEvent, Bot
 

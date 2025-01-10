@@ -1,6 +1,5 @@
 import random
 import re
-import os
 from httpx import AsyncClient
 from pathlib import Path
 from asyncio import sleep
@@ -17,10 +16,8 @@ from common.struct import ExpirableDict
 
 require("nonebot_plugin_localstore")
 require("nonebot_plugin_waiter")
-require("nonebot_plugin_apscheduler")
 
 import nonebot_plugin_localstore as store
-from nonebot_plugin_apscheduler import scheduler
 from .setting import get_value_or_default
 from .config import Config, plugin_config
 from .model import Character, ChatMsg

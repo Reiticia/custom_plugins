@@ -4,9 +4,7 @@ version = "0.1.0"
 description = "Default template for PDM package"
 readme = "README.md"
 requires-python = ">=3.10"
-authors = [
-    {name = "reine-ishyanami", email = "2402979195@qq.com"},
-]
+authors = [{ name = "reine-ishyanami", email = "2402979195@qq.com" }]
 dependencies = [
     "nonebot2[fastapi]>=2.3.1",
     "nonebot-adapter-onebot>=2.4.3",
@@ -24,14 +22,19 @@ dependencies = [
     "pillow>=11.1.0",
     "google-genai>=0.4.0",
 ]
-license = {text = "MIT"}
+license = { text = "MIT" }
 
 [tool.nonebot]
 adapters = [
-    { name = "OneBot V11", module_name = "nonebot.adapters.onebot.v11" }
+    { name = "OneBot V11", module_name = "nonebot.adapters.onebot.v11" },
 ]
-plugins = ["nonebot_plugin_orm", "nonebot_plugin_alconna", "nonebot_plugin_uninfo", "nonebot_plugin_htmlrender"]
-plugin_dirs = ["plugins", "no_deploy"]
+plugins = [
+    "nonebot_plugin_orm",
+    "nonebot_plugin_alconna",
+    "nonebot_plugin_uninfo",
+    "nonebot_plugin_htmlrender",
+]
+plugin_dirs = ["forward_plugins", "direct_plugins", "no_deploy"]
 builtin_plugins = ["echo"]
 
 [tool.pdm]
@@ -44,4 +47,3 @@ build-backend = "pdm.backend"
 [tool.ruff]
 line-length = 120
 ignore = ["F401", "E402"]
-
