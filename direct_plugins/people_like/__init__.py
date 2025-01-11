@@ -6,8 +6,10 @@ from asyncio import sleep
 from typing import Any, Literal, Optional
 from nonebot import get_bot, logger, on_keyword, on_message, require, get_driver
 
-from nonebot.rule import to_me
+from nonebot.rule import Rule, to_me
 from nonebot.plugin import PluginMetadata
+from nonebot.params import Depends
+from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Message
 from google.genai.types import Part, Tool, GenerateContentConfig, GoogleSearch, SafetySetting, ToolListUnion
 from google import genai
@@ -157,10 +159,43 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
                 # 先睡，睡完再发
                 await sleep_sometime(len(split_msg))
                 await on_msg.send(split_msg)
-                target = [Part.from_text(f"[{nickname}]"), Part.from_text(split_msg)]
-                msgs = handle_context_list(msgs, target, Character.BOT)
-        else:
-            GROUP_MESSAGE_SEQUENT.update({gid: msgs})
+                # target = [Part.from_text(f"[{nickname}]"), Part.from_text(split_msg)]
+                # msgs = handle_context_list(msgs, target, Character.BOT)
+        # else:
+            # GROUP_MESSAGE_SEQUENT.update({gid: msgs})
+
+
+def is_self_msg(bot: Bot, event: Event) -> bool:
+    """判断是否是机器人自己发的消息事件"""
+    model = event.model_dump()
+    return (
+        event.get_user_id() == bot.self_id
+        and str(model.get("message_type")) == "group"
+        and str(model.get("post_type")) == "message"
+    )
+
+
+def convert_to_group_message_event(event: Event) -> GroupMessageEvent:
+    """转换为群消息事件"""
+    model = event.model_dump()
+    model["post_type"] = "message"
+    return GroupMessageEvent(**model)
+
+
+on_self_msg = on_message(priority=5, rule=Rule(is_self_msg))
+
+
+@on_self_msg.handle()
+async def receive_group_self_msg(event: GroupMessageEvent = Depends(convert_to_group_message_event)) -> None:
+    """处理机器人自己发的消息"""
+    global GROUP_MESSAGE_SEQUENT
+    gid = event.group_id
+    msgs = GROUP_MESSAGE_SEQUENT.get(gid, [])
+    target = await extract_msg_in_group_message_event(event)
+    if not target:
+        return
+    msgs = handle_context_list(msgs, target, Character.BOT)
+    GROUP_MESSAGE_SEQUENT.update({gid: msgs})
 
 
 def remove_first_bracket_at_start(text: str) -> str:
