@@ -159,10 +159,6 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
                 # 先睡，睡完再发
                 await sleep_sometime(len(split_msg))
                 await on_msg.send(split_msg)
-                # target = [Part.from_text(f"[{nickname}]"), Part.from_text(split_msg)]
-                # msgs = handle_context_list(msgs, target, Character.BOT)
-        # else:
-            # GROUP_MESSAGE_SEQUENT.update({gid: msgs})
 
 
 def is_self_msg(bot: Bot, event: Event) -> bool:
@@ -303,7 +299,7 @@ def handle_context_list(
 async def chat_with_gemini(group_id: int, context: list[ChatMsg], bot_nickname: str = "") -> Optional[str]:
     """与gemini聊天"""
     global _GEMINI_CLIENT, _GOOGLE_SEARCH_TOOL
-    default_prompt = f"""你是{bot_nickname}，如果有人询问你是否为机器人、AI、大模型，要明确否定。
+    default_prompt = f"""你是{bot_nickname}，如果有人询问你是否为机器人、AI、大模型，要明确否定；如对方坚持声称你是AI，则你可以用不文明的语言回复他。
 下面发送的每一段对话至少包含两段。第一段固定为说话人的昵称（也叫称呼）用[]进行包裹。
 从第二段开始为正式的对话内容，可能包含纯文本或者图片；如果是文本内容且为@开头的文本，则表示在此条消息中提及到了某个人，一般这个人可能是前文中出现过的说话人昵称。
 你需要根据对话上下文的内容给出适合的回复内容。
@@ -341,11 +337,11 @@ async def chat_with_gemini(group_id: int, context: list[ChatMsg], bot_nickname: 
             response_mime_type="text/plain",
             tools=tools,
             safety_settings=[
-                SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"),
-                SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"),
-                SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
-                SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
-                SafetySetting(category="HARM_CATEGORY_CIVIC_INTEGRITY", threshold="BLOCK_NONE"),
+                SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="OFF"),
+                SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="OFF"),
+                SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="OFF"),
+                SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="OFF"),
+                SafetySetting(category="HARM_CATEGORY_CIVIC_INTEGRITY", threshold="OFF"),
             ],
         ),
     )
