@@ -138,15 +138,22 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
     # 2. 满足回复时的概率 plugin_config.reply_probability
     # 3. 如果是提及机器人的消息 则回复概率为原回复概率 plugin_config.reply_probability 的 4 倍
     if (
-        (r := random.random())
-        < float(get_value_or_default(gid, "reply_probability", str(plugin_config.reply_probability)))
+        (
+            send := (
+                (r := random.random())
+                < float(get_value_or_default(gid, "reply_probability", str(plugin_config.reply_probability)))
+            )
+        )
         or (
             event.is_tome()
-            and r < float(get_value_or_default(gid, "at_reply_probability", str(plugin_config.reply_probability * 4)))
+            and (
+                (r < float(get_value_or_default(gid, "at_reply_probability", str(plugin_config.reply_probability * 4))))
+                or send
+            )
         )
     ) and not GROUP_SPEAK_DISABLE.get(gid, False):
         nickname = await get_bot_nickname_of_group(gid)
-        resp = await chat_with_gemini(gid, msgs, nickname)
+        resp = await chat_with_gemini(gid, msgs, nickname, (await get_bot_gender()))
         if not resp:
             return
         resp = resp.strip()
@@ -282,6 +289,27 @@ async def get_bot_nickname_of_group(group_id: int) -> str:
         return name
 
 
+_BOT_INFO: ExpirableDict[int, dict[str, Any]] = ExpirableDict("bot_info")
+
+
+async def get_bot_gender() -> Optional[str]:
+    """获取机器人号性别"""
+    global _BOT_INFO
+    bot = get_bot()
+    if isinstance(bot, Bot):
+        bot_id = int(bot.self_id)
+        info = _BOT_INFO.get(bot_id)
+        if info is None:
+            new_info: dict[str, Any] = dict(await bot.call_api("get_stranger_info", user_id=bot_id))
+            # 缓存一天
+            _BOT_INFO.set(bot_id, new_info, 60 * 60 * 24)
+            return str(new_info.get("sex"))
+        else:
+            return str(info.get("sex"))
+    else:
+        return None
+
+
 def handle_context_list(
     context: list[ChatMsg], new_msg: list[Part], character: Character = Character.USER
 ) -> list[ChatMsg]:
@@ -296,10 +324,12 @@ def handle_context_list(
         return context
 
 
-async def chat_with_gemini(group_id: int, context: list[ChatMsg], bot_nickname: str = "") -> Optional[str]:
+async def chat_with_gemini(
+    group_id: int, context: list[ChatMsg], bot_nickname: str = "", bot_gender: Optional[str] = None
+) -> Optional[str]:
     """与gemini聊天"""
     global _GEMINI_CLIENT, _GOOGLE_SEARCH_TOOL
-    default_prompt = f"""你是{bot_nickname}，如果有人询问你是否为机器人、AI、大模型，要明确否定；如对方坚持声称你是AI，则你可以用不文明的语言回复他。
+    default_prompt = f"""你是{bot_nickname}，{f"你是{bot_gender}生，" if bot_gender else ""}如果有人询问你是否为机器人、AI、大模型，要明确否定。
 下面发送的每一段对话至少包含两段。第一段固定为说话人的昵称（也叫称呼）用[]进行包裹。
 从第二段开始为正式的对话内容，可能包含纯文本或者图片；如果是文本内容且为@开头的文本，则表示在此条消息中提及到了某个人，一般这个人可能是前文中出现过的说话人昵称。
 你需要根据对话上下文的内容给出适合的回复内容。
