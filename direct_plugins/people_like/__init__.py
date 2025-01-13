@@ -93,10 +93,13 @@ on_msg = on_message(priority=5)
 @on_msg.handle()
 async def receive_group_msg(event: GroupMessageEvent) -> None:
     global GROUP_MESSAGE_SEQUENT, GROUP_SPEAK_DISABLE
-    do_not_send_words = Path(__file__).parent / "do_not_send.txt"
-    words = [s.strip() for s in do_not_send_words.read_text(encoding="utf-8").splitlines()]
     # 群组id
     gid = event.group_id
+    nickname = await get_bot_nickname_of_group(gid)
+    do_not_send_words = Path(__file__).parent / "do_not_send.txt"
+    words = [s.strip() for s in do_not_send_words.read_text(encoding="utf-8").splitlines()]
+    # 将我是xxx过滤掉
+    words.append(f"我是{nickname}")
     # 黑名单内，不检查
     if gid in plugin_config.black_list:
         return
@@ -152,7 +155,6 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
             )
         )
     ) and not GROUP_SPEAK_DISABLE.get(gid, False):
-        nickname = await get_bot_nickname_of_group(gid)
         resp = await chat_with_gemini(gid, msgs, nickname, (await get_bot_gender()))
         if not resp:
             return
