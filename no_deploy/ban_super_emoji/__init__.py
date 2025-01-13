@@ -1,11 +1,11 @@
-from nonebot import get_plugin_config, on_message
+from nonebot import on_message
 from nonebot.params import Depends
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
 from nonebot.rule import Rule
 from pathlib import Path
 
-from .config import Config
+from .config import Config, plugin_config
 
 __plugin_meta__ = PluginMetadata(
     name="ban_super_emoji",
@@ -13,8 +13,6 @@ __plugin_meta__ = PluginMetadata(
     usage="",
     config=Config,
 )
-
-config = get_plugin_config(Config)
 
 
 super_emojis_files = Path(__file__).parent / "super_emojis.txt"
@@ -24,6 +22,9 @@ emojis = {s.split(" ")[0]: s.split(" ")[1] for s in super_emojis_files.read_text
 
 
 def _is_super_emoji(event: GroupMessageEvent) -> bool:
+    if event.group_id not in plugin_config.banlist:
+        return False
+    
     message = event.get_message()
 
     if len(ms := message.include("face")) == 1:
