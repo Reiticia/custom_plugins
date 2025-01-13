@@ -48,5 +48,5 @@ def _emoji_name(event: GroupMessageEvent) -> str:
 async def _(bot: Bot, event: GroupMessageEvent, emoji_name: str = Depends(_emoji_name)):
     if emoji_name:
         await bot.delete_msg(message_id=event.message_id)
-        await bot.set_group_ban(group_id=event.group_id, user_id=event.user_id, duration=60 * 10)
+        await bot.set_group_ban(group_id=event.group_id, user_id=event.user_id, duration=60)
         await bot.send(event=event, message=f"禁止发送{emoji_name}表情")
