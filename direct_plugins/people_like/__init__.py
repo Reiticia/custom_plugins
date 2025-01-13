@@ -53,9 +53,10 @@ async def cache_message(bot: Bot):
         if (gid := group["group_id"]) in plugin_config.black_list:
             continue
         msgs = GROUP_MESSAGE_SEQUENT.get(gid, [])
+        limit = plugin_config.context_size + 10
         # 获取群消息历史
         history: dict[str, Any] = await bot.call_api(
-            "get_group_msg_history", group_id=int(gid), message_seq=0, limit=30, reverseOrder=False
+            "get_group_msg_history", group_id=int(gid), message_seq=0, limit=limit, reverseOrder=False
         )
         # 读取历史消息填充到缓存中
         messages = history["messages"]

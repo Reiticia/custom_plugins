@@ -12,7 +12,7 @@ class Config(BaseModel):
     """回复概率"""
     repeat_probability: float = 0.01
     """复读概率"""
-    context_size: int = 20
+    context_size: int = 40
     """上下文长度"""
     one_word_max_used_time_of_second: int = 1
     """一个字最多花费多少时间"""
