@@ -65,7 +65,7 @@ async def cache_message(bot: Bot):
             event = GroupMessageEvent(**event_dict)
             is_bot_msg = event.user_id == int(bot.self_id)
             target = await extract_msg_in_group_message_event(event)
-            if not target:
+            if len(target) < 2:
                 continue
             # 判断是否是机器人自己发的消息
             if is_bot_msg:
@@ -110,7 +110,7 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
         return
     msgs = GROUP_MESSAGE_SEQUENT.get(gid, [])
     target = await extract_msg_in_group_message_event(event)
-    if not target:
+    if len(target) < 2:
         return
     msgs = handle_context_list(msgs, target)
     GROUP_MESSAGE_SEQUENT.update({gid: msgs})
@@ -204,7 +204,7 @@ async def receive_group_self_msg(event: GroupMessageEvent = Depends(convert_to_g
     gid = event.group_id
     msgs = GROUP_MESSAGE_SEQUENT.get(gid, [])
     target = await extract_msg_in_group_message_event(event)
-    if not target:
+    if len(target) < 2:
         return
     msgs = handle_context_list(msgs, target, Character.BOT)
     GROUP_MESSAGE_SEQUENT.update({gid: msgs})
