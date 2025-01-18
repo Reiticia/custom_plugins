@@ -121,6 +121,10 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
         # 过滤掉图片消息，留下meme消息，mface消息，text消息
         new_message: Message = Message()
         for ms in em:
+            if ms.type == "image" and len(em) > 1:
+                # 如果是多段消息且包含 gif/jpeg/png 图片，则不处理
+                new_message.clear()
+                break
             if ms.type == "image" and str(ms.__dict__.get("sub_type")) == "0" and str(ms.__dict__.get("file")).split(".")[-1] != "gif":
                 # 图片消息，不处理
                 continue
@@ -131,6 +135,8 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
                 # json消息，不处理
                 continue
             new_message.append(ms)
+        if len(new_message) == 0:
+            return
         await on_msg.finish(new_message)
 
     # 如果内存中记录到的消息不足指定数量，则不进行处理
