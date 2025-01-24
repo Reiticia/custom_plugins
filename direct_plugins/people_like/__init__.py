@@ -234,6 +234,8 @@ async def extract_msg_in_group_message_event(event: GroupMessageEvent) -> list[P
     target: list[Part] = []
     sender_nickname = await get_user_nickname_of_group(gid, int(event.user_id))
     target.append(Part.from_text(f"[{sender_nickname}]"))
+    if event.is_tome():
+        target.append(Part.from_text(f"@{await get_bot_nickname_of_group(gid)} "))
     for ms in em:
         match ms.type:
             case "text":
