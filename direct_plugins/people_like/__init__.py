@@ -117,15 +117,12 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
 
     # 触发复读
     logger.debug(f"repeat: {em}")
+    
     if random.random() < plugin_config.repeat_probability and not GROUP_SPEAK_DISABLE.get(gid, False):
         # 过滤掉图片消息，留下meme消息，mface消息，text消息
         new_message: Message = Message()
         for ms in em:
-            if ms.type == "image" and len(em) > 1:
-                # 如果是多段消息且包含 gif/jpeg/png 图片，则不处理
-                new_message.clear()
-                break
-            if ms.type == "image" and str(ms.__dict__.get("sub_type")) == "0" and str(ms.__dict__.get("file")).split(".")[-1] != "gif":
+            if ms.type == "image" and ms.__dict__.get("summary") == "":
                 # 图片消息，不处理
                 continue
             if ms.type == "voice" or ms.type == "video":
