@@ -132,7 +132,7 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
                 # json消息，不处理
                 continue
             new_message.append(ms)
-        if len(new_message) == 0:
+        if len(new_message) == 0 or new_message.extract_plain_text() == "":
             return
         await on_msg.finish(new_message)
 
