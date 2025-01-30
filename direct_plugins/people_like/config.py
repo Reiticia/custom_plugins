@@ -6,8 +6,6 @@ from nonebot import get_plugin_config
 class Config(BaseModel):
     """Plugin Config Here"""
 
-    black_list: list[int] = []
-    """黑名单，不做检测"""
     reply_probability: float = 0.05
     """回复概率"""
     repeat_probability: float = 0.01

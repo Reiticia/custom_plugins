@@ -20,7 +20,7 @@ require("nonebot_plugin_localstore")
 require("nonebot_plugin_waiter")
 
 import nonebot_plugin_localstore as store
-from .setting import get_value_or_default
+from .setting import get_value_or_default, get_blacklist
 from .config import Config, plugin_config
 from .model import Character, ChatMsg
 
@@ -50,7 +50,7 @@ async def cache_message(bot: Bot):
     # 获取所有群组
     group_list = await bot.get_group_list()
     for group in group_list:
-        if (gid := group["group_id"]) in plugin_config.black_list:
+        if str(gid := group["group_id"]) in get_blacklist():
             continue
         msgs = GROUP_MESSAGE_SEQUENT.get(gid, [])
         limit = plugin_config.context_size + 10
@@ -102,7 +102,7 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
     # 将我是xxx过滤掉
     words.append(f"我是{nickname}")
     # 黑名单内，不检查
-    if gid in plugin_config.black_list:
+    if str(gid) in get_blacklist():
         return
     em = event.message
     # 8位及以上数字字母组合为无意义消息，可能为密码或邀请码之类，过滤不做处理
