@@ -36,7 +36,7 @@ async def block_group(bot: Bot, matcher: Matcher, e: MessageEvent):
         group_list: list[str] = [str(group["group_id"]) for group in await bot.get_group_list()]
         resp = await suggest("请输入群号", timeout=60, expect=group_list)
         if not resp:
-            await matcher.finish("操作超时，指令中断")
+            await matcher.finish()
         if not str(resp).isdigit():
             await matcher.finish("输入无效，指令中断")
         group_id = str(resp)
@@ -57,7 +57,7 @@ async def unblock_group(bot: Bot, matcher: Matcher, e: MessageEvent):
         group_list: list[str] = [str(group["group_id"]) for group in await bot.get_group_list()]
         resp = await suggest("请输入群号", timeout=60, expect=group_list)
         if not resp:
-            await matcher.finish("操作超时，指令中断")
+            await matcher.finish()
         if not str(resp).isdigit():
             await matcher.finish("输入无效，指令中断")
         group_id = str(resp)
@@ -97,7 +97,7 @@ async def get_property(bot: Bot, matcher: Matcher, e: MessageEvent):
         group_list: list[str] = [str(group["group_id"]) for group in await bot.get_group_list()]
         resp = await suggest("请输入群号", timeout=60, expect=group_list)
         if not resp:
-            await matcher.finish("操作超时，指令中断")
+            await matcher.finish()
         if not str(resp).isdigit():
             await matcher.finish("输入无效，指令中断")
         group_id = str(resp)
@@ -121,7 +121,7 @@ async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
         group_list: list[str] = [str(group["group_id"]) for group in await bot.get_group_list()]
         resp = await suggest("请输入群号", timeout=60, expect=group_list)
         if not resp:
-            await matcher.finish("操作超时，指令中断")
+            await matcher.finish()
         if not str(resp).isdigit():
             await matcher.finish("输入无效，指令中断")
         group_id = str(resp)
@@ -129,11 +129,11 @@ async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
         group_id = str(e.group_id)
     resp = await suggest("请选择要设置的属性名", timeout=60, expect=_EXPECT_PROP_NAMES)
     if not resp:
-        await matcher.finish("操作超时，指令中断")
+        await matcher.finish()
     property_name = str(resp).upper()
-    resp = await prompt("请输入要设置的属性值（取消操作请输入cancel）", timeout=60)
+    resp = await prompt("请输入要设置的属性值（取消操作请输入cancel，重置输入none）", timeout=60)
     if not resp:
-        await matcher.finish("操作超时，指令中断")
+        await matcher.finish()
     value = str(resp)
     if value.lower() == "none":
         value = None
@@ -143,14 +143,17 @@ async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
     g_v = PROPERTIES.get(group_id, {})
     if value is None:
         g_v.pop(property_name, None)
+        ret: str = f"""群：{group_id}
+键：{property_name}
+已删除"""
     else:
         g_v.update({property_name: value})
+        ret: str = f"""群：{group_id}
+键：{property_name}
+值：{value}"""
     PROPERTIES.update({group_id: g_v})
     # 保存到文件
     await save_profile(matcher)
-    ret: str = f"""群：{group_id}
-键：{property_name}
-值：{value}"""
     await matcher.finish(ret)
 
 
