@@ -116,10 +116,11 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
     msgs = handle_context_list(msgs, target)
     GROUP_MESSAGE_SEQUENT.update({gid: msgs})
 
-    # 触发复读
-    logger.debug(f"repeat: {em}")
+    logger.debug(f"receive: {em}")
 
+    # 触发复读
     if random.random() < plugin_config.repeat_probability and not GROUP_SPEAK_DISABLE.get(gid, False):
+        logger.debug(f"群{gid}触发复读")
         # 过滤掉图片消息，留下meme消息，mface消息，text消息
         new_message: Message = Message()
         for ms in em:
