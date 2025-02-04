@@ -10,7 +10,7 @@ from nonebot.rule import Rule, to_me
 from nonebot.plugin import PluginMetadata
 from nonebot.params import Depends
 from nonebot.adapters import Event
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Message
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Message, MessageSegment
 from google.genai.types import Part, Tool, GenerateContentConfig, GoogleSearch, SafetySetting, ToolListUnion
 from google import genai
 
@@ -22,7 +22,7 @@ require("nonebot_plugin_waiter")
 import nonebot_plugin_localstore as store
 from .setting import get_value_or_default, get_blacklist
 from .config import Config, plugin_config
-from .model import Character, ChatMsg
+from .model import Character, ChatMsg, GroupMemberDict
 
 __plugin_meta__ = PluginMetadata(
     name="people-like",
@@ -56,7 +56,7 @@ async def cache_message(bot: Bot):
         limit = plugin_config.context_size + 10
         # 获取群消息历史
         history: dict[str, Any] = await bot.call_api(
-            "get_group_msg_history", group_id=int(gid), message_seq=0, limit=limit, reverseOrder=False
+            "get_group_msg_history", group_id=int(gid), message_seq=0, count=limit, reverseOrder=False
         )
         # 读取历史消息填充到缓存中
         messages = history["messages"]
@@ -118,7 +118,7 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
 
     # 触发复读
     logger.debug(f"repeat: {em}")
-    
+
     if random.random() < plugin_config.repeat_probability and not GROUP_SPEAK_DISABLE.get(gid, False):
         # 过滤掉图片消息，留下meme消息，mface消息，text消息
         new_message: Message = Message()
@@ -139,7 +139,7 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
 
     # 如果内存中记录到的消息不足指定数量，则不进行处理
     if len(msgs) < plugin_config.context_size:
-        logger.debug(f"群{gid}消息上下文不足，不处理")
+        logger.debug(f"群{gid}消息上下文长度{len(msgs)}不足{plugin_config.context_size}，不处理")
         return
     # 触发回复
     # 规则：
@@ -173,7 +173,45 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
             if all(ignore not in split_msg for ignore in words) and not GROUP_SPEAK_DISABLE.get(gid, False):
                 # 先睡，睡完再发
                 await sleep_sometime(len(split_msg))
+                # 将回复消息种的 @xxx 转换成对应消息段
+                split_msg = convert_at_to_at_segment(split_msg, group_id=gid)
+                logger.debug(f"群{gid}回复消息：{split_msg}")
                 await on_msg.send(split_msg)
+
+
+GROUP_MEMBER_DICT: dict[int, GroupMemberDict] = {}
+
+
+def convert_at_to_at_segment(text: str, group_id: int) -> Message:
+    """将 @xxx 转换成对应消息段
+
+    Args:
+        text (str): 原消息
+
+    Returns:
+        str: 转换后的消息
+    """
+    global GROUP_MEMBER_DICT
+    ms = text.split(" ")
+    new_ms: list[MessageSegment] = []
+    for om in ms:
+        m = om.strip()
+        # TODO 如果是@开头，则转化成@消息段
+        if m.startswith("@"):
+            nm = m.removeprefix("@")
+            user_id = GROUP_MEMBER_DICT.get(group_id, GroupMemberDict(group_id=group_id, members={})).get_id_by_name(
+                user_name=nm
+            )
+            if user_id is None:
+                # 找不到用户，则原样输出
+                new_ms.append(MessageSegment.text(om))
+            else:
+                # 找到用户，则转化成@消息段
+                new_ms.append(MessageSegment.at(user_id))
+        else:
+            new_ms.append(MessageSegment.text(m))
+
+    return Message(new_ms)
 
 
 def is_self_msg(bot: Bot, event: Event) -> bool:
@@ -227,11 +265,18 @@ _CACHE_DIR = store.get_cache_dir("people_like")
 
 async def extract_msg_in_group_message_event(event: GroupMessageEvent) -> list[Part]:
     """提取群消息事件中的消息内容"""
-    global _HTTP_CLIENT, _CACHE_DIR
+    global _HTTP_CLIENT, _CACHE_DIR, GROUP_MEMBER_DICT
     em = event.message
     gid = event.group_id
     target: list[Part] = []
     sender_nickname = await get_user_nickname_of_group(gid, int(event.user_id))
+
+    # 建立对应群组中用户昵称与id的映射关系
+    if not (members := GROUP_MEMBER_DICT.get(gid)):
+        members = GroupMemberDict(group_id=gid, members={})
+    members.add_member(int(event.user_id), sender_nickname)
+    GROUP_MEMBER_DICT.update({gid: members})
+
     target.append(Part.from_text(f"[{sender_nickname}]"))
     if event.is_tome():
         target.append(Part.from_text(f"@{await get_bot_nickname_of_group(gid)} "))
