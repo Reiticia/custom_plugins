@@ -346,20 +346,19 @@ files = [
 
 [[package]]
 name = "google-genai"
-version = "0.4.0"
+version = "0.8.0"
 requires_python = ">=3.9"
 summary = "GenAI Python SDK"
 groups = ["default"]
 dependencies = [
     "google-auth<3.0.0dev,>=2.14.1",
-    "pillow<12.0.0,>=10.0.0",
     "pydantic<3.0.0dev,>=2.0.0",
     "requests<3.0.0dev,>=2.28.1",
     "websockets<15.0dev,>=13.0",
 ]
 files = [
-    {file = "google_genai-0.4.0-py3-none-any.whl", hash = "sha256:2cbfea3cb47d4ac54ee3d3f9ecd79ff72298cac13e150828afdc5ed62768ed00"},
-    {file = "google_genai-0.4.0.tar.gz", hash = "sha256:d14ce2e941063092cfc98726aeabcae44f179456e3a4906ee5f28dc91b0663fb"},
+    {file = "google_genai-0.8.0-py3-none-any.whl", hash = "sha256:dbaea9054f0e3547d9e5810390304574808d9cb5d77198b8a247f497271c8254"},
+    {file = "google_genai-0.8.0.tar.gz", hash = "sha256:b5730bcb144177cfcf6cfe44ab59611f8dec3f7c44599cfb321d5d71856a910e"},
 ]
 
 [[package]]

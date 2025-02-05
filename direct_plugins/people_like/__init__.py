@@ -11,7 +11,19 @@ from nonebot.plugin import PluginMetadata
 from nonebot.params import Depends
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Message, MessageSegment
-from google.genai.types import Part, Tool, GenerateContentConfig, GoogleSearch, SafetySetting, ToolListUnion
+from google.genai.types import (
+    Part,
+    Tool,
+    GenerateContentConfig,
+    GoogleSearch,
+    SafetySetting,
+    ToolListUnion,
+    FunctionDeclaration,
+    Schema,
+    Type,
+    HarmCategory,
+    HarmBlockThreshold,
+)
 from google import genai
 
 from common.struct import ExpirableDict
@@ -23,6 +35,7 @@ import nonebot_plugin_localstore as store
 from .setting import get_value_or_default, get_blacklist
 from .config import Config, plugin_config
 from .model import Character, ChatMsg, GroupMemberDict
+from .image_send import _GEMINI_CLIENT, get_file_name_of_image_will_sent
 
 __plugin_meta__ = PluginMetadata(
     name="people-like",
@@ -35,7 +48,6 @@ GROUP_MESSAGE_SEQUENT: dict[int, list[ChatMsg]] = {}
 """群号，消息上下文列表
 """
 
-_GEMINI_CLIENT = genai.Client(api_key=plugin_config.gemini_key)
 
 _GOOGLE_SEARCH_TOOL = Tool(google_search=GoogleSearch())
 
@@ -278,15 +290,15 @@ async def extract_msg_in_group_message_event(event: GroupMessageEvent) -> list[P
     members.add_member(int(event.user_id), sender_nickname)
     GROUP_MEMBER_DICT.update({gid: members})
 
-    target.append(Part.from_text(f"[{sender_nickname}]"))
+    target.append(Part.from_text(text=f"[{sender_nickname}]"))
     if event.is_tome():
-        target.append(Part.from_text(f"@{await get_bot_nickname_of_group(gid)} "))
+        target.append(Part.from_text(text=f"@{await get_bot_nickname_of_group(gid)} "))
     for ms in em:
         match ms.type:
             case "text":
-                target.append(Part.from_text(ms.data["text"]))
+                target.append(Part.from_text(text=ms.data["text"]))
             case "at":
-                target.append(Part.from_text(f"@{await get_user_nickname_of_group(gid, int(ms.data['qq']))} "))
+                target.append(Part.from_text(text=f"@{await get_user_nickname_of_group(gid, int(ms.data['qq']))} "))
             case "image":
                 if plugin_config.image_analyze:
                     # 下载图片进行处理
@@ -411,7 +423,23 @@ async def chat_with_gemini(
 
     enable_search = bool(get_value_or_default(group_id, "search"))
 
-    tools: Optional[ToolListUnion] = [_GOOGLE_SEARCH_TOOL] if enable_search else None
+    send_meme_function = FunctionDeclaration(
+        name="send_meme",
+        description="根据给定描述信息搜索并发送meme图片",
+        parameters=Schema(
+            type=Type.OBJECT,
+            properties={
+                "description": Schema(
+                    type=Type.STRING, description="图片描述信息，如在做XXX事等，或者描述心境的词汇，如开心，生气等等"
+                ),
+            },
+        ),
+    )
+
+    tools: ToolListUnion = [Tool(function_declarations=[send_meme_function])]
+
+    if enable_search:
+        tools.append(_GOOGLE_SEARCH_TOOL)
 
     resp = await _GEMINI_CLIENT.aio.models.generate_content(
         model="gemini-2.0-flash-exp",
@@ -424,12 +452,20 @@ async def chat_with_gemini(
             response_mime_type="text/plain",
             tools=tools,
             safety_settings=[
-                SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="OFF"),
-                SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="OFF"),
-                SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="OFF"),
-                SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="OFF"),
-                SafetySetting(category="HARM_CATEGORY_CIVIC_INTEGRITY", threshold="OFF"),
+                SafetySetting(category=HarmCategory.HARM_CATEGORY_HARASSMENT, threshold=HarmBlockThreshold.OFF),
+                SafetySetting(category=HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold=HarmBlockThreshold.OFF),
+                SafetySetting(category=HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold=HarmBlockThreshold.OFF),
+                SafetySetting(category=HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold=HarmBlockThreshold.OFF),
+                SafetySetting(category=HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY, threshold=HarmBlockThreshold.OFF),
             ],
         ),
     )
-    return resp.text
+    # 如果有函数调用，则传递函数调用的参数，进行图片发送
+    if resp.function_calls:
+        for fc in resp.function_calls:
+            if fc.name == "send_meme" and fc.args:
+                description = fc.args.get("description")
+                logger.debug(f"群{group_id}调用函数{fc.name}，参数{description}")
+                await get_file_name_of_image_will_sent(str(description), group_id)
+    else:
+        return resp.text
