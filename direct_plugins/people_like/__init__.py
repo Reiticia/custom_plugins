@@ -403,6 +403,7 @@ async def chat_with_gemini(
 你需要根据对话上下文的内容给出适合的回复内容，不需要使用敬语，也不要过度夸张地使用感叹词，与上下文语气保持一致即可。
 不要在你的回复中出现markdown语法。
 不要在句首使用我规定的说话人语法，正常回复即可。
+如果需要回复表情图片，请使用 send_meme 函数，并传入描述信息
 请明确别人的对话目标，当别人的问题提及到其他人回答时，请不要抢答。\n
 """
     contents = []
@@ -449,7 +450,6 @@ async def chat_with_gemini(
             top_p=top_p,
             top_k=top_k,
             max_output_tokens=c_len,
-            response_mime_type="text/plain",
             tools=tools,
             safety_settings=[
                 SafetySetting(category=HarmCategory.HARM_CATEGORY_HARASSMENT, threshold=HarmBlockThreshold.OFF),
@@ -468,4 +468,4 @@ async def chat_with_gemini(
                 logger.debug(f"群{group_id}调用函数{fc.name}，参数{description}")
                 await get_file_name_of_image_will_sent(str(description), group_id)
     else:
-        return resp.text
+        return res if "send_meme" not in str(res := resp.text) else None

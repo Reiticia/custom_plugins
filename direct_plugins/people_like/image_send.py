@@ -11,10 +11,10 @@ from google.genai.types import Part, GenerateContentConfig, SafetySetting, HarmC
 from google import genai
 from .config import plugin_config
 from pydantic import BaseModel
+import json
 
 
-
-_GEMINI_CLIENT = genai.Client(api_key=plugin_config.gemini_key)
+_GEMINI_CLIENT = genai.Client(api_key=plugin_config.gemini_key, http_options={"api_version": "v1alpha"})
 
 image_dir_path = store.get_data_dir("people_like") / "image"
 
@@ -23,7 +23,6 @@ class ImageId(BaseModel):
     id: str
     """图片id
     """
-
 
 
 async def get_file_name_of_image_will_sent(description: str, group_id: int):
@@ -78,16 +77,15 @@ async def get_file_name_of_image_will_sent(description: str, group_id: int):
     )
 
     logger.debug(f"获取图片id成功，返回结果：{resp.text}")
+    id = json.loads(str(resp.text))["id"]
+    await send_image(id, group_id)
 
-    if isinstance(resp.text, ImageId):
-        await send_image(resp.text, group_id)
 
-
-async def send_image(file_name: ImageId, group_id: int):
+async def send_image(file_name: str, group_id: int):
     """根据文件名称发送图片"""
     bot = get_bot()
-    logger.debug(f"发送图片{file_name.id}到群{group_id}")
-    async with aopen(image_dir_path.joinpath(file_name.id), "rb") as f:
+    logger.debug(f"发送图片{file_name}到群{group_id}")
+    async with aopen(image_dir_path.joinpath(file_name), "rb") as f:
         content = await f.read()
     if isinstance(bot, OB11Bot):
         await bot.send_group_msg(group_id=group_id, message=Message(MessageSegment.image(content)))
@@ -103,6 +101,8 @@ _HTTP_CLIENT = AsyncClient()
 
 @on_message(rule=inc_image).handle()
 async def add_image(event: GroupMessageEvent):
+    if not image_dir_path.exists():
+        image_dir_path.mkdir(parents=True)
     ms = event.message.include("image")
     image_ms = [m for m in ms if (s := m.data["summary"]) is not None and s != ""]
     for m in image_ms:
