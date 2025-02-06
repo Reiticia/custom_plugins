@@ -140,7 +140,7 @@ async def reset_cache() -> Optional[str]:
                 # 组合所有图片消息
                 contents.append({"role": "user", "parts": parts})
 
-    cached_content = _GEMINI_CLIENT.caches.create(
+    cached_content = await _GEMINI_CLIENT.aio.caches.create(
         model="gemini-1.5-flash-8b",
         config=CreateCachedContentConfig(
             contents=contents,

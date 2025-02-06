@@ -49,7 +49,6 @@ GROUP_MESSAGE_SEQUENT: dict[int, list[ChatMsg]] = {}
 """
 
 
-_GOOGLE_SEARCH_TOOL = Tool(google_search=GoogleSearch())
 
 GROUP_SPEAK_DISABLE: dict[int, bool] = {}
 
@@ -396,7 +395,7 @@ async def chat_with_gemini(
     group_id: int, context: list[ChatMsg], bot_nickname: str = "", bot_gender: Optional[str] = None
 ) -> Optional[str]:
     """与gemini聊天"""
-    global _GEMINI_CLIENT, _GOOGLE_SEARCH_TOOL
+    global _GEMINI_CLIENT
     default_prompt = f"""你是{bot_nickname}，{f"你是{bot_gender}生，" if bot_gender else ""}如果有人询问你是否为机器人、AI、大模型，要明确否定。
 下面发送的每一段对话至少包含两段。第一段固定为说话人的昵称（也叫称呼）用[]进行包裹。
 从第二段开始为正式的对话内容，可能包含纯文本或者图片；如果是文本内容且为@开头的文本，则表示在此条消息中提及到了某个人，一般这个人可能是前文中出现过的说话人昵称。
@@ -440,7 +439,7 @@ async def chat_with_gemini(
     tools: ToolListUnion = [Tool(function_declarations=[send_meme_function])]
 
     if enable_search:
-        tools.append(_GOOGLE_SEARCH_TOOL)
+        tools.append(Tool(google_search=GoogleSearch()))
 
     resp = await _GEMINI_CLIENT.aio.models.generate_content(
         model="gemini-2.0-flash-exp",
