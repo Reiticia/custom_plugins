@@ -1,4 +1,5 @@
-from nonebot import get_bot, logger, on_message
+from email import mime
+from nonebot import get_bot, logger, on_message, get_driver
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageSegment, Bot as OB11Bot
 import nonebot_plugin_localstore as store  # noqa: E402
 from httpx import AsyncClient
@@ -8,12 +9,15 @@ import os
 from typing import Literal, Optional
 
 from google.genai.types import (
+    File,
     Part,
     GenerateContentConfig,
     SafetySetting,
     HarmCategory,
     HarmBlockThreshold,
-    CreateCachedContentConfig,
+    Content,
+    ContentListUnion,
+    UploadFileConfig,
 )
 from google import genai
 from .config import plugin_config
@@ -32,14 +36,19 @@ _GEMINI_CLIENT = genai.Client(
 
 image_dir_path = store.get_data_dir("people_like") / "image"
 
-_CONFIG_DIR = store.get_config_dir("people_like")
 
-_CACHE_PROFILE = _CONFIG_DIR / "cache_profile.txt"
+class LocalFile(BaseModel):
+    mime_type: Literal["image/jpeg", "image/png"]
+    file_name: str
+    file: File
 
 
-class ImageId(BaseModel):
-    id: str
-    """图片id
+_FILES: list[LocalFile] = []
+
+
+class ImageName(BaseModel):
+    name: str
+    """图片名称
     """
 
 
@@ -51,21 +60,38 @@ async def get_file_name_of_image_will_sent(description: str, group_id: int):
         group_id (int): 群号
     """
     global _GEMINI_CLIENT
-    if _CACHE_PROFILE.exists():
-        cached_content_name = _CACHE_PROFILE.read_text()
-        if not cached_content_name:
-            cached_content_name = await reset_cache()
-    else:
-        cached_content_name = await reset_cache()
+    prompt = "根据给定的描述信息，从下面图片中选择一张最符合该描述信息的图片，返回其图片名称"
+    contents: ContentListUnion = [
+        Content(
+            role="user",
+            parts=[
+                Part.from_uri(file_uri=str(local_file.file.uri), mime_type=str(local_file.file.mime_type)),
+                Part.from_text(
+                    text=f"图片名称：{local_file.file_name}",
+                ),
+            ],
+        )
+        for local_file in _FILES
+    ]
 
+    contents.append(
+        Content(
+            role="user",
+            parts=[
+                Part.from_text(
+                    text=description,
+                )
+            ],
+        )
+    )
 
     resp = await _GEMINI_CLIENT.aio.models.generate_content(
-        model="gemini-1.5-flash-8b",
-        contents=description,
+        model="gemini-2.0-flash-exp",
+        contents=contents,
         config=GenerateContentConfig(
-            cached_content=cached_content_name,
+            system_instruction=prompt,
             response_mime_type="application/json",
-            response_schema=ImageId,
+            response_schema=ImageName,
             safety_settings=[
                 SafetySetting(category=HarmCategory.HARM_CATEGORY_HARASSMENT, threshold=HarmBlockThreshold.OFF),
                 SafetySetting(category=HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold=HarmBlockThreshold.OFF),
@@ -109,50 +135,47 @@ async def add_image(event: GroupMessageEvent):
         url = m.data["url"]
         file_name = str(m.data.get("file"))
         resp = await _HTTP_CLIENT.get(url)
-        async with aopen(image_dir_path.joinpath(file_name), "wb") as f:
+        async with aopen((file_path := image_dir_path.joinpath(file_name)), "wb") as f:
             await f.write(resp.content)
         logger.info(f"下载图片{file_name}成功")
+        # 上传图片到gemini
+        suffix_name = str(file_name).split(".")[-1]
+        mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
+        match suffix_name:
+            case "jpg" | "gif":
+                mime_type = "image/jpeg"
+            case "png":
+                mime_type = "image/png"
+        file = await _GEMINI_CLIENT.aio.files.upload(file=file_path, config=UploadFileConfig(mime_type=mime_type))
+        _FILES.append(LocalFile(mime_type=mime_type, file_name=file_name, file=file))
 
 
+driver = get_driver()
 
-@scheduler.scheduled_job("cron", hour="0", id="reset_cache")
-async def reset_cache() -> Optional[str]:
+
+inited = False
+
+
+@driver.on_bot_connect
+async def upload_image() -> Optional[str]:
     """每天0点重置缓存"""
-    global _CACHE_PROFILE
+    global inited
+    if inited:
+        return
+    inited = True
+    global _FILES, _GEMINI_CLIENT
     # 发送图片缓存后重置缓存键名
-    contents = []
+    files = []
     # 遍历图片，组成contents
     for _, _, files in os.walk(image_dir_path):
-        for file in files:
-            async with aopen(image_dir_path.joinpath(file), "rb") as f:
-                content = await f.read()
-                suffix_name = str(file).split(".")[-1]
-                mime_type: Literal["image/jpeg", "image/gif", "image/png"] = "image/jpeg"
-                match suffix_name:
-                    case "jpg":
-                        mime_type = "image/jpeg"
-                    case "gif":
-                        mime_type = "image/gif"
-                    case "png":
-                        mime_type = "image/png"
-                # 将文件名作为id，以及图片二进制信息作为一条消息发送
-                parts = [Part.from_text(text=f"id: {file}"), Part.from_bytes(data=content, mime_type=mime_type)]
-                # 组合所有图片消息
-                contents.append({"role": "user", "parts": parts})
-
-    cached_content = await _GEMINI_CLIENT.aio.caches.create(
-        model="gemini-1.5-flash-8b",
-        config=CreateCachedContentConfig(
-            contents=contents,
-            system_instruction="根据给定的描述信息，从下面图片中选择一张最符合该描述信息的图片，返回其id",
-            ttl=f"{48 * 60 * 60 - 1}s",  # 48小时 - 1秒过期
-        ),
-    )
-
-    logger.debug(f"创建缓存成功，返回结果：{cached_content.name}")
-
-    # 更新缓存键
-    async with aopen(_CACHE_PROFILE, "w") as f:
-        await f.write(str(cached_content.name))
-
-    return cached_content.name
+        for local_file in files:
+            suffix_name = str(local_file).split(".")[-1]
+            mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
+            match suffix_name:
+                case "jpg" | "gif":
+                    mime_type = "image/jpeg"
+                case "png":
+                    mime_type = "image/png"
+            file_path = image_dir_path / local_file
+            file = await _GEMINI_CLIENT.aio.files.upload(file=file_path, config=UploadFileConfig(mime_type=mime_type))
+            _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=file))
