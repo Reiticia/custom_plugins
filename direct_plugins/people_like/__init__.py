@@ -24,12 +24,12 @@ from google.genai.types import (
     HarmCategory,
     HarmBlockThreshold,
 )
-from google import genai
 
 from common.struct import ExpirableDict
 
 require("nonebot_plugin_localstore")
 require("nonebot_plugin_waiter")
+require("nonebot_plugin_apscheduler")
 
 import nonebot_plugin_localstore as store
 from .setting import get_value_or_default, get_blacklist
