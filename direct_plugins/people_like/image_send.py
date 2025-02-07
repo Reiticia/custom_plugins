@@ -1,6 +1,5 @@
-from email import mime
 from nonebot import get_bot, logger, on_message, get_driver
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageSegment, Bot as OB11Bot
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageSegment, Bot as OB11Bot
 import nonebot_plugin_localstore as store  # noqa: E402
 from httpx import AsyncClient
 from aiofiles import open as aopen
@@ -52,7 +51,7 @@ class ImageName(BaseModel):
     """
 
 
-async def get_file_name_of_image_will_sent(description: str, group_id: int):
+async def get_file_name_of_image_will_sent(description: str, group_id: int) -> MessageSegment | None:
     """根据描述信息获取最匹配的图片文件名
 
     Args:
@@ -103,18 +102,21 @@ async def get_file_name_of_image_will_sent(description: str, group_id: int):
     )
 
     logger.debug(f"获取图片id成功，返回结果：{resp.text}")
-    id = json.loads(str(resp.text))["name"]
-    await send_image(id, group_id)
+    name = json.loads(str(resp.text))["name"]
+    return await send_image(name, group_id)
 
 
-async def send_image(file_name: str, group_id: int):
+async def send_image(file_name: str, group_id: int) -> MessageSegment | None:
     """根据文件名称发送图片"""
     bot = get_bot()
     logger.debug(f"发送图片{file_name}到群{group_id}")
     async with aopen(image_dir_path.joinpath(file_name), "rb") as f:
         content = await f.read()
     if isinstance(bot, OB11Bot):
-        await bot.send_group_msg(group_id=group_id, message=Message(MessageSegment.image(content)))
+        # await bot.send_group_msg(group_id=group_id, message=Message(MessageSegment.image(content)))
+        return MessageSegment.image(content)
+    else:
+        return None
 
 
 async def inc_image(event: GroupMessageEvent) -> bool:
