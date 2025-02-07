@@ -103,7 +103,7 @@ async def get_file_name_of_image_will_sent(description: str, group_id: int):
     )
 
     logger.debug(f"获取图片id成功，返回结果：{resp.text}")
-    id = json.loads(str(resp.text))["id"]
+    id = json.loads(str(resp.text))["name"]
     await send_image(id, group_id)
 
 
