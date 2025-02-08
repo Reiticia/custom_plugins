@@ -137,8 +137,10 @@ async def add_image(event: GroupMessageEvent):
         url = m.data["url"]
         file_name = str(m.data.get("file"))
         resp = await _HTTP_CLIENT.get(url)
-        async with aopen((file_path := image_dir_path.joinpath(file_name)), "wb") as f:
-            await f.write(resp.content)
+        # 文件不存在则写入
+        if not (file_path := image_dir_path.joinpath(file_name)).exists():
+            async with aopen(file_path, "wb") as f:
+                await f.write(resp.content)
         logger.info(f"下载图片{file_name}成功")
         # 上传图片到gemini
         suffix_name = str(file_name).split(".")[-1]
