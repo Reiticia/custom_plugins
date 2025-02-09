@@ -158,6 +158,7 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
     # 1. 该群聊没有被闭嘴
     # 2. 满足回复时的概率 plugin_config.reply_probability
     # 3. 如果是提及机器人的消息 则回复概率为原回复概率 plugin_config.reply_probability 的 4 倍
+    
     if (
         (
             send := (
@@ -184,18 +185,14 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
                     # 先睡，睡完再发
                     await sleep_sometime(len(split_msg))
                     # 将回复消息种的 @xxx 转换成对应消息段
-                    split_msg = convert_at_to_at_segment(split_msg, group_id=gid)
-                    logger.debug(f"群{gid}回复消息：{split_msg}")
+                    split_msg = convert_at_to_at_segment(split_msg)
+                    logger.debug(f"群{gid}回复消息：{split_msg.extract_plain_text()}")
                     await on_msg.send(split_msg)
         if img:
             logger.info(f"群{gid}回复图片：{img}")
             await on_msg.send(img)
 
-
-GROUP_MEMBER_DICT: dict[int, GroupMemberDict] = {}
-
-
-def convert_at_to_at_segment(text: str, group_id: int) -> Message:
+def convert_at_to_at_segment(text: str) -> Message:
     """将 @xxx 转换成对应消息段
 
     Args:
@@ -204,27 +201,25 @@ def convert_at_to_at_segment(text: str, group_id: int) -> Message:
     Returns:
         str: 转换后的消息
     """
-    global GROUP_MEMBER_DICT
-    ms = text.split(" ")
-    new_ms: list[MessageSegment] = []
-    for om in ms:
-        m = om.strip()
-        # TODO 如果是@开头，则转化成@消息段
-        if m.startswith("@"):
-            nm = m.removeprefix("@")
-            user_id = GROUP_MEMBER_DICT.get(group_id, GroupMemberDict(group_id=group_id, members={})).get_id_by_name(
-                user_name=nm
-            )
-            if user_id is None:
-                # 找不到用户，则原样输出
-                new_ms.append(MessageSegment.text(om))
-            else:
-                # 找到用户，则转化成@消息段
-                new_ms.append(MessageSegment.at(user_id))
-        else:
-            new_ms.append(MessageSegment.text(m))
+    ms_list = []
+    pattern = r"(@\d+)"
 
-    return Message(new_ms)
+    # 使用 re.split 方法进行切割，保留 @id 字段
+    parts = re.split(pattern, text)
+
+    # 去除空字符串
+    parts = [part for part in parts if part.strip()]
+
+    for part in parts:
+        if part.startswith("@"):
+            # 找到 @id 字段
+            user_id = int(part[1:])
+            ms_list.append(MessageSegment.at(user_id))
+            ms_list.append(MessageSegment.text(" "))
+        else:
+            # 非 @id 字段，直接添加
+            ms_list.append(MessageSegment.text(part))
+    return Message(ms_list)
 
 
 def is_self_msg(bot: Bot, event: Event) -> bool:
@@ -278,19 +273,13 @@ _CACHE_DIR = store.get_cache_dir("people_like")
 
 async def extract_msg_in_group_message_event(event: GroupMessageEvent) -> list[Part]:
     """提取群消息事件中的消息内容"""
-    global _HTTP_CLIENT, _CACHE_DIR, GROUP_MEMBER_DICT
+    global _HTTP_CLIENT, _CACHE_DIR
     em = event.message
     gid = event.group_id
     target: list[Part] = []
     sender_nickname = await get_user_nickname_of_group(gid, int(event.user_id))
 
-    # 建立对应群组中用户昵称与id的映射关系
-    if not (members := GROUP_MEMBER_DICT.get(gid)):
-        members = GroupMemberDict(group_id=gid, members={})
-    members.add_member(int(event.user_id), sender_nickname)
-    GROUP_MEMBER_DICT.update({gid: members})
-
-    target.append(Part.from_text(text=f"[{sender_nickname}]"))
+    target.append(Part.from_text(text=f"[{sender_nickname}<{event.user_id}>]"))
     if event.is_tome():
         target.append(Part.from_text(text=f"@{await get_bot_nickname_of_group(gid)} "))
     for ms in em:
@@ -298,7 +287,7 @@ async def extract_msg_in_group_message_event(event: GroupMessageEvent) -> list[P
             case "text":
                 target.append(Part.from_text(text=ms.data["text"]))
             case "at":
-                target.append(Part.from_text(text=f"@{await get_user_nickname_of_group(gid, int(ms.data['qq']))} "))
+                target.append(Part.from_text(text=f"@{ms.data['qq']} "))
             case "image":
                 if plugin_config.image_analyze:
                     # 下载图片进行处理
@@ -398,8 +387,8 @@ async def chat_with_gemini(
     """与gemini聊天"""
     global _GEMINI_CLIENT
     default_prompt = f"""你是{bot_nickname}，{f"你是{bot_gender}生，" if bot_gender else ""}如果有人询问你是否为机器人、AI、大模型，要明确否定。
-下面发送的每一段对话至少包含两段。第一段固定为说话人的昵称（也叫称呼）用[]进行包裹，其中<>里表示这个人的编号。
-从第二段开始为正式的对话内容，可能包含纯文本或者图片；如果是文本内容且为@开头的文本，则表示在此条消息中提及到了某个人，一般这个人可能是前文中出现过的说话人昵称。
+下面发送的每一段对话至少包含两段。第一段固定为说话人的昵称（也叫称呼）用[]进行包裹，其中<>里包裹这个人的id，你可以使用@id的方式提及某人。
+从第二段开始为正式的对话内容，可能包含纯文本或者图片；如果是文本内容且为@id，则表示在此条消息中提及到了这个id对应的人，一般这个人可能是前文中出现过的说话人昵称。
 你需要根据对话上下文的内容给出适合的回复内容，不需要使用敬语，也不要过度夸张地使用感叹词，与上下文语气保持一致即可。
 不要在你的回复中出现markdown语法。
 不要在句首使用我规定的说话人语法，正常回复即可。
