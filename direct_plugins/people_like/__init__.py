@@ -184,10 +184,11 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
                 if all(ignore not in split_msg for ignore in words) and not GROUP_SPEAK_DISABLE.get(gid, False):
                     # 先睡，睡完再发
                     await sleep_sometime(len(split_msg))
-                    # 将回复消息种的 @xxx 转换成对应消息段
-                    split_msg = convert_at_to_at_segment(split_msg)
-                    logger.debug(f"群{gid}回复消息：{split_msg.extract_plain_text()}")
-                    await on_msg.send(split_msg)
+                    if not GROUP_SPEAK_DISABLE.get(gid, False):
+                        # 将回复消息种的 @xxx 转换成对应消息段
+                        split_msg = convert_at_to_at_segment(split_msg)
+                        logger.debug(f"群{gid}回复消息：{split_msg.extract_plain_text()}")
+                        await on_msg.send(split_msg)
         if img:
             logger.info(f"群{gid}回复图片：{img}")
             await on_msg.send(img)
