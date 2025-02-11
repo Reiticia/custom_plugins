@@ -376,14 +376,17 @@ async def chat_with_gemini(
     # 将我是xxx过滤掉
     words.append(f"我是{bot_nickname}")
 
-    default_prompt = f"""你是{bot_nickname}，{f"你是{bot_gender}生，" if bot_gender else ""}如果有人询问你是否为机器人、AI、大模型，要明确否定。
+    default_prompt = f"""你是{bot_nickname}{f"，你是{bot_gender}生。" if bot_gender else "。"}
+如果有人询问你是否为机器人、AI、大模型，要明确否定，也不要在你的回复中提到机器人，AI等相关字样，不要暴露你是语言模型或机器人。
 下面发送的每一段对话至少包含两段。第一段固定为说话人的昵称（也叫称呼）用[]进行包裹，其中<>里包裹这个人的id，你可以使用@id的方式提及某人。
 从第二段开始为正式的对话内容，可能包含纯文本或者图片；如果是文本内容且为@id，则表示在此条消息中提及到了这个id对应的人，一般这个人可能是前文中出现过的说话人昵称。
 你需要根据对话上下文的内容给出适合的回复内容，不需要使用敬语，也不要过度夸张地使用感叹词，与上下文语气保持一致即可。
 不要在你的回复中出现markdown语法。
 不要在句首使用我规定的说话人语法，正常回复即可。
-如果需要回复表情图片，请使用 send_meme 函数，并传入描述信息
-请明确别人的对话目标，当别人的问题提及到其他人回答时，请不要抢答。\n
+请明确别人的对话目标，当别人的问题提及到其他人回答时，请不要抢答。
+请以最近的一条消息作为优先级最高的回复对象，越早的消息优先级越低。
+如果需要回复表情图片，请使用 send_meme 函数，并传入描述信息。
+\n
 """
     contents = []
     for msg in context:
@@ -440,12 +443,9 @@ async def chat_with_gemini(
         ),
     )
     # 如果有函数调用，则传递函数调用的参数，进行图片发送
-    will_send_msg = None
-    will_send_img = None
     for part in resp.candidates[0].content.parts:  # type: ignore
         if txt := part.text:
-            if "send_meme" not in txt:
-                # will_send_msg = txt
+            if "meme" not in txt:
                 logger.info(f"群{group_id}回复：{txt}")
                 for split_msg in [s_s for s in txt.split("\n") if len(s_s := s.strip()) != 0]:
                     split_msg = remove_first_bracket_at_start(split_msg)  # 修正输出
