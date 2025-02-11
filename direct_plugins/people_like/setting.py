@@ -87,7 +87,6 @@ def get_blacklist() -> list[str]:
     return BLACK_LIST
 
 
-
 @on_command(cmd="gp", permission=SUPERUSER, rule=to_me(), priority=1, block=True).handle()
 async def get_property(bot: Bot, matcher: Matcher, e: MessageEvent):
     """通过指令获取群组属性"""

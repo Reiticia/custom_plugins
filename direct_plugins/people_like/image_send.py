@@ -1,5 +1,6 @@
-from nonebot import get_bot, logger, on_message, get_driver
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageSegment, Bot as OB11Bot
+from nonebot import get_bot, logger, on_command, on_message, get_driver
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent, MessageSegment, Bot as OB11Bot
+from nonebot.permission import SUPERUSER
 import nonebot_plugin_localstore as store  # noqa: E402
 from httpx import AsyncClient
 from aiofiles import open as aopen
@@ -103,7 +104,17 @@ async def get_file_name_of_image_will_sent(description: str, group_id: int) -> M
 
     logger.debug(f"获取图片id成功，返回结果：{resp.text}")
     name = json.loads(str(resp.text))["name"]
-    return await send_image(name, group_id)
+    parts = [
+        Part.from_uri(file_uri=str(local_file.file.uri), mime_type=str(local_file.file.mime_type))
+        for local_file in _FILES
+        if local_file.file_name == name
+    ]
+    if analysis_image(parts):
+        logger.info(f"图片{name}包含违禁内容, 已删除")
+        os.remove(image_dir_path.joinpath(name))
+        return None
+    else:
+        return await send_image(name, group_id)
 
 
 async def send_image(file_name: str, group_id: int) -> MessageSegment | None:
@@ -117,6 +128,69 @@ async def send_image(file_name: str, group_id: int) -> MessageSegment | None:
         return MessageSegment.image(content)
     else:
         return None
+
+
+async def analysis_image(file_part: list[Part]) -> bool:
+    """分析图片是否包含违禁内容"""
+
+    class AnalysisResult(BaseModel):
+        is_adult: bool
+        """色情内容"""
+        is_violence: bool
+        """暴力内容"""
+
+    global _GEMINI_CLIENT
+    prompt = "根据给出的图片内容，判断是否含有色情内容或者暴力内容，返回指定数据类型"
+    file_part.append(Part.from_text(text="分析图片是否包含色情内容或者暴力内容"))
+    contents: ContentListUnion = [Content(role="user", parts=file_part)]
+    resp = await _GEMINI_CLIENT.aio.models.generate_content(
+        model="gemini-2.0-flash-exp",
+        contents=contents,
+        config=GenerateContentConfig(
+            system_instruction=prompt,
+            response_mime_type="application/json",
+            response_schema=AnalysisResult,
+            safety_settings=[
+                SafetySetting(category=HarmCategory.HARM_CATEGORY_HARASSMENT, threshold=HarmBlockThreshold.OFF),
+                SafetySetting(category=HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold=HarmBlockThreshold.OFF),
+                SafetySetting(category=HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold=HarmBlockThreshold.OFF),
+                SafetySetting(category=HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold=HarmBlockThreshold.OFF),
+                SafetySetting(category=HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY, threshold=HarmBlockThreshold.OFF),
+            ],
+        ),
+    )
+
+    logger.debug(f"分析图片成功，返回结果：{resp.text}")
+    is_adult: bool = (r := json.loads(str(resp.text)))["is_adult"]
+    is_violence: bool = r["is_violence"]
+    return is_adult or is_violence
+
+
+anti_image = on_command("ani", permission=SUPERUSER)
+
+
+@anti_image.handle()
+async def anti(e: MessageEvent):
+    """分析图片"""
+    if ims := e.message.include("image"):
+        parts = []
+        for im in ims:
+            resp = await _HTTP_CLIENT.get(im.data["url"])
+            byte_content = resp.read()
+            file_name = str(im.data["file"])
+            suffix_name = str(file_name).split(".")[-1]
+            mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
+            match suffix_name:
+                case "jpg" | "gif":
+                    mime_type = "image/jpeg"
+                case "png":
+                    mime_type = "image/png"
+            parts.append(Part.from_bytes(data=byte_content, mime_type=mime_type))
+        res = await analysis_image(parts)
+        if res:
+            await anti_image.finish("图片包含违禁内容")
+        else:
+            await anti_image.finish("图片不包含违禁内容")
 
 
 async def inc_image(event: GroupMessageEvent) -> bool:

@@ -24,6 +24,7 @@ from google.genai.types import (
     HarmCategory,
     HarmBlockThreshold,
 )
+from nonebot_plugin_waiter import Matcher
 
 from common.struct import ExpirableDict
 
@@ -47,8 +48,6 @@ __plugin_meta__ = PluginMetadata(
 GROUP_MESSAGE_SEQUENT: dict[int, list[ChatMsg]] = {}
 """群号，消息上下文列表
 """
-
-
 
 GROUP_SPEAK_DISABLE: dict[int, bool] = {}
 
@@ -99,11 +98,11 @@ async def _(event: GroupMessageEvent):
     GROUP_SPEAK_DISABLE.update({gid: False})
 
 
-on_msg = on_message(priority=5)
+on_msg: type[Matcher] = on_message(priority=5)
 
 
 @on_msg.handle()
-async def receive_group_msg(event: GroupMessageEvent) -> None:
+async def receive_group_msg(event: GroupMessageEvent, matcher: Matcher) -> None:
     global GROUP_MESSAGE_SEQUENT, GROUP_SPEAK_DISABLE
     # 群组id
     gid = event.group_id
@@ -158,7 +157,7 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
     # 1. 该群聊没有被闭嘴
     # 2. 满足回复时的概率 plugin_config.reply_probability
     # 3. 如果是提及机器人的消息 则回复概率为原回复概率 plugin_config.reply_probability 的 4 倍
-    
+
     if (
         (
             send := (
@@ -174,24 +173,8 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
             )
         )
     ) and not GROUP_SPEAK_DISABLE.get(gid, False):
-        txt, img = await chat_with_gemini(gid, msgs, nickname, (await get_bot_gender()))
-        if txt:
-            logger.info(f"群{gid}回复：{txt}")
-            for split_msg in [s_s for s in txt.split("\n") if len(s_s := s.strip()) != 0]:
-                split_msg = remove_first_bracket_at_start(split_msg)  # 修正输出
-                if split_msg.endswith("。"):
-                    split_msg = split_msg[0:-1]
-                if all(ignore not in split_msg for ignore in words) and not GROUP_SPEAK_DISABLE.get(gid, False):
-                    # 先睡，睡完再发
-                    await sleep_sometime(len(split_msg))
-                    if not GROUP_SPEAK_DISABLE.get(gid, False):
-                        # 将回复消息种的 @xxx 转换成对应消息段
-                        split_msg = convert_at_to_at_segment(split_msg)
-                        logger.debug(f"群{gid}回复消息：{split_msg.extract_plain_text()}")
-                        await on_msg.send(split_msg)
-        if img:
-            logger.info(f"群{gid}回复图片：{img}")
-            await on_msg.send(img)
+        await chat_with_gemini(gid, msgs, nickname, (await get_bot_gender()))
+
 
 def convert_at_to_at_segment(text: str) -> Message:
     """将 @xxx 转换成对应消息段
@@ -384,9 +367,15 @@ def handle_context_list(
 
 async def chat_with_gemini(
     group_id: int, context: list[ChatMsg], bot_nickname: str = "", bot_gender: Optional[str] = None
-) -> tuple[Optional[str], Optional[MessageSegment]]:
+):
     """与gemini聊天"""
     global _GEMINI_CLIENT
+
+    do_not_send_words = Path(__file__).parent / "do_not_send.txt"
+    words = [s.strip() for s in do_not_send_words.read_text(encoding="utf-8").splitlines()]
+    # 将我是xxx过滤掉
+    words.append(f"我是{bot_nickname}")
+
     default_prompt = f"""你是{bot_nickname}，{f"你是{bot_gender}生，" if bot_gender else ""}如果有人询问你是否为机器人、AI、大模型，要明确否定。
 下面发送的每一段对话至少包含两段。第一段固定为说话人的昵称（也叫称呼）用[]进行包裹，其中<>里包裹这个人的id，你可以使用@id的方式提及某人。
 从第二段开始为正式的对话内容，可能包含纯文本或者图片；如果是文本内容且为@id，则表示在此条消息中提及到了这个id对应的人，一般这个人可能是前文中出现过的说话人昵称。
@@ -405,7 +394,7 @@ async def chat_with_gemini(
                 case Character.BOT:
                     contents.append({"role": "model", "parts": c})
     if len(contents) == 0:
-        return None,None
+        return None, None
     prompt = get_value_or_default(group_id, "prompt", "")
     prompt = default_prompt + prompt
     top_p = float(p) if (p := get_value_or_default(group_id, "top_p")) else None
@@ -453,16 +442,32 @@ async def chat_with_gemini(
     # 如果有函数调用，则传递函数调用的参数，进行图片发送
     will_send_msg = None
     will_send_img = None
-    for part in resp.candidates[0].content.parts: # type: ignore
-        if txt :=part.text:
+    for part in resp.candidates[0].content.parts:  # type: ignore
+        if txt := part.text:
             if "send_meme" not in txt:
-                will_send_msg = txt
+                # will_send_msg = txt
+                logger.info(f"群{group_id}回复：{txt}")
+                for split_msg in [s_s for s in txt.split("\n") if len(s_s := s.strip()) != 0]:
+                    split_msg = remove_first_bracket_at_start(split_msg)  # 修正输出
+                    if split_msg.endswith("。"):
+                        split_msg = split_msg[0:-1]
+                    if all(ignore not in split_msg for ignore in words) and not GROUP_SPEAK_DISABLE.get(
+                        group_id, False
+                    ):
+                        # 先睡，睡完再发
+                        await sleep_sometime(len(split_msg))
+                        if not GROUP_SPEAK_DISABLE.get(group_id, False):
+                            # 将回复消息种的 @xxx 转换成对应消息段
+                            split_msg = convert_at_to_at_segment(split_msg)
+                            logger.debug(f"群{group_id}回复消息：{split_msg.extract_plain_text()}")
+                            await on_msg.send(split_msg)
         elif fc := part.function_call:
             if fc.name == "send_meme" and fc.args:
                 description = fc.args.get("description")
                 logger.debug(f"群{group_id}调用函数{fc.name}，参数{description}")
                 will_send_img = await get_file_name_of_image_will_sent(str(description), group_id)
+                if will_send_img:
+                    logger.info(f"群{group_id}回复图片：{will_send_img}")
+                    await on_msg.send(will_send_img)
         else:
             pass
-
-    return will_send_msg, will_send_img
