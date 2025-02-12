@@ -206,7 +206,11 @@ async def add_image(event: GroupMessageEvent):
     if not image_dir_path.exists():
         image_dir_path.mkdir(parents=True)
     ms = event.message.include("image")
-    image_ms = [m for m in ms if (s := m.data["summary"]) is not None and s != "" and m.data["sub_type"] != 0]
+    image_ms = [
+        m
+        for m in ms
+        if (s := m.data["summary"]) is not None and s != "" and ((st := m.data.get("sub_type")) is None or st != 0)
+    ]
     for m in image_ms:
         url = m.data["url"]
         file_name = str(m.data.get("file"))
