@@ -467,7 +467,14 @@ async def chat_with_gemini(
     # 如果有函数调用，则传递函数调用的参数，进行图片发送
     for part in resp.candidates[0].content.parts:  # type: ignore
         if txt := part.text:
-            if "meme" not in txt and "ignore()" not in txt:
+            if "meme" in txt or "图片" in txt or "表情" in txt:
+                will_send_img = await get_file_name_of_image_will_sent(str(txt), group_id)
+                if will_send_img:
+                    logger.info(f"群{group_id}回复图片：{will_send_img}")
+                    await on_msg.send(will_send_img)
+            elif "ignore" in txt:
+                return
+            else:
                 logger.info(f"群{group_id}回复：{txt}")
                 for split_msg in [s_s for s in txt.split("\n") if len(s_s := s.strip()) != 0]:
                     split_msg = remove_first_bracket_at_start(split_msg)  # 修正输出
