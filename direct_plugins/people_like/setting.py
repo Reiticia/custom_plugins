@@ -19,7 +19,7 @@ PROPERTIES: dict[str, dict[str, str]] = json.loads(
     "{}" if not _PROFILE.exists() else text if (text := _PROFILE.read_text()) is not None else "{}"
 )
 
-_EXPECT_PROP_NAMES = ["prompt", "top_p", "top_k", "length", "search", "reply_probability", "at_reply_probability"]
+_EXPECT_PROP_NAMES = ["prompt", "topP", "topK", "temperature","enableEnhancedCivicAnswers", "length", "search", "reply_probability", "at_reply_probability"]
 
 _BLACK_LIST_FILE = _CONFIG_DIR / "blacklist.json"
 

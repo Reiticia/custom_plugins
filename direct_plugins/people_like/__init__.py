@@ -415,8 +415,12 @@ async def chat_with_gemini(
         return None, None
     prompt = get_value_or_default(group_id, "prompt", "无")
     prompt = default_prompt + prompt
-    top_p = float(p) if (p := get_value_or_default(group_id, "top_p")) else None
-    top_k = int(p) if (p := get_value_or_default(group_id, "top_k")) else None
+    top_p = float(p) if (p := get_value_or_default(group_id, "topP")) else None
+    top_k = int(p) if (p := get_value_or_default(group_id, "topK")) else None
+    temperature = float(p) if (p := get_value_or_default(group_id, "temperature")) else None
+    enable_enhanced_civic_answers = (
+        bool(p) if (p := get_value_or_default(group_id, "enableEnhancedCivicAnswers")) else None
+    )
     c_len = i_p if (p := get_value_or_default(group_id, "length", "0")) and (i_p := int(p)) > 0 else None
 
     enable_search = bool(get_value_or_default(group_id, "search"))
@@ -434,10 +438,7 @@ async def chat_with_gemini(
         ),
     )
 
-    ignore_function = FunctionDeclaration(
-        name="ignore",
-        description="不回复消息"
-    )
+    ignore_function = FunctionDeclaration(name="ignore", description="不回复消息")
 
     tools: ToolListUnion = [Tool(function_declarations=[send_meme_function, ignore_function])]
 
@@ -453,6 +454,7 @@ async def chat_with_gemini(
             top_k=top_k,
             max_output_tokens=c_len,
             tools=tools,
+            temperature=temperature,
             safety_settings=[
                 SafetySetting(category=HarmCategory.HARM_CATEGORY_HARASSMENT, threshold=HarmBlockThreshold.OFF),
                 SafetySetting(category=HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold=HarmBlockThreshold.OFF),
@@ -465,7 +467,7 @@ async def chat_with_gemini(
     # 如果有函数调用，则传递函数调用的参数，进行图片发送
     for part in resp.candidates[0].content.parts:  # type: ignore
         if txt := part.text:
-            if "meme" not in txt:
+            if "meme" not in txt and "ignore()" not in txt:
                 logger.info(f"群{group_id}回复：{txt}")
                 for split_msg in [s_s for s in txt.split("\n") if len(s_s := s.strip()) != 0]:
                     split_msg = remove_first_bracket_at_start(split_msg)  # 修正输出
