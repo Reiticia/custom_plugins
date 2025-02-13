@@ -109,7 +109,7 @@ async def get_file_name_of_image_will_sent(description: str, group_id: int) -> M
         for local_file in _FILES
         if local_file.file_name == name
     ]
-    if analysis_image(parts):
+    if await analysis_image(parts):
         logger.info(f"图片{name}包含违禁内容, 已删除")
         os.remove(image_dir_path.joinpath(name))
         return None
