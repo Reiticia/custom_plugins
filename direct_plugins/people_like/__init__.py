@@ -398,6 +398,7 @@ async def chat_with_gemini(
 ## 函数调用
 
 如果需要使用表情包增强语气，可以使用 send_meme 函数调用传入描述发送对应表情包。
+如何需要给群成员设置头衔，可以使用 set_group_member_title 函数调用传入用户 id 和要设置的头衔内容 。
 如果无需对对话进行回复，或无法对上述对话表达意见，请仅调用 ignore 函数，不要回复任何文本内容。
 
 ## 额外设定
@@ -440,7 +441,21 @@ async def chat_with_gemini(
 
     ignore_function = FunctionDeclaration(name="ignore", description="不回复消息")
 
-    tools: ToolListUnion = [Tool(function_declarations=[send_meme_function, ignore_function])]
+    set_group_member_title_function = FunctionDeclaration(
+        name="set_group_member_title",
+        description="给指定群成员设置头衔",
+        parameters=Schema(
+            type=Type.OBJECT,
+            properties={
+                "user_id": Schema(type=Type.INTEGER, description="群成员的id"),
+                "title": Schema(type=Type.STRING, description="头衔内容, 不大于6个字符"),
+            },
+        ),
+    )
+
+    tools: ToolListUnion = [
+        Tool(function_declarations=[send_meme_function, ignore_function, set_group_member_title_function])
+    ]
 
     if enable_search:
         tools.append(Tool(google_search=GoogleSearch()))
@@ -473,6 +488,7 @@ async def chat_with_gemini(
                     logger.info(f"群{group_id}回复图片：{will_send_img}")
                     await on_msg.send(will_send_img)
             elif "ignore" in txt:
+                logger.debug(f"群{group_id}调用函数ignore，忽略回复")
                 return
             else:
                 logger.info(f"群{group_id}回复：{txt}")
@@ -498,6 +514,12 @@ async def chat_with_gemini(
                 if will_send_img:
                     logger.info(f"群{group_id}回复图片：{will_send_img}")
                     await on_msg.send(will_send_img)
+            if fc.name == "set_group_member_title" and fc.args:
+                user_id = fc.args.get("user_id")
+                title = fc.args.get("title")
+                logger.debug(f"群{group_id}调用函数{fc.name}，参数{user_id}，{title}")
+                bot = get_bot()
+                await bot.call_api("set_group_special_title", group_id=group_id, user_id=user_id, special_title=title)
             if fc.name == "ignore":
                 logger.debug(f"群{group_id}调用函数{fc.name}")
                 return
