@@ -32,11 +32,15 @@ __plugin_meta__ = PluginMetadata(
 
 st = on_alconna(
     Alconna(
-        "设置头衔",
+        "头衔",
+        Subcommand(
+            "清空",
+            Args["to?", At],
+        ),
         Args["to?", At],
         Args["title", Text],
     ),
-    aliases={"指定头衔", "修改头衔", "头衔"},
+    aliases={"指定头衔", "修改头衔", "标签"},
     response_self=True,
 )
 
@@ -56,5 +60,21 @@ async def set_title(
         else:
             await UniMessage.text("你没有权限修改他人头衔哦~").finish()
     else:
-        await bot.set_group_special_title(group_id=event.group_id, user_id=event.user_id, special_title=title.result.text)
+        await bot.set_group_special_title(
+            group_id=event.group_id, user_id=event.user_id, special_title=title.result.text
+        )
         await UniMessage.text(f"已将你的头衔修改为{title.result}").finish()
+
+
+@st.assign("清空")
+async def clear_title(bot: Bot, event: GroupMessageEvent, to: Match[At]):
+    if to.available:
+        if str(event.user_id) in bot.config.superusers:  # 如果是超级用户，则允许修改其他人头衔
+            to_user = int(to.result.target)
+            await bot.set_group_special_title(group_id=event.group_id, user_id=to_user)
+            await UniMessage.text(f"已将{to_user}的头衔清空").finish()
+        else:
+            await UniMessage.text("你没有权限修改他人头衔哦~").finish()
+    else:
+        await bot.set_group_special_title(group_id=event.group_id, user_id=event.user_id)
+        await UniMessage.text("已将你的头衔清空").finish()
