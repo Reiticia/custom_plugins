@@ -109,7 +109,8 @@ async def get_file_name_of_image_will_sent(description: str, group_id: int) -> M
         for local_file in _FILES
         if local_file.file_name == name
     ]
-    if await analysis_image(parts):
+    res = await analysis_image(parts)
+    if res.is_adult or res.is_violence:
         logger.info(f"图片{name}包含违禁内容, 已删除")
         os.remove(image_dir_path.joinpath(name))
         return None
@@ -130,14 +131,17 @@ async def send_image(file_name: str, group_id: int) -> MessageSegment | None:
         return None
 
 
-async def analysis_image(file_part: list[Part]) -> bool:
-    """分析图片是否包含违禁内容"""
+class AnalysisResult(BaseModel):
+    """图片分析结果"""
+    is_adult: bool
+    """色情内容"""
+    is_violence: bool
+    """暴力内容"""
 
-    class AnalysisResult(BaseModel):
-        is_adult: bool
-        """色情内容"""
-        is_violence: bool
-        """暴力内容"""
+
+
+async def analysis_image(file_part: list[Part]) -> AnalysisResult:
+    """分析图片是否包含违禁内容"""
 
     global _GEMINI_CLIENT
     prompt = "根据给出的图片内容，判断是否含有色情内容或者暴力内容，返回指定数据类型"
@@ -161,9 +165,8 @@ async def analysis_image(file_part: list[Part]) -> bool:
     )
 
     logger.debug(f"分析图片成功，返回结果：{resp.text}")
-    is_adult: bool = (r := json.loads(str(resp.text)))["is_adult"]
-    is_violence: bool = r["is_violence"]
-    return is_adult or is_violence
+    r = AnalysisResult(**json.loads(str(resp.text)))
+    return r
 
 
 anti_image = on_command("ani", permission=SUPERUSER)
@@ -187,8 +190,10 @@ async def anti(e: MessageEvent):
                     mime_type = "image/png"
             parts.append(Part.from_bytes(data=byte_content, mime_type=mime_type))
         res = await analysis_image(parts)
-        if res:
-            await anti_image.finish("图片包含违禁内容")
+        if res.is_adult:
+            await anti_image.finish("图片包含色情内容")
+        elif res.is_violence:
+            await anti_image.finish("图片包含暴力内容")
         else:
             await anti_image.finish("图片不包含违禁内容")
 
