@@ -4,6 +4,7 @@ from nonebot.permission import SUPERUSER
 import nonebot_plugin_localstore as store  # noqa: E402
 from httpx import AsyncClient
 from aiofiles import open as aopen
+import aiofiles.os as aios
 
 import os
 from typing import Literal, Optional
@@ -133,11 +134,11 @@ async def send_image(file_name: str, group_id: int) -> MessageSegment | None:
 
 class AnalysisResult(BaseModel):
     """图片分析结果"""
+
     is_adult: bool
     """色情内容"""
     is_violence: bool
     """暴力内容"""
-
 
 
 async def analysis_image(file_part: list[Part]) -> AnalysisResult:
@@ -219,6 +220,7 @@ async def add_image(event: GroupMessageEvent):
     for m in image_ms:
         url = m.data["url"]
         file_name = str(m.data.get("file"))
+        file_name = file_name.replace(".jpg", ".gif")
         resp = await _HTTP_CLIENT.get(url)
         # 文件不存在则写入
         if not (file_path := image_dir_path.joinpath(file_name)).exists():
@@ -244,14 +246,16 @@ inited = False
 
 
 @driver.on_bot_connect
+@scheduler.scheduled_job("interval", days=2, id="my_job_id")
 async def upload_image() -> Optional[str]:
-    """每天0点重置缓存"""
-    global inited
-    if inited:
-        return
-    inited = True
+    """每搁两天重置图片文件缓存"""
     global _FILES, _GEMINI_CLIENT
-    # 发送图片缓存后重置缓存键名
+    await rename_files_async()
+    image_list = await _GEMINI_CLIENT.aio.files.list()
+    async for file in image_list:
+        if n := file.name:
+            await _GEMINI_CLIENT.aio.files.delete(name=n)
+    # 重置缓存键名
     files = []
     # 遍历图片，组成contents
     for _, _, files in os.walk(image_dir_path):
@@ -266,3 +270,12 @@ async def upload_image() -> Optional[str]:
             file_path = image_dir_path / local_file
             file = await _GEMINI_CLIENT.aio.files.upload(file=file_path, config=UploadFileConfig(mime_type=mime_type))
             _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=file))
+
+
+async def rename_files_async():
+    """异步重命名图片文件"""
+    # 遍历文件夹下所有 .jpg 文件
+    for file_path in image_dir_path.glob("*.[jJ][pP][gG]"):  # 匹配 .jpg 文件
+        new_name = file_path.with_suffix(".gif")  # 修改后缀为 .gif
+        await aios.rename(file_path, new_name)  # 异步重命名
+        print(f"重命名: {file_path} -> {new_name}")
