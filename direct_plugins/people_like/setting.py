@@ -6,6 +6,8 @@ from nonebot.rule import to_me
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent
 from aiofiles import open
 from nonebot_plugin_waiter import prompt, suggest
+from typing import TypedDict
+from .config import plugin_config
 
 driver = get_driver()
 
@@ -19,7 +21,22 @@ PROPERTIES: dict[str, dict[str, str]] = json.loads(
     "{}" if not _PROFILE.exists() else text if (text := _PROFILE.read_text()) is not None else "{}"
 )
 
-_EXPECT_PROP_NAMES = ["prompt", "topP", "topK", "temperature","enableEnhancedCivicAnswers", "length", "search", "reply_probability", "at_reply_probability"]
+class PropConfig(TypedDict):
+    range: str 
+    type: str 
+    default: str 
+
+_EXPECT_PROP_NAMES: dict[str, PropConfig] = {
+    "prompt": {"range": "", "type": "str", "default": ""},
+    "topP": {"range": "", "type": "float", "default": "0.95"},
+    "topK": {"range": "", "type": "int", "default": "40"},
+    "temperature": {"range": "0.0-2.0", "type": "float", "default": "1.0"},
+    "enableEnhancedCivicAnswers": {"range": "", "type": "bool", "default": "False"},
+    "length": {"range": "", "type": "int", "default": "0"},
+    "search": {"range": "", "type": "bool", "default": "False"},
+    "reply_probability": {"range": "0.0-1.0", "type": "float", "default": str(plugin_config.reply_probability)},
+    "at_reply_probability": {"range": "0.0-1.0", "type": "float", "default": str(plugin_config.reply_probability * 4)},
+}
 
 _BLACK_LIST_FILE = _CONFIG_DIR / "blacklist.json"
 
@@ -49,6 +66,7 @@ async def block_group(bot: Bot, matcher: Matcher, e: MessageEvent):
         await save_blacklist(matcher)
         await matcher.finish("该群已加入黑名单")
 
+
 @on_command(cmd="unblock", permission=SUPERUSER, rule=to_me(), priority=1, block=True).handle()
 async def unblock_group(bot: Bot, matcher: Matcher, e: MessageEvent):
     """通过指令解除拉黑群组"""
@@ -69,6 +87,7 @@ async def unblock_group(bot: Bot, matcher: Matcher, e: MessageEvent):
         BLACK_LIST.remove(group_id)
         await save_blacklist(matcher)
         await matcher.finish("该群已从黑名单中移除")
+
 
 @on_command(cmd="bl", permission=SUPERUSER, rule=to_me(), priority=1, block=True).handle()
 async def report_blacklist(bot: Bot, matcher: Matcher):
@@ -102,12 +121,15 @@ async def get_property(bot: Bot, matcher: Matcher, e: MessageEvent):
         group_id = str(resp)
     else:
         group_id = str(e.group_id)
-    resp = await suggest("请选择要获取的属性名", timeout=60, expect=_EXPECT_PROP_NAMES)
+    resp = await suggest("请选择要获取的属性名", timeout=60, expect=list(_EXPECT_PROP_NAMES.keys()))
     if not resp:
         await matcher.finish("操作超时，指令中断")
     property_name = str(resp).upper()
+    conf = _EXPECT_PROP_NAMES.get(str(resp))
+    if conf is None:
+        await matcher.finish("属性名无效，指令中断")
     value = PROPERTIES.get(group_id, {}).get(property_name)
-    ret = "None" if value is None else value
+    ret = conf["default"] if value is None else value
     await matcher.finish(ret)
 
 
@@ -126,15 +148,24 @@ async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
         group_id = str(resp)
     else:
         group_id = str(e.group_id)
-    resp = await suggest("请选择要设置的属性名", timeout=60, expect=_EXPECT_PROP_NAMES)
+    resp = await suggest("请选择要设置的属性名", timeout=60, expect=list(_EXPECT_PROP_NAMES.keys()))
     if not resp:
         await matcher.finish()
     property_name = str(resp).upper()
-    resp = await prompt("请输入要设置的属性值（取消操作请输入cancel，重置输入none）", timeout=60)
+    conf = _EXPECT_PROP_NAMES.get(str(resp))
+    if conf is None:
+        await matcher.finish("属性名无效，指令中断")
+    prompt_str = f"""请输入要设置的属性值（取消操作请输入cancel，重置输入reset）
+键：{property_name}
+{"范围：" + conf['range'] if conf['range'] else ""}
+类型：{conf['type']}
+默认值：{conf['default']}
+    """
+    resp = await prompt(prompt_str, timeout=60)
     if not resp:
         await matcher.finish()
     value = str(resp)
-    if value.lower() == "none":
+    if value.lower() == "reset":
         value = None
     elif value.lower() == "cancel":
         await matcher.finish("操作取消")
