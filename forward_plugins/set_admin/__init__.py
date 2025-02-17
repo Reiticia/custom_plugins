@@ -1,25 +1,16 @@
-from nonebot import get_plugin_config, on_command, require
+from nonebot import require
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
 
 require("nonebot_plugin_alconna")
 
 from nonebot_plugin_alconna import (
-    AlcMatches,
     Alconna,
     Args,
-    Arparma,
     At,
-    Image,
     Match,
-    Hyper,
-    Option,
     Subcommand,
-    Text,
     UniMessage,
-    MultiVar,
-    AlconnaMatches,
-    UniMsg,
     on_alconna,
 )
 
