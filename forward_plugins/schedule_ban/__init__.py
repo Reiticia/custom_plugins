@@ -64,7 +64,7 @@ cmd = on_alconna(
         Option("-c|--cron", Args["val", str]),
         Option("-s|--second", Args["val", str]),
         Option("-m|--minute", Args["val", str]),
-        Option("-h|--hour", Args["val", str]),
+        Option("-H|--hour", Args["val", str]),
         Option("-d|--day", Args["val", str]),
         Option("-M|--month", Args["val", str]),
         Option("-w|--week", Args["val", str]),
