@@ -78,7 +78,7 @@ async def clear_title(bot: Bot, event: GroupMessageEvent, to: Match[At]):
             user = await interface.get_member(scene_type=SceneType.GROUP, scene_id=str(event.group_id), user_id=str(to_user))
             if user is None:
                 return
-            await bot.set_group_special_title(group_id=event.group_id, user_id=to_user)
+            await bot.set_group_special_title(group_id=event.group_id, user_id=to_user, special_title="")
             await UniMessage.text(f"已将{user.nick or user.user.name}的头衔清空").finish()
         else:
             await UniMessage.text("你没有权限修改他人头衔哦~").finish()
