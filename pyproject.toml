@@ -36,8 +36,8 @@ plugins = [
     "nonebot_plugin_waiter",
 ]
 plugin_dirs = [
-    # "forward_plugins",
-     "direct_plugins", 
+    "forward_plugins",
+    #  "direct_plugins", 
     #  "no_deploy"
      ]
 builtin_plugins = ["echo"]

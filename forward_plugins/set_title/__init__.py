@@ -29,16 +29,20 @@ st = on_alconna(
         Subcommand(
             "清空",
             Args["to?", At],
+            alias={"清除", "删除", "剔除", "取消"},
         ),
-        Args["to?", At],
-        Args["title", str],
+        Subcommand(
+            "设置",
+            Args["to?", str],
+            Args["title", str],
+            alias={"修改", "改", "更", "更新"}
+        ),
     ),
-    aliases={"指定头衔", "修改头衔", "标签"},
     response_self=True,
 )
 
 
-@st.handle()
+@st.assign("设置")
 async def set_title(
     bot: Bot,
     event: GroupMessageEvent,
