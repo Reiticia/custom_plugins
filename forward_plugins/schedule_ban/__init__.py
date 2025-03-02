@@ -16,7 +16,7 @@ from nonebot_plugin_apscheduler import scheduler
 import nonebot_plugin_localstore as store
 
 from .config import Config
-from common.permission import admin_permission
+from common.permission import owner_permission
 from common import generate_random_string
 
 __plugin_meta__ = PluginMetadata(
@@ -71,7 +71,7 @@ cmd = on_alconna(
         Option("-y|--year", Args["val", str]),
     ),
     response_self=True,
-    permission=admin_permission,
+    permission=owner_permission,
 )
 
 _SCHEDULE_BAN_PROFILE = store.get_config_dir("schedule_ban") / "tasks.json"
