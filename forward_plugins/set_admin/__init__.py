@@ -27,8 +27,8 @@ __plugin_meta__ = PluginMetadata(
 sa = on_alconna(
     Alconna(
         "管理",
-        Subcommand("+", Args["to?", At], alias={"添加", "设置"}, help_text="设置管理员"),
-        Subcommand("-", Args["to?", At], alias={"移除", "取消"}, help_text="取消管理员"),
+        Subcommand("+", Args["to", At], alias={"添加", "设置"}, help_text="设置管理员"),
+        Subcommand("-", Args["to", At], alias={"移除", "取消"}, help_text="取消管理员"),
     ),
     aliases={"管理员"},
     response_self=True
