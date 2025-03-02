@@ -49,27 +49,32 @@ config = get_plugin_config(Config)
 
 cmd = on_alconna(
     Alconna(
-        "禁言",
+        "mute",
         Subcommand(
-            "添加",
-            Args["user", At],
-            Args["time", int],
+            "add",
+            Args["user", At, "要禁言的用户"],
+            Args["time", int, "禁言时长（秒）"],
+            Option("-o|--once", Args["val", bool], help_text="是否一次性任务"),
+            Option("-c|--cron", Args["val", str], help_text="cron表达式"),
+            Option("-s|--second", Args["val", str], help_text="秒"),
+            Option("-m|--minute", Args["val", str], help_text="分"),
+            Option("-H|--hour", Args["val", str], help_text="时"),
+            Option("-d|--day", Args["val", str], help_text="日"),
+            Option("-M|--month", Args["val", str], help_text="月"),
+            Option("-w|--week", Args["val", str], help_text="周"),
+            Option("-y|--year", Args["val", str], help_text="年"),
+            help_text="添加定时禁言任务",
+            alias={"添加"},
         ),
-        Subcommand("列表"),
+        Subcommand("list", help_text="查看所有定时禁言任务", alias={"列表"}),
         Subcommand(
-            "移除",
-            Args["id", str],
+            "remove",
+            Args["id", str, "要移除的任务ID"],
+            help_text="移除定时禁言任务",
+            alias={"移除"},
         ),
-        Option("-o|--once", Args["val", bool]),
-        Option("-c|--cron", Args["val", str]),
-        Option("-s|--second", Args["val", str]),
-        Option("-m|--minute", Args["val", str]),
-        Option("-H|--hour", Args["val", str]),
-        Option("-d|--day", Args["val", str]),
-        Option("-M|--month", Args["val", str]),
-        Option("-w|--week", Args["val", str]),
-        Option("-y|--year", Args["val", str]),
     ),
+    aliases={"禁言"},
     response_self=True,
     permission=owner_permission,
 )
@@ -85,18 +90,16 @@ async def _():
     _TASKS = await read_profile()
     for task in _TASKS:
         res = task["cron"].split(" ")
-        kwargs = {}
-        kwargs["second"] = res[0]
-        kwargs["minute"] = res[1]
-        kwargs["hour"] = res[2]
-        if res[3] != "?":
-            kwargs["day"] = res[3]
-        if res[4] != "?":
-            kwargs["month"] = res[4]
-        if res[5] != "?":
-            kwargs["week"] = res[5]
-        if len(res) > 6 and res[6] != "?" and res[6] != "":
-            kwargs["year"] = res[6]
+        kwargs = {
+            "second": res[0],
+            "minute": res[1],
+            "hour": res[2],
+            "day": res[3] if res[3] != "?" else None,
+            "month": res[4] if res[4] != "?" else None,
+            "week": res[5] if res[5] != "?" else None,
+            "year": res[6] if len(res) > 6 and res[6] != "?" and res[6] != "" else None,
+        }
+        kwargs = {k: v for k, v in kwargs.items() if v is not None}
         scheduler.add_job(
             func=mute,
             trigger="cron",
@@ -113,7 +116,7 @@ async def _():
         logger.info(f"添加定时任务：{task['id']}")
 
 
-@cmd.assign("列表")
+@cmd.assign("list")
 async def _(bot: Bot, session: Uninfo):
     group_id = session.group.id  # type: ignore
     ls = await read_profile()
@@ -126,7 +129,7 @@ async def _(bot: Bot, session: Uninfo):
         await bot.call_api("send_group_msg", group_id=group_id, message=forward_contents)
 
 
-@cmd.assign("移除")
+@cmd.assign("remove")
 async def _(id: Match[str]):
     global _TASKS
     new_tasks = []
@@ -142,21 +145,21 @@ async def _(id: Match[str]):
         await write_profile()
 
 
-@cmd.assign("添加")
+@cmd.assign("add")
 async def _(
     bot: Bot,
     user: Match[At],
     time: Match[int],
     session: Uninfo,
-    once: Query[bool] = Query("once.val"),
-    cron: Query[str] = Query("cron.val"),
-    second: Query[str] = Query("second.val"),
-    minute: Query[str] = Query("minute.val"),
-    hour: Query[str] = Query("hour.val"),
-    day: Query[str] = Query("day.val"),
-    month: Query[str] = Query("month.val"),
-    week: Query[str] = Query("week.val"),
-    year: Query[str] = Query("year.val"),
+    once: Query[bool] = Query("add.once.val"),
+    cron: Query[str] = Query("add.cron.val"),
+    second: Query[str] = Query("add.second.val"),
+    minute: Query[str] = Query("add.minute.val"),
+    hour: Query[str] = Query("add.hour.val"),
+    day: Query[str] = Query("add.day.val"),
+    month: Query[str] = Query("add.month.val"),
+    week: Query[str] = Query("add.week.val"),
+    year: Query[str] = Query("add.year.val"),
 ):
     group_id = session.group.id  # type: ignore
     once_seg = once.result if once.available else True
@@ -176,18 +179,15 @@ async def _(
     # 按参数禁言
     if cron.available:
         res = cron.result.split(" ")
-        kwargs = {}
-        kwargs["second"] = res[0]
-        kwargs["minute"] = res[1]
-        kwargs["hour"] = res[2]
-        if res[3] != "?":
-            kwargs["day"] = res[3]
-        if res[4] != "?":
-            kwargs["month"] = res[4]
-        if res[5] != "?":
-            kwargs["week"] = res[5]
-        if len(res) > 6 and res[6] != "?":
-            kwargs["year"] = res[6]
+        kwargs = {
+            "second": res[0],
+            "minute": res[1],
+            "hour": res[2],
+            "day": res[3] if res[3] != "?" else None,
+            "month": res[4] if res[4] != "?" else None,
+            "week": res[5] if res[5] != "?" else None,
+            "year": res[6] if len(res) > 6 and res[6] != "?" and res[6] != "" else None,
+        }
         await add_schedule_ban(
             user_id=user.result.target,
             group_id=group_id,
@@ -196,21 +196,15 @@ async def _(
             **kwargs,
         )
     else:
-        kwargs = {}
-        if second.available:
-            kwargs["second"] = second.result
-        if minute.available:
-            kwargs["minute"] = minute.result
-        if hour.available:
-            kwargs["hour"] = hour.result
-        if day.available:
-            kwargs["day"] = day.result
-        if month.available:
-            kwargs["month"] = month.result
-        if week.available:
-            kwargs["week"] = week.result
-        if year.available:
-            kwargs["year"] = year.result
+        kwargs = {
+            "second": second.result if second.available else None,
+            "minute": minute.result if minute.available else None,
+            "hour": hour.result if hour.available else None,
+            "day": day.result if day.available else None,
+            "month": month.result if month.available else None,
+            "week": week.result if week.available else None,
+            "year": year.result if year.available else None,
+        }
         await add_schedule_ban(
             user_id=user.result.target,
             group_id=group_id,
@@ -229,6 +223,13 @@ async def add_schedule_ban(
 ):
     global _TASKS
     id = generate_random_string(8)
+    second_seg = 0 if (s_s := kwargs.get("second")) is None else s_s
+    minute_seg = 0 if (m_s := kwargs.get("minute")) is None else m_s
+    hour_seg = 0 if (h_s := kwargs.get("hour")) is None else h_s
+    day_seg = "?" if (d_s := kwargs.get("day")) is None else d_s
+    month_seg = "?" if (M_s := kwargs.get("month")) is None else M_s
+    week_seg = "?" if (w_s := kwargs.get("week")) is None else w_s
+    year_seg = "" if (y_s := kwargs.get("year")) is None else y_s
     # 写入配置文件
     task = BanTask(
         id=id,
@@ -236,7 +237,7 @@ async def add_schedule_ban(
         group_id=group_id,
         time=time,
         once=once,
-        cron=f"{kwargs.get('second', '0')} {kwargs.get('minute', '0')} {kwargs.get('hour', '0')} {kwargs.get('day', '?')} {kwargs.get('month', '?')} {kwargs.get('week', '?')}",
+        cron=f"{second_seg} {minute_seg} {hour_seg} {day_seg} {month_seg} {week_seg} {year_seg}",
     )
     _TASKS.append(task)
     await write_profile()
