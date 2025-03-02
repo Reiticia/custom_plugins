@@ -33,7 +33,7 @@ st = on_alconna(
         ),
         Subcommand(
             "设置",
-            Args["to?", str],
+            Args["to?", At],
             Args["title", str],
             alias={"修改", "改", "更", "更新"}
         ),
