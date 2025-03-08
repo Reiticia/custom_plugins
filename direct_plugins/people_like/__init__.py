@@ -475,7 +475,7 @@ async def chat_with_gemini(
                 if will_send_img:
                     logger.info(f"群{group_id}回复图片：{will_send_img}")
                     await on_msg.send(will_send_img)
-            elif "ignore" in txt:
+            elif "ignore" in txt or "忽略" in txt:
                 logger.debug(f"群{group_id}调用函数ignore，忽略回复")
                 return
             else:
