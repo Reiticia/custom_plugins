@@ -170,7 +170,7 @@ async def analysis_image(file_part: list[Part]) -> AnalysisResult:
     return r
 
 
-anti_image = on_command("ani", permission=SUPERUSER)
+anti_image = on_command("ani")
 
 
 @anti_image.handle()
