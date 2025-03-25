@@ -256,6 +256,7 @@ async def upload_image() -> Optional[str]:
         if n := file.name:
             await _GEMINI_CLIENT.aio.files.delete(name=n)
     # 重置缓存键名
+    _FILES = []
     files = []
     # 遍历图片，组成contents
     for _, _, files in os.walk(image_dir_path):

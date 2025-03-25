@@ -129,7 +129,7 @@ async def get_property(bot: Bot, matcher: Matcher, e: MessageEvent):
     if conf is None:
         await matcher.finish("属性名无效，指令中断")
     value = PROPERTIES.get(group_id, {}).get(property_name)
-    ret = conf["default"] if value is None else value
+    ret = conf["default"] if value is None else value # type: ignore
     await matcher.finish(ret)
 
 
