@@ -1,6 +1,5 @@
 from nonebot import get_bot, logger, on_command, on_message, get_driver
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent, MessageSegment, Bot as OB11Bot
-from nonebot.permission import SUPERUSER
 import nonebot_plugin_localstore as store  # noqa: E402
 from httpx import AsyncClient
 from aiofiles import open as aopen
@@ -21,6 +20,8 @@ from google.genai.types import (
     UploadFileConfig,
 )
 from google import genai
+
+from .setting import get_value_or_default
 from .config import plugin_config
 from pydantic import BaseModel
 import json
@@ -86,8 +87,10 @@ async def get_file_name_of_image_will_sent(description: str, group_id: int) -> M
         )
     )
 
+    model = get_value_or_default(group_id, "model", "gemini-2.0-flash-exp")
+
     resp = await _GEMINI_CLIENT.aio.models.generate_content(
-        model="gemini-2.0-flash-exp",
+        model=model,
         contents=contents,
         config=GenerateContentConfig(
             system_instruction=prompt,
@@ -110,10 +113,13 @@ async def get_file_name_of_image_will_sent(description: str, group_id: int) -> M
         for local_file in _FILES
         if local_file.file_name == name
     ]
-    res = await analysis_image(parts)
+    res = await analysis_image(parts, group_id)
     if res.is_adult or res.is_violence:
         logger.info(f"图片{name}包含违禁内容, 已删除")
         os.remove(image_dir_path.joinpath(name))
+        return None
+    elif not res.is_anime and bool(get_value_or_default(group_id, "anime_only", "False")):
+        logger.info(f"图片{name}不是二次元图片，不予展示")
         return None
     else:
         return await send_image(name, group_id)
@@ -139,17 +145,21 @@ class AnalysisResult(BaseModel):
     """色情内容"""
     is_violence: bool
     """暴力内容"""
+    is_anime: bool
+    """是否为动漫卡通角色"""
 
 
-async def analysis_image(file_part: list[Part]) -> AnalysisResult:
+async def analysis_image(file_part: list[Part], group_id: int = 0) -> AnalysisResult:
     """分析图片是否包含违禁内容"""
+
+    model = get_value_or_default(group_id, "model", "gemini-2.0-flash-exp")
 
     global _GEMINI_CLIENT
     prompt = "根据给出的图片内容，判断是否含有色情内容或者暴力内容，返回指定数据类型"
     file_part.append(Part.from_text(text="分析图片是否包含色情内容或者暴力内容"))
     contents: ContentListUnion = [Content(role="user", parts=file_part)]
     resp = await _GEMINI_CLIENT.aio.models.generate_content(
-        model="gemini-2.0-flash-exp",
+        model=model,
         contents=contents,
         config=GenerateContentConfig(
             system_instruction=prompt,
@@ -192,11 +202,13 @@ async def anti(e: MessageEvent):
             parts.append(Part.from_bytes(data=byte_content, mime_type=mime_type))
         res = await analysis_image(parts)
         if res.is_adult:
-            await anti_image.finish("图片包含色情内容")
-        elif res.is_violence:
-            await anti_image.finish("图片包含暴力内容")
-        else:
-            await anti_image.finish("图片不包含违禁内容")
+            await anti_image.send("图片包含色情内容")
+        if res.is_violence:
+            await anti_image.send("图片包含暴力内容")
+        if res.is_anime:
+            await anti_image.send("图片不包含违禁内容")
+
+        await anti_image.finish()
 
 
 async def inc_image(event: GroupMessageEvent) -> bool:

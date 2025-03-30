@@ -21,10 +21,12 @@ PROPERTIES: dict[str, dict[str, str]] = json.loads(
     "{}" if not _PROFILE.exists() else text if (text := _PROFILE.read_text()) is not None else "{}"
 )
 
+
 class PropConfig(TypedDict):
-    range: str 
-    type: str 
-    default: str 
+    range: str
+    type: str
+    default: str
+
 
 _EXPECT_PROP_NAMES: dict[str, PropConfig] = {
     "prompt": {"range": "", "type": "str", "default": ""},
@@ -35,6 +37,8 @@ _EXPECT_PROP_NAMES: dict[str, PropConfig] = {
     "length": {"range": "", "type": "int", "default": "0"},
     "search": {"range": "", "type": "bool", "default": "False"},
     "reply_probability": {"range": "0.0-1.0", "type": "float", "default": str(plugin_config.reply_probability)},
+    "model": {"range": "", "type": "str", "default": str(plugin_config.gemini_model)},
+    "anime_only": {"range": "", "type": "str", "default": "False"},
     "at_reply_probability": {"range": "0.0-1.0", "type": "float", "default": str(plugin_config.reply_probability * 4)},
 }
 
@@ -129,7 +133,7 @@ async def get_property(bot: Bot, matcher: Matcher, e: MessageEvent):
     if conf is None:
         await matcher.finish("属性名无效，指令中断")
     value = PROPERTIES.get(group_id, {}).get(property_name)
-    ret = conf["default"] if value is None else value # type: ignore
+    ret = conf["default"] if value is None else value  # type: ignore
     await matcher.finish(ret)
 
 
@@ -157,9 +161,9 @@ async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
         await matcher.finish("属性名无效，指令中断")
     prompt_str = f"""请输入要设置的属性值（取消操作请输入cancel，重置输入reset）
 键：{property_name}
-{"范围：" + conf['range'] if conf['range'] else ""}
-类型：{conf['type']}
-默认值：{conf['default']}
+{"范围：" + conf["range"] if conf["range"] else ""}
+类型：{conf["type"]}
+默认值：{conf["default"]}
     """
     resp = await prompt(prompt_str, timeout=60)
     if not resp:

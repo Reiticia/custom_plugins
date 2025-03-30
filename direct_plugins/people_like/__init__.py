@@ -37,6 +37,7 @@ from .setting import get_value_or_default, get_blacklist
 from .config import Config, plugin_config
 from .model import Character, ChatMsg, GroupMemberDict
 from .image_send import _GEMINI_CLIENT, get_file_name_of_image_will_sent
+from .milvus_action import add_content, search_content
 
 __plugin_meta__ = PluginMetadata(
     name="people-like",
@@ -260,16 +261,21 @@ async def extract_msg_in_group_message_event(event: GroupMessageEvent) -> list[P
     global _HTTP_CLIENT, _CACHE_DIR
     em = event.message
     gid = event.group_id
+    sender_user_id = event.user_id
+    is_bot = event.self_id == event.user_id
     target: list[Part] = []
-    sender_nickname = await get_user_nickname_of_group(gid, int(event.user_id))
+    sender_nickname = await get_user_nickname_of_group(gid, int(sender_user_id))
 
-    target.append(Part.from_text(text=f"[{sender_nickname}<{event.user_id}>]"))
+    target.append(Part.from_text(text=f"[{sender_nickname}<{sender_user_id}>]"))
     if event.is_tome():
         target.append(Part.from_text(text=f"@{await get_bot_nickname_of_group(gid)} "))
     for ms in em:
         match ms.type:
             case "text":
-                target.append(Part.from_text(text=ms.data["text"]))
+                text = ms.data["text"]
+                # 生成对应文本向量数据并插入数据库
+                # await add_content(gid, sender_user_id, sender_nickname, text, event.time, is_bot)
+                target.append(Part.from_text(text=text))
             case "at":
                 target.append(Part.from_text(text=f"@{ms.data['qq']} "))
             case "image":
@@ -440,15 +446,16 @@ async def chat_with_gemini(
 
     ignore_function = FunctionDeclaration(name="ignore", description="不回复消息")
 
-    tools: ToolListUnion = [
-        Tool(function_declarations=[send_meme_function, ignore_function])
-    ]
+    tools: ToolListUnion = [Tool(function_declarations=[send_meme_function, ignore_function])]
 
     if enable_search:
         tools.append(Tool(google_search=GoogleSearch()))
 
+
+    model = get_value_or_default(group_id, "model", "gemini-2.0-flash-exp")
+
     resp = await _GEMINI_CLIENT.aio.models.generate_content(
-        model="gemini-2.0-flash-exp",
+        model=model,
         contents=contents,
         config=GenerateContentConfig(
             system_instruction=prompt,
@@ -466,7 +473,7 @@ async def chat_with_gemini(
             ],
         ),
     )
-    
+
     # 如果有函数调用，则传递函数调用的参数，进行图片发送
     for part in resp.candidates[0].content.parts:  # type: ignore
         if txt := part.text:
