@@ -180,7 +180,7 @@ async def analysis_image(file_part: list[Part], group_id: int = 0) -> AnalysisRe
     return r
 
 
-anti_image = on_command("ani")
+anti_image = on_command("ani", aliases={"图片分析", "图片审查", "分析图片", "审查图片"})
 
 
 @anti_image.handle()
@@ -206,9 +206,9 @@ async def anti(e: MessageEvent):
         if res.is_violence:
             await anti_image.send("图片包含暴力内容")
         if res.is_anime:
-            await anti_image.send("图片不包含违禁内容")
+            await anti_image.send("图片包含二次元内容")
 
-        await anti_image.finish()
+        await anti_image.finish(f"图片分析结束{res}")
 
 
 async def inc_image(event: GroupMessageEvent) -> bool:
