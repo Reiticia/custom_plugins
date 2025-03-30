@@ -37,7 +37,6 @@ from .setting import get_value_or_default, get_blacklist
 from .config import Config, plugin_config
 from .model import Character, ChatMsg, GroupMemberDict
 from .image_send import _GEMINI_CLIENT, get_file_name_of_image_will_sent
-from .milvus_action import add_content, search_content
 
 __plugin_meta__ = PluginMetadata(
     name="people-like",

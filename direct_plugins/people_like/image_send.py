@@ -118,7 +118,7 @@ async def get_file_name_of_image_will_sent(description: str, group_id: int) -> M
         logger.info(f"图片{name}包含违禁内容, 已删除")
         os.remove(image_dir_path.joinpath(name))
         return None
-    elif not res.is_anime and bool(get_value_or_default(group_id, "anime_only", "False")):
+    elif not res.is_anime and bool(get_value_or_default(group_id, "anime_only")):
         logger.info(f"图片{name}不是二次元图片，不予展示")
         return None
     else:

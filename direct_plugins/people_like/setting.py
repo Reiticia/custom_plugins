@@ -38,7 +38,7 @@ _EXPECT_PROP_NAMES: dict[str, PropConfig] = {
     "search": {"range": "", "type": "bool", "default": "False"},
     "reply_probability": {"range": "0.0-1.0", "type": "float", "default": str(plugin_config.reply_probability)},
     "model": {"range": "", "type": "str", "default": str(plugin_config.gemini_model)},
-    "anime_only": {"range": "", "type": "str", "default": "False"},
+    "anime_only": {"range": "", "type": "bool", "default": "False"},
     "at_reply_probability": {"range": "0.0-1.0", "type": "float", "default": str(plugin_config.reply_probability * 4)},
 }
 
