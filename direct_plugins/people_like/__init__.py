@@ -458,7 +458,7 @@ async def chat_with_gemini(
         ),
     )
 
-    tools: ToolListUnion = [Tool(function_declarations=[send_meme_function, ignore_function, mute_sb_function])]
+    tools: ToolListUnion = [Tool(function_declarations=[send_meme_function, ignore_function])]
 
     if enable_search:
         tools.append(Tool(google_search=GoogleSearch()))
@@ -520,11 +520,11 @@ async def chat_with_gemini(
                 if will_send_img:
                     logger.info(f"群{group_id}回复图片：{will_send_img}")
                     await on_msg.send(will_send_img)
-            if fc.name == "mute_sb" and fc.args:
-                user_id = int(str(fc.args.get("user_id")))
-                minute = int(str(fc.args.get("minute")))
-                logger.debug(f"群{group_id}调用函数{fc.name}，参数{user_id}，{minute}分钟")
-                await get_bot().call_api("set_group_ban", group_id=group_id, user_id=user_id, duration=minute * 60)
+            # if fc.name == "mute_sb" and fc.args:
+            #     user_id = int(str(fc.args.get("user_id")))
+            #     minute = int(str(fc.args.get("minute")))
+            #     logger.debug(f"群{group_id}调用函数{fc.name}，参数{user_id}，{minute}分钟")
+            #     await get_bot().call_api("set_group_ban", group_id=group_id, user_id=user_id, duration=minute * 60)
             if fc.name == "ignore":
                 logger.debug(f"群{group_id}调用函数{fc.name}")
                 return
