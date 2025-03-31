@@ -118,7 +118,7 @@ async def get_file_name_of_image_will_sent(description: str, group_id: int) -> M
         logger.info(f"图片{name}包含违禁内容, 已删除")
         os.remove(image_dir_path.joinpath(name))
         return None
-    elif not res.is_anime and bool(get_value_or_default(group_id, "anime_only")):
+    elif not res.is_japan_anime and bool(get_value_or_default(group_id, "anime_only")):
         logger.info(f"图片{name}不是二次元图片，不予展示")
         return None
     else:
@@ -145,8 +145,8 @@ class AnalysisResult(BaseModel):
     """色情内容"""
     is_violence: bool
     """暴力内容"""
-    is_anime: bool
-    """是否为动漫卡通角色"""
+    is_japan_anime: bool
+    """是否为日本卡通动漫角色"""
 
 
 async def analysis_image(file_part: list[Part], group_id: int = 0) -> AnalysisResult:
@@ -155,8 +155,8 @@ async def analysis_image(file_part: list[Part], group_id: int = 0) -> AnalysisRe
     model = get_value_or_default(group_id, "model", "gemini-2.0-flash-exp")
 
     global _GEMINI_CLIENT
-    prompt = "根据给出的图片内容，判断是否含有色情内容或者暴力内容，返回指定数据类型"
-    file_part.append(Part.from_text(text="分析图片是否包含色情内容或者暴力内容"))
+    prompt = "根据给出的图片内容，判断是否含有色情内容，暴力内容或日本动漫形象内容，返回指定数据类型"
+    file_part.append(Part.from_text(text="分析图片是否包含色情内容，暴力内容或日本动漫形象内容"))
     contents: ContentListUnion = [Content(role="user", parts=file_part)]
     resp = await _GEMINI_CLIENT.aio.models.generate_content(
         model=model,
@@ -205,7 +205,7 @@ async def anti(e: MessageEvent):
             await anti_image.send("图片包含色情内容")
         if res.is_violence:
             await anti_image.send("图片包含暴力内容")
-        if res.is_anime:
+        if res.is_japan_anime:
             await anti_image.send("图片包含二次元内容")
 
         await anti_image.finish(f"图片分析结束{res}")

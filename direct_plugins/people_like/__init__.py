@@ -404,6 +404,7 @@ async def chat_with_gemini(
 
 如果需要使用表情包增强语气，可以使用 send_meme 函数调用传入描述发送对应表情包。
 如果无需对对话进行回复，或无法对上述对话表达意见，请仅调用 ignore 函数，不要回复任何文本内容。
+如果你觉得他人的回复很冒犯，你可以使用 mute_sb 函数禁言传入他的id，以及你想要设置的禁言时长，单位为分钟，来禁言他
 
 ## 额外设定
 
@@ -445,11 +446,22 @@ async def chat_with_gemini(
 
     ignore_function = FunctionDeclaration(name="ignore", description="不回复消息")
 
-    tools: ToolListUnion = [Tool(function_declarations=[send_meme_function, ignore_function])]
+    mute_sb_function = FunctionDeclaration(
+        name="mute_sb",
+        description="禁言群组里某一个人多少分钟",
+        parameters=Schema(
+            type=Type.OBJECT,
+            properties={
+                "user_id": Schema(type=Type.INTEGER, description="需要禁言的用户的QQ号"),
+                "minute": Schema(type=Type.INTEGER, description="禁言分钟数"),
+            },
+        ),
+    )
+
+    tools: ToolListUnion = [Tool(function_declarations=[send_meme_function, ignore_function, mute_sb_function])]
 
     if enable_search:
         tools.append(Tool(google_search=GoogleSearch()))
-
 
     model = get_value_or_default(group_id, "model", "gemini-2.0-flash-exp")
 
@@ -481,7 +493,7 @@ async def chat_with_gemini(
                 if will_send_img:
                     logger.info(f"群{group_id}回复图片：{will_send_img}")
                     await on_msg.send(will_send_img)
-            elif "ignore" in txt or "忽略" in txt:
+            elif "ignore" in txt or "忽略" in txt or "mute_sb" in txt or "禁言" in txt:
                 logger.debug(f"群{group_id}调用函数ignore，忽略回复")
                 return
             else:
@@ -508,6 +520,11 @@ async def chat_with_gemini(
                 if will_send_img:
                     logger.info(f"群{group_id}回复图片：{will_send_img}")
                     await on_msg.send(will_send_img)
+            if fc.name == "mute_sb" and fc.args:
+                user_id = int(str(fc.args.get("user_id")))
+                minute = int(str(fc.args.get("minute")))
+                logger.debug(f"群{group_id}调用函数{fc.name}，参数{user_id}，{minute}分钟")
+                await get_bot().call_api("set_group_ban", group_id=group_id, user_id=user_id, duration=minute * 60)
             if fc.name == "ignore":
                 logger.debug(f"群{group_id}调用函数{fc.name}")
                 return
