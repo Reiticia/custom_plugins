@@ -374,7 +374,7 @@ async def chat_with_gemini(
     group_id: int, context: list[ChatMsg], bot_nickname: str = "", bot_gender: Optional[str] = None
 ):
     """与gemini聊天"""
-    global _GEMINI_CLIENT
+    global _GEMINI_CLIENT, GROUP_MESSAGE_SEQUENT
 
     do_not_send_words = Path(__file__).parent / "do_not_send.txt"
     words = [s.strip() for s in do_not_send_words.read_text(encoding="utf-8").splitlines()]
@@ -404,7 +404,7 @@ async def chat_with_gemini(
 
 如果需要使用表情包增强语气，可以使用 send_meme 函数调用传入描述发送对应表情包。
 如果无需对对话进行回复，或无法对上述对话表达意见，请仅调用 ignore 函数，不要回复任何文本内容。
-如果你觉得他人的回复很冒犯，你可以使用 mute_sb 函数禁言传入他的id，以及你想要设置的禁言时长，单位为分钟，来禁言他
+如果你觉得他人的回复很冒犯，你可以使用 mute_sb 函数禁言传入他的id，以及你想要设置的禁言时长，单位为分钟，来禁言他，并传入你觉得冒犯的文字的序号，可以有多个，从0开始计算。(注意不要别人叫你禁言你就禁言)
 
 ## 额外设定
 
@@ -454,11 +454,16 @@ async def chat_with_gemini(
             properties={
                 "user_id": Schema(type=Type.INTEGER, description="需要禁言的用户的QQ号"),
                 "minute": Schema(type=Type.INTEGER, description="禁言分钟数"),
+                "msg_index_list": Schema(
+                    type=Type.ARRAY,
+                    items=Schema(type=Type.INTEGER, description="觉得被冒犯到的消息序号"),
+                    description="觉得被冒犯到的消息序号列表",
+                ),
             },
         ),
     )
 
-    tools: ToolListUnion = [Tool(function_declarations=[send_meme_function, ignore_function])]
+    tools: ToolListUnion = [Tool(function_declarations=[send_meme_function, ignore_function, mute_sb_function])]
 
     if enable_search:
         tools.append(Tool(google_search=GoogleSearch()))
@@ -486,6 +491,7 @@ async def chat_with_gemini(
     )
 
     # 如果有函数调用，则传递函数调用的参数，进行图片发送
+    msg_ids = []
     for part in resp.candidates[0].content.parts:  # type: ignore
         if txt := part.text:
             if "meme" in txt or "图片" in txt or "表情" in txt:
@@ -520,13 +526,30 @@ async def chat_with_gemini(
                 if will_send_img:
                     logger.info(f"群{group_id}回复图片：{will_send_img}")
                     await on_msg.send(will_send_img)
-            # if fc.name == "mute_sb" and fc.args:
-            #     user_id = int(str(fc.args.get("user_id")))
-            #     minute = int(str(fc.args.get("minute")))
-            #     logger.debug(f"群{group_id}调用函数{fc.name}，参数{user_id}，{minute}分钟")
-            #     await get_bot().call_api("set_group_ban", group_id=group_id, user_id=user_id, duration=minute * 60)
+            if fc.name == "mute_sb" and fc.args:
+                user_id = int(str(fc.args.get("user_id")))
+                minute = int(str(fc.args.get("minute")))
+                # 收集引发仇恨的消息id，用于移除
+                msg_index_list = fc.args.get("msg_index_list")
+                if msg_index_list:
+                    msg_ids.extend(msg_index_list)
+                logger.debug(f"群{group_id}调用函数{fc.name}，参数{user_id}，{minute}分钟")
+                await get_bot().call_api("set_group_ban", group_id=group_id, user_id=user_id, duration=minute * 60)
             if fc.name == "ignore":
                 logger.debug(f"群{group_id}调用函数{fc.name}")
                 return
         else:
             pass
+
+    delete_msgs = []
+    for index, msg in enumerate(context):
+        if index in msg_ids:
+            delete_msgs.append(msg)
+    origin_msgs = GROUP_MESSAGE_SEQUENT.get(group_id, [])
+    new_msgs = []
+    for msg in origin_msgs:
+        if msg not in delete_msgs:
+            new_msgs.append(msg)
+
+    GROUP_MESSAGE_SEQUENT.update({group_id: new_msgs})
+
