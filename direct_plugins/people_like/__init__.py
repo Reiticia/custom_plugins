@@ -186,15 +186,20 @@ def convert_at_to_at_segment(text: str) -> Message:
         str: 转换后的消息
     """
     ms_list = []
-    pattern = r"(@\d+)"
+
+    at_pattern = r"(@\d+)|(>\d+)"
 
     # 使用 re.split 方法进行切割，保留 @id 字段
-    parts = re.split(pattern, text)
+    parts = re.split(at_pattern, text)
 
     # 去除空字符串
     parts = [part for part in parts if part.strip()]
 
     for part in parts:
+        if part.startswith(">"):
+            # 找到 >id 字段
+            message_id = int(part[1:])
+            ms_list.append(MessageSegment.reply(message_id))
         if part.startswith("@"):
             # 找到 @id 字段
             user_id = int(part[1:])
@@ -267,7 +272,7 @@ async def extract_msg_in_group_message_event(event: GroupMessageEvent) -> list[P
     target.append(Part.from_text(text=f"{event.message_id}"))
     target.append(Part.from_text(text=f"[{sender_nickname}<{sender_user_id}>]"))
     if event.reply:
-        target.append(Part.from_text(text=f"> {event.reply.message_id}"))
+        target.append(Part.from_text(text=f">{event.reply.message_id}"))
     if event.is_tome():
         target.append(Part.from_text(text=f"@{await get_bot_nickname_of_group(gid)} "))
     for ms in em:
@@ -401,7 +406,7 @@ async def chat_with_gemini(
 第二段固定为说话人的昵称（也叫称呼）用[]进行包裹，其中<>里包裹这个人的id，你可以使用@id的方式提及某人。
 从第三段开始为正式的对话内容，可能包含纯文本或者图片；
 如果是文本内容且为@id，则表示在此条消息中提及到了这个id对应的人，一般这个人可能是前文中出现过的说话人昵称。
-如果是文本内容且以> 开头，则表示引用对应编号的前文消息，你需要感觉所给的编号找到与之对应的前文消息内容，如果找不到对应消息，则忽略此引用消息内容，视为普通消息。
+如果是文本内容且以>id开头，则表示引用对应编号的前文消息，你需要感觉所给的编号找到与之对应的前文消息内容，如果找不到对应消息，则忽略此引用消息内容，视为普通消息，此语法只会出现在句首。
 
 ## 回复要求
 
