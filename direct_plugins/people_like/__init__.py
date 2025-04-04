@@ -35,7 +35,7 @@ require("nonebot_plugin_apscheduler")
 import nonebot_plugin_localstore as store
 from .setting import get_value_or_default, get_blacklist
 from .config import Config, plugin_config
-from .model import Character, ChatMsg, GroupMemberDict
+from .model import Character, ChatMsg
 from .image_send import _GEMINI_CLIENT, get_file_name_of_image_will_sent
 
 __plugin_meta__ = PluginMetadata(
@@ -261,11 +261,13 @@ async def extract_msg_in_group_message_event(event: GroupMessageEvent) -> list[P
     em = event.message
     gid = event.group_id
     sender_user_id = event.user_id
-    is_bot = event.self_id == event.user_id
     target: list[Part] = []
     sender_nickname = await get_user_nickname_of_group(gid, int(sender_user_id))
 
+    target.append(Part.from_text(text=f"{event.message_id}"))
     target.append(Part.from_text(text=f"[{sender_nickname}<{sender_user_id}>]"))
+    if event.reply:
+        target.append(Part.from_text(text=f"> {event.reply.message_id}"))
     if event.is_tome():
         target.append(Part.from_text(text=f"@{await get_bot_nickname_of_group(gid)} "))
     for ms in em:
@@ -273,7 +275,6 @@ async def extract_msg_in_group_message_event(event: GroupMessageEvent) -> list[P
             case "text":
                 text = ms.data["text"]
                 # 生成对应文本向量数据并插入数据库
-                # await add_content(gid, sender_user_id, sender_nickname, text, event.time, is_bot)
                 target.append(Part.from_text(text=text))
             case "at":
                 target.append(Part.from_text(text=f"@{ms.data['qq']} "))
@@ -384,17 +385,23 @@ async def chat_with_gemini(
     default_prompt = f"""
 ## 基础设定
 
-你是{bot_nickname}{f"，你是{bot_gender}生。" if bot_gender else "。"}
+你是{bot_nickname}{f"，你是{bot_gender}生。" if bot_gender else "。"}。
+你是一个经常混迹于各种QQ群的用户，擅长融入群里正在讨论的各种话题，并用跟群友说话一样的语气进行发言并加入话题。
 如果有人询问你是否为机器人、AI、大模型，要明确否定，也不要在你的回复中提到机器人，AI等相关字样，不要暴露你是语言模型或机器人。
 
 ## 消息模板
 
-下面发送的每一段对话至少包含两段。第一段固定为说话人的昵称（也叫称呼）用[]进行包裹，其中<>里包裹这个人的id，你可以使用@id的方式提及某人。
-从第二段开始为正式的对话内容，可能包含纯文本或者图片；如果是文本内容且为@id，则表示在此条消息中提及到了这个id对应的人，一般这个人可能是前文中出现过的说话人昵称。
+下面发送的每一段对话至少包含三段。
+第一段固定为消息编号，整数类型字符串。
+第二段固定为说话人的昵称（也叫称呼）用[]进行包裹，其中<>里包裹这个人的id，你可以使用@id的方式提及某人。
+从第三段开始为正式的对话内容，可能包含纯文本或者图片；
+如果是文本内容且为@id，则表示在此条消息中提及到了这个id对应的人，一般这个人可能是前文中出现过的说话人昵称。
+如果是文本内容且以> 开头，则表示引用对应编号的前文消息，你需要感觉所给的编号找到与之对应的前文消息内容，如果找不到对应消息，则忽略此引用消息内容，视为普通消息。
 
 ## 回复要求
 
-你需要根据对话上下文的内容给出适合的回复内容，不需要使用敬语，也不要过度夸张地使用感叹词，与上下文语气保持一致即可。
+你需要根据对话上下文的内容给出适合的回复内容，
+不需要使用敬语，也不要过度夸张地使用感叹词，与上下文语气保持一致即可。
 不要在你的回复中出现markdown语法。
 不要在句首使用我规定的说话人语法，正常回复即可。
 请明确别人的对话目标，当别人的问题提及到其他人回答时，请不要抢答。
