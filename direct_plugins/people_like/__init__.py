@@ -309,7 +309,12 @@ async def get_user_nickname_of_group(group_id: int, user_id: int) -> str:
     name = gd.get(user_id)
     if name is None:
         bot = get_bot()
-        info: dict[str, Any] = dict(await bot.call_api("get_group_member_info", group_id=group_id, user_id=user_id))
+        try:
+            info: dict[str, Any] = dict(await bot.call_api("get_group_member_info", group_id=group_id, user_id=user_id))
+        except Exception as e:
+            logger.error("获取群成员信息失败", str(e))
+            info: dict[str, Any] = {}
+
         nickname: str = str(info.get("card", info.get("nickname", str(info.get("user_id")))))
         # 缓存一天
         gd.set(user_id, nickname, 60 * 60 * 24)
