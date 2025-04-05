@@ -29,11 +29,10 @@ class PropConfig(TypedDict):
 
 
 _EXPECT_PROP_NAMES: dict[str, PropConfig] = {
-    "prompt": {"range": "", "type": "str", "default": ""},
+    "prompt": {"range": "", "type": "str", "default": "无"},
     "topP": {"range": "", "type": "float", "default": "0.95"},
     "topK": {"range": "", "type": "int", "default": "40"},
     "temperature": {"range": "0.0-2.0", "type": "float", "default": "1.0"},
-    "enableEnhancedCivicAnswers": {"range": "", "type": "bool", "default": "False"},
     "length": {"range": "", "type": "int", "default": "0"},
     "search": {"range": "", "type": "bool", "default": "False"},
     "reply_probability": {"range": "0.0-1.0", "type": "float", "default": str(plugin_config.reply_probability)},
@@ -133,7 +132,7 @@ async def get_property(bot: Bot, matcher: Matcher, e: MessageEvent):
     if conf is None:
         await matcher.finish("属性名无效，指令中断")
     value = PROPERTIES.get(group_id, {}).get(property_name)
-    ret = conf["default"] if value is None else value  # type: ignore
+    ret = conf["default"] if value else value  # type: ignore
     await matcher.finish(ret)
 
 
@@ -164,6 +163,7 @@ async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
 {"范围：" + conf["range"] if conf["range"] else ""}
 类型：{conf["type"]}
 默认值：{conf["default"]}
+当前值：{get_value_or_default(int(group_id), property_name, conf["default"])}
     """
     resp = await prompt(prompt_str, timeout=60)
     if not resp:

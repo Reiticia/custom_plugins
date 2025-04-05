@@ -432,9 +432,6 @@ async def chat_with_gemini(
     top_p = float(p) if (p := get_value_or_default(group_id, "topP")) else None
     top_k = int(p) if (p := get_value_or_default(group_id, "topK")) else None
     temperature = float(p) if (p := get_value_or_default(group_id, "temperature")) else None
-    _enable_enhanced_civic_answers = (
-        bool(p) if (p := get_value_or_default(group_id, "enableEnhancedCivicAnswers")) else None
-    )
     c_len = i_p if (p := get_value_or_default(group_id, "length", "0")) and (i_p := int(p)) > 0 else None
 
     enable_search = bool(get_value_or_default(group_id, "search"))
