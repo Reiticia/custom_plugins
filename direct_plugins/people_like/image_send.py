@@ -132,7 +132,6 @@ async def send_image(file_name: str, group_id: int) -> MessageSegment | None:
     async with aopen(image_dir_path.joinpath(file_name), "rb") as f:
         content = await f.read()
     if isinstance(bot, OB11Bot):
-        # await bot.send_group_msg(group_id=group_id, message=Message(MessageSegment.image(content)))
         return MessageSegment.image(content)
     else:
         return None
