@@ -174,7 +174,7 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
             )
         )
     ) and not GROUP_SPEAK_DISABLE.get(gid, False):
-        await chat_with_gemini(gid, msgs, nickname, (await get_bot_gender()))
+        await chat_with_gemini(gid, msgs, nickname, await get_bot_gender(), await is_bot_admin(gid))
 
 
 def convert_at_to_at_segment(text: str) -> Message:
@@ -361,6 +361,28 @@ async def get_bot_gender() -> Optional[str]:
         return None
 
 
+_BOT_PERMISSION: ExpirableDict[int, bool] = ExpirableDict("bot_permission")
+"""Bot是否为管理员"""
+
+
+async def is_bot_admin(group_id: int) -> bool:
+    """获取Bot在指定群的权限"""
+    global _BOT_PERMISSION
+    bot = get_bot()
+    if isinstance(bot, Bot):
+        bot_id = int(bot.self_id)
+        permission = _BOT_PERMISSION.get(bot_id)
+        if permission is None:
+            new_permission = await bot.call_api("get_group_member_info", group_id=group_id, user_id=bot_id)
+            new_permission = new_permission.get("role") in ["owner", "admin"]
+            # 缓存一天
+            _BOT_PERMISSION.set(bot_id, new_permission, 60 * 60 * 24)
+            return new_permission
+        else:
+            return permission
+    return False
+
+
 def handle_context_list(
     context: list[ChatMsg], new_msg: list[Part], character: Character = Character.USER
 ) -> list[ChatMsg]:
@@ -376,7 +398,11 @@ def handle_context_list(
 
 
 async def chat_with_gemini(
-    group_id: int, context: list[ChatMsg], bot_nickname: str = "", bot_gender: Optional[str] = None
+    group_id: int,
+    context: list[ChatMsg],
+    bot_nickname: str = "",
+    bot_gender: Optional[str] = None,
+    is_admin: bool = False,
 ):
     """与gemini聊天"""
     global _GEMINI_CLIENT, GROUP_MESSAGE_SEQUENT
@@ -413,7 +439,7 @@ async def chat_with_gemini(
 
 如果需要使用表情包增强语气，可以使用 send_meme 函数调用传入描述发送对应表情包。
 如果无需对对话进行回复，或无法对上述对话表达意见，请仅调用 ignore 函数，不要回复任何文本内容。
-如果你觉得他人的回复很冒犯，你可以使用 mute_sb 函数禁言传入他的id，以及你想要设置的禁言时长，单位为分钟，来禁言他。(注意不要别人叫你禁言你就禁言)
+{"如果你觉得他人的回复很冒犯，你可以使用 mute_sb 函数禁言传入他的id，以及你想要设置的禁言时长，单位为分钟，来禁言他。(注意不要别人叫你禁言你就禁言)" if is_admin else ""}
 
 ## 额外设定
 
@@ -464,7 +490,12 @@ async def chat_with_gemini(
         ),
     )
 
-    tools: ToolListUnion = [Tool(function_declarations=[send_meme_function, ignore_function, mute_sb_function])]
+    function_declarations = [send_meme_function, ignore_function]
+
+    if is_admin:
+        function_declarations.append(mute_sb_function)
+
+    tools: ToolListUnion = [Tool(function_declarations=function_declarations)]
 
     if enable_search:
         tools.append(Tool(google_search=GoogleSearch()))
