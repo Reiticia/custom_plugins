@@ -188,7 +188,7 @@ def convert_at_to_at_segment(text: str) -> Message:
     """
     ms_list = []
 
-    at_pattern = r"(@\d+)"
+    at_pattern = r"((?:@\d+)|(?:\[\<\d+\>\]))"
 
     # 使用 re.split 方法进行切割，保留 @id 字段
     parts = re.split(at_pattern, text)
@@ -200,6 +200,11 @@ def convert_at_to_at_segment(text: str) -> Message:
         if part.startswith("@"):
             # 找到 @id 字段
             user_id = int(part[1:])
+            ms_list.append(MessageSegment.at(user_id))
+            ms_list.append(MessageSegment.text(" "))
+        if part.startswith("[<") and part.endswith(">]"):
+            # 找到 @id 字段
+            user_id = int(part[2:-2])
             ms_list.append(MessageSegment.at(user_id))
             ms_list.append(MessageSegment.text(" "))
         else:
@@ -528,7 +533,6 @@ async def chat_with_gemini(
             if "meme" in txt or "图片" in txt or "表情" in txt:
                 will_send_img = await get_file_name_of_image_will_sent(str(txt), group_id)
                 if will_send_img:
-                    logger.info(f"群{group_id}回复图片：{will_send_img}")
                     await on_msg.send(will_send_img)
             elif "ignore" in txt or "忽略" in txt or "mute_sb" in txt or "禁言" in txt:
                 logger.debug(f"群{group_id}调用函数ignore，忽略回复")
