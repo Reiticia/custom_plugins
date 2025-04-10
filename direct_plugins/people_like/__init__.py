@@ -202,7 +202,7 @@ def convert_at_to_at_segment(text: str) -> Message:
             user_id = int(part[1:])
             ms_list.append(MessageSegment.at(user_id))
             ms_list.append(MessageSegment.text(" "))
-        if part.startswith("[<") and part.endswith(">]"):
+        elif part.startswith("[<") and part.endswith(">]"):
             # 找到 @id 字段
             user_id = int(part[2:-2])
             ms_list.append(MessageSegment.at(user_id))
