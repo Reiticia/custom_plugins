@@ -192,6 +192,8 @@ anti_image = on_command("ani", aliases={"图片分析", "图片审查", "分析�
 @anti_image.handle()
 async def anti(e: MessageEvent):
     """分析图片"""
+    if not e.message.has("image") and e.reply is None:
+        return
     if ims := e.message.include("image"):
         parts = []
         for im in ims:
@@ -215,6 +217,32 @@ async def anti(e: MessageEvent):
             await anti_image.send("图片包含二次元内容")
 
         await anti_image.finish(f"图片分析结束{res}")
+    
+    if e.reply is not None:
+        ims = e.reply.message.include("image")
+        parts = []
+        for im in ims:
+            resp = await _HTTP_CLIENT.get(im.data["url"])
+            byte_content = resp.read()
+            file_name = str(im.data["file"])
+            suffix_name = str(file_name).split(".")[-1]
+            mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
+            match suffix_name:
+                case "jpg" | "gif":
+                    mime_type = "image/jpeg"
+                case "png":
+                    mime_type = "image/png"
+            parts.append(Part.from_bytes(data=byte_content, mime_type=mime_type))
+        res = await analysis_image(parts)
+        if res.is_adult:
+            await anti_image.send("图片包含色情内容")
+        if res.is_violence:
+            await anti_image.send("图片包含暴力内容")
+        if res.is_japan_anime:
+            await anti_image.send("图片包含二次元内容")
+
+        await anti_image.finish(f"图片分析结束{res}")
+
 
 
 async def inc_image(event: GroupMessageEvent) -> bool:
