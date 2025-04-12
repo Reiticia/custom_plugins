@@ -1,4 +1,5 @@
 import time
+from datetime import datetime, timezone
 from nonebot import get_bot, logger, on_command, on_message, get_driver
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
@@ -340,4 +341,8 @@ async def who_send_image(session: async_scoped_session, msg: Message = CommandAr
     if first is None:
         await who_send.finish("图片不存在")
     else:
-        await who_send.finish(f"来自{first.group_id}:{first.user_id}，上传时间{first.update_time}")
+        time = datetime.fromtimestamp(first.update_time).strftime("%Y-%m-%d %H:%M:%S")
+        size = first.file_size
+        emoji_id = first.emoji_id
+        emoji_package_id = first.emoji_package_id
+        await who_send.finish(f"来自{first.group_id}:{first.user_id}，上传时间{time}，大小{size}，emoji_id{emoji_id}，emoji_package_id{emoji_package_id}")
