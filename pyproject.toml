@@ -40,7 +40,7 @@ plugin_dirs = [
     # "forward_plugins",
      "direct_plugins", 
     #  "no_deploy"
-     ]
+]
 builtin_plugins = ["echo"]
 
 [tool.ruff]

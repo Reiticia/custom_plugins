@@ -1,9 +1,13 @@
+import time
 from nonebot import get_bot, logger, on_command, on_message, get_driver
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent, MessageSegment, Bot as OB11Bot
 import nonebot_plugin_localstore as store  # noqa: E402
 from httpx import AsyncClient
 from aiofiles import open as aopen
 import aiofiles.os as aios
+from nonebot_plugin_orm import Model, async_scoped_session, get_scoped_session
+from sqlalchemy import select, update
+from .model import ImageSender
 
 import os
 from typing import Literal, Optional
@@ -219,7 +223,7 @@ _HTTP_CLIENT = AsyncClient()
 
 
 @on_message(rule=inc_image).handle()
-async def add_image(event: GroupMessageEvent):
+async def add_image(event: GroupMessageEvent, session: async_scoped_session):
     if not image_dir_path.exists():
         image_dir_path.mkdir(parents=True)
     ms = event.message.include("image")
@@ -230,8 +234,11 @@ async def add_image(event: GroupMessageEvent):
     ]
     for m in image_ms:
         url = m.data["url"]
+        file_size = m.data["file_size"]
+        key = m.data["key"]
+        emoji_id = m.data["emoji_id"]
+        emoji_package_id = m.data["emoji_package_id"]
         file_name = str(m.data.get("file"))
-        file_name = file_name.replace(".jpg", ".gif")
         resp = await _HTTP_CLIENT.get(url)
         # 文件不存在则写入
         if not (file_path := image_dir_path.joinpath(file_name)).exists():
@@ -248,6 +255,33 @@ async def add_image(event: GroupMessageEvent):
                 mime_type = "image/png"
         file = await _GEMINI_CLIENT.aio.files.upload(file=file_path, config=UploadFileConfig(mime_type=mime_type))
         _FILES.append(LocalFile(mime_type=mime_type, file_name=file_name, file=file))
+        # 插入数据库
+        res = await session.execute(select(ImageSender).where(ImageSender.name == file_name))
+        first = res.scalars().first()
+        if first is None: # 如果原来不存在，则插入
+            image_sender = ImageSender(
+                name=file_name,
+                group_id=event.group_id,
+                user_id=event.user_id,
+                ext_name=suffix_name,
+                url=url,
+                file_uri=str(file.uri),
+                file_size=file_size,
+                key=key,
+                emoji_id=emoji_id,
+                emoji_package_id=emoji_package_id,
+                create_time=int(event.time),
+                update_time=int(event.time),
+            )
+            session.add(image_sender)
+            await session.commit()
+        else: # 如果原来存在，则更新
+            first.update_time = int(event.time)
+            first.url = url
+            first.file_uri = str(file.uri)
+            first.group_id = event.group_id
+            first.user_id = event.user_id
+            await session.execute(update(ImageSender).where(ImageSender.name == file_name).values(first.__dict__))
 
 
 driver = get_driver()
@@ -261,7 +295,6 @@ inited = False
 async def upload_image() -> Optional[str]:
     """每搁两天重置图片文件缓存"""
     global _FILES, _GEMINI_CLIENT
-    await rename_files_async()
     image_list = await _GEMINI_CLIENT.aio.files.list()
     async for file in image_list:
         if n := file.name:
@@ -269,6 +302,7 @@ async def upload_image() -> Optional[str]:
     # 重置缓存键名
     _FILES = []
     files = []
+    session = get_scoped_session()
     # 遍历图片，组成contents
     for _, _, files in os.walk(image_dir_path):
         for local_file in files:
@@ -282,12 +316,10 @@ async def upload_image() -> Optional[str]:
             file_path = image_dir_path / local_file
             file = await _GEMINI_CLIENT.aio.files.upload(file=file_path, config=UploadFileConfig(mime_type=mime_type))
             _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=file))
-
-
-async def rename_files_async():
-    """异步重命名图片文件"""
-    # 遍历文件夹下所有 .jpg 文件
-    for file_path in image_dir_path.glob("*.[jJ][pP][gG]"):  # 匹配 .jpg 文件
-        new_name = file_path.with_suffix(".gif")  # 修改后缀为 .gif
-        await aios.rename(file_path, new_name)  # 异步重命名
-        print(f"重命名: {file_path} -> {new_name}")
+            
+            res = await session.execute(select(ImageSender).where(ImageSender.name == local_file))
+            first = res.scalars().first()
+            if first is not None:  # 如果原来存在，则更新
+                first.update_time = int(time.time())
+                first.file_uri = str(file.uri)
+                await session.execute(update(ImageSender).where(ImageSender.name == local_file).values(first.__dict__))

@@ -2,6 +2,8 @@ import random
 import re
 import time
 from httpx import AsyncClient
+from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from asyncio import sleep
 from typing import Any, Literal, Optional
@@ -36,7 +38,6 @@ require("nonebot_plugin_apscheduler")
 import nonebot_plugin_localstore as store
 from .setting import get_value_or_default, get_blacklist
 from .config import Config, plugin_config
-from .model import Character, ChatMsg
 from .image_send import _GEMINI_CLIENT, get_file_name_of_image_will_sent
 
 __plugin_meta__ = PluginMetadata(
@@ -46,6 +47,31 @@ __plugin_meta__ = PluginMetadata(
     config=Config,
 )
 
+class Character(Enum):
+    BOT = 1
+    USER = 2
+
+@dataclass
+class ChatMsg:
+    sender: Character
+    content: list[Part]
+
+
+@dataclass
+class GroupMemberDict:
+    group_id: int
+    members: dict[int, str]
+
+    def add_member(self, user_id: int, user_name: str):
+        self.members[user_id] = user_name
+
+    def get_id_by_name(self, user_name: str) -> Optional[int]:
+        for user_id, name in self.members.items():
+            if name == user_name:
+                return user_id
+        return None
+
+
 GROUP_MESSAGE_SEQUENT: dict[int, list[ChatMsg]] = {}
 """群号，消息上下文列表
 """
@@ -53,6 +79,7 @@ GROUP_MESSAGE_SEQUENT: dict[int, list[ChatMsg]] = {}
 GROUP_SPEAK_DISABLE: dict[int, bool] = {}
 
 driver = get_driver()
+
 
 
 @driver.on_bot_connect
@@ -209,7 +236,7 @@ def convert_at_to_at_segment(text: str) -> Message:
             ms_list.append(MessageSegment.text(" "))
         else:
             # 非 @id 字段，直接添加
-            ms_list.append(MessageSegment.text(part))
+            ms_list.append(MessageSegment.text(part.strip()))
     return Message(ms_list)
 
 
@@ -593,3 +620,4 @@ async def mute_sb(group_id: int, user_id: int, minute: int):
         if int(time.time()) >= GROUP_BAN_DICT[group_id][user_id]:
             GROUP_BAN_DICT[group_id][user_id] = int(time.time()) + minute * 60
             await get_bot().call_api("set_group_ban", group_id=group_id, user_id=user_id, duration=minute * 60)
+
