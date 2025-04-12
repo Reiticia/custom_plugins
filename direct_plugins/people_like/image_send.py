@@ -1,5 +1,7 @@
 import time
 from nonebot import get_bot, logger, on_command, on_message, get_driver
+from nonebot.params import CommandArg
+from nonebot.adapters import Message
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent, MessageSegment, Bot as OB11Bot
 import nonebot_plugin_localstore as store  # noqa: E402
 from httpx import AsyncClient
@@ -234,10 +236,10 @@ async def add_image(event: GroupMessageEvent, session: async_scoped_session):
     ]
     for m in image_ms:
         url = m.data["url"]
-        file_size = m.data["file_size"]
-        key = m.data["key"]
-        emoji_id = m.data["emoji_id"]
-        emoji_package_id = m.data["emoji_package_id"]
+        file_size = m.data.get("file_size")
+        key = m.data.get("key")
+        emoji_id = m.data.get("emoji_id")
+        emoji_package_id = m.data.get("emoji_package_id")
         file_name = str(m.data.get("file"))
         resp = await _HTTP_CLIENT.get(url)
         # 文件不存在则写入
@@ -258,7 +260,7 @@ async def add_image(event: GroupMessageEvent, session: async_scoped_session):
         # 插入数据库
         res = await session.execute(select(ImageSender).where(ImageSender.name == file_name))
         first = res.scalars().first()
-        if first is None: # 如果原来不存在，则插入
+        if first is None:  # 如果原来不存在，则插入
             image_sender = ImageSender(
                 name=file_name,
                 group_id=event.group_id,
@@ -275,7 +277,7 @@ async def add_image(event: GroupMessageEvent, session: async_scoped_session):
             )
             session.add(image_sender)
             await session.commit()
-        else: # 如果原来存在，则更新
+        else:  # 如果原来存在，则更新
             first.update_time = int(event.time)
             first.url = url
             first.file_uri = str(file.uri)
@@ -316,10 +318,26 @@ async def upload_image() -> Optional[str]:
             file_path = image_dir_path / local_file
             file = await _GEMINI_CLIENT.aio.files.upload(file=file_path, config=UploadFileConfig(mime_type=mime_type))
             _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=file))
-            
+
             res = await session.execute(select(ImageSender).where(ImageSender.name == local_file))
             first = res.scalars().first()
             if first is not None:  # 如果原来存在，则更新
                 first.update_time = int(time.time())
                 first.file_uri = str(file.uri)
                 await session.execute(update(ImageSender).where(ImageSender.name == local_file).values(first.__dict__))
+
+
+who_send = on_command("谁发的", aliases={"谁发的图片", "图片来源"})
+
+
+@who_send.handle()
+async def who_send_image(session: async_scoped_session, msg: Message = CommandArg()):
+    img_name = msg.extract_plain_text()
+    if not img_name:
+        await who_send.finish("请指定图片名称")
+    res = await session.execute(select(ImageSender).where(ImageSender.name == img_name))
+    first = res.scalars().first()
+    if first is None:
+        await who_send.finish("图片不存在")
+    else:
+        await who_send.finish(f"来自{first.group_id}:{first.user_id}，上传时间{first.update_time}")
