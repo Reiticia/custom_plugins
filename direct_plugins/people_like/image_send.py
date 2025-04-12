@@ -278,6 +278,7 @@ async def add_image(event: GroupMessageEvent, session: async_scoped_session):
             )
             session.add(image_sender)
             await session.commit()
+            logger.info(f"新增图片{file_name}成功")
         else:  # 如果原来存在，则更新
             await session.execute(update(ImageSender).where(ImageSender.name == file_name).values({
                 "update_time": int(event.time),
@@ -285,7 +286,12 @@ async def add_image(event: GroupMessageEvent, session: async_scoped_session):
                 "group_id": event.group_id,
                 "user_id": event.user_id,
                 "url": url,
+                "file_size": file_size,
+                "key": key,
+                "emoji_id": emoji_id,
+                "emoji_package_id": emoji_package_id,
             }))
+            logger.info(f"更新图片{file_name}成功")
 
 
 driver = get_driver()
@@ -328,6 +334,7 @@ async def upload_image() -> Optional[str]:
                     "update_time": int(time.time()),
                     "file_uri": str(file.uri),
                 }))
+                logger.info(f"更新图片{local_file}成功")
 
 
 who_send = on_command("谁发的", aliases={"谁发的图片", "图片来源"})
@@ -348,7 +355,7 @@ async def who_send_image(session: async_scoped_session, msg: Message = CommandAr
         emoji_id = first.emoji_id
         emoji_package_id = first.emoji_package_id
         message = f"""
-来着群{first.group_id}的成员{first.user_id}
+来自群{first.group_id}的成员{first.user_id}
 上传时间{time}
 {f"大小{size}" if size else ""}
 {f"emoji_id{emoji_id}" if emoji_id else ""}
