@@ -279,12 +279,13 @@ async def add_image(event: GroupMessageEvent, session: async_scoped_session):
             session.add(image_sender)
             await session.commit()
         else:  # 如果原来存在，则更新
-            first.update_time = int(event.time)
-            first.url = url
-            first.file_uri = str(file.uri)
-            first.group_id = event.group_id
-            first.user_id = event.user_id
-            await session.execute(update(ImageSender).where(ImageSender.name == file_name).values(first.__dict__))
+            await session.execute(update(ImageSender).where(ImageSender.name == file_name).values({
+                "update_time": int(event.time),
+                "file_uri": str(file.uri),
+                "group_id": event.group_id,
+                "user_id": event.user_id,
+                "url": url,
+            }))
 
 
 driver = get_driver()
@@ -323,9 +324,10 @@ async def upload_image() -> Optional[str]:
             res = await session.execute(select(ImageSender).where(ImageSender.name == local_file))
             first = res.scalars().first()
             if first is not None:  # 如果原来存在，则更新
-                first.update_time = int(time.time())
-                first.file_uri = str(file.uri)
-                await session.execute(update(ImageSender).where(ImageSender.name == local_file).values(first.__dict__))
+                await session.execute(update(ImageSender).where(ImageSender.name == local_file).values({
+                    "update_time": int(time.time()),
+                    "file_uri": str(file.uri),
+                }))
 
 
 who_send = on_command("谁发的", aliases={"谁发的图片", "图片来源"})
@@ -345,4 +347,11 @@ async def who_send_image(session: async_scoped_session, msg: Message = CommandAr
         size = first.file_size
         emoji_id = first.emoji_id
         emoji_package_id = first.emoji_package_id
-        await who_send.finish(f"来自{first.group_id}:{first.user_id}，上传时间{time}，大小{size}，emoji_id{emoji_id}，emoji_package_id{emoji_package_id}")
+        message = f"""
+来着群{first.group_id}的成员{first.user_id}
+上传时间{time}
+{f"大小{size}" if size else ""}
+{f"emoji_id{emoji_id}" if emoji_id else ""}
+{f"emoji_package_id{emoji_package_id}" if emoji_package_id else ""}
+        """
+        await who_send.finish(message.strip())
