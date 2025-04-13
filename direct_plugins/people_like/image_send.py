@@ -364,6 +364,8 @@ async def upload_image() -> Optional[str]:
                 }))
                 logger.info(f"更新图片{local_file}成功")
 
+    await session.close()
+
 
 who_send = on_command("谁发的", aliases={"谁发的图片", "图片来源"})
 
