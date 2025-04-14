@@ -12,6 +12,8 @@ class ImageSender(Model):
     """用户id"""
     name: Mapped[str] = mapped_column(index=True)
     """图片名称"""
+    summary: Mapped[str] = mapped_column(nullable=True)
+    """图片简介"""
     ext_name: Mapped[str]
     """图片扩展名"""
     url: Mapped[str]

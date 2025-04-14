@@ -274,6 +274,7 @@ async def add_image(event: GroupMessageEvent, session: async_scoped_session):
     ]
     for m in image_ms:
         url = m.data["url"]
+        summary = m.data["summary"]
         file_size = m.data.get("file_size")
         key = m.data.get("key")
         emoji_id = m.data.get("emoji_id")
@@ -301,6 +302,7 @@ async def add_image(event: GroupMessageEvent, session: async_scoped_session):
         if first is None:  # 如果原来不存在，则插入
             image_sender = ImageSender(
                 name=file_name,
+                summary=summary,
                 group_id=event.group_id,
                 user_id=event.user_id,
                 ext_name=suffix_name,
@@ -326,6 +328,7 @@ async def add_image(event: GroupMessageEvent, session: async_scoped_session):
                         "file_uri": str(file.uri),
                         "group_id": event.group_id,
                         "user_id": event.user_id,
+                        "summary": summary,
                         "url": url,
                         "file_size": file_size,
                         "key": key,
@@ -336,6 +339,7 @@ async def add_image(event: GroupMessageEvent, session: async_scoped_session):
             )
             logger.info(f"更新图片{file_name}成功")
 
+    await session.close()
 
 driver = get_driver()
 
