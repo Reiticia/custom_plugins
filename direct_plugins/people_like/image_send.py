@@ -4,6 +4,7 @@ from nonebot import get_bot, logger, on_command, on_message, get_driver
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent, MessageSegment, Bot as OB11Bot
+from nonebot.adapters.onebot.utils import b2s, f2s
 import nonebot_plugin_localstore as store  # noqa: E402
 from httpx import AsyncClient
 from aiofiles import open as aopen
@@ -139,7 +140,16 @@ async def send_image(file_name: str, group_id: int) -> MessageSegment | None:
     async with aopen(image_dir_path.joinpath(file_name), "rb") as f:
         content = await f.read()
     if isinstance(bot, OB11Bot):
-        return MessageSegment.image(content)
+        # return MessageSegment.image(content)
+        return MessageSegment(
+            "image",
+            {
+                "file": f2s(content),
+                "sub_type": str(1),
+                "cache": b2s(True),
+                "proxy": b2s(True),
+            },
+        )
     else:
         return None
 
@@ -217,7 +227,7 @@ async def anti(e: MessageEvent):
             await anti_image.send("图片包含二次元内容")
 
         await anti_image.finish(f"图片分析结束{res}")
-    
+
     if e.reply is not None:
         ims = e.reply.message.include("image")
         parts = []
@@ -242,7 +252,6 @@ async def anti(e: MessageEvent):
             await anti_image.send("图片包含二次元内容")
 
         await anti_image.finish(f"图片分析结束{res}")
-
 
 
 async def inc_image(event: GroupMessageEvent) -> bool:
@@ -308,17 +317,23 @@ async def add_image(event: GroupMessageEvent, session: async_scoped_session):
             await session.commit()
             logger.info(f"新增图片{file_name}成功")
         else:  # 如果原来存在，则更新
-            await session.execute(update(ImageSender).where(ImageSender.name == file_name).values({
-                "update_time": int(event.time),
-                "file_uri": str(file.uri),
-                "group_id": event.group_id,
-                "user_id": event.user_id,
-                "url": url,
-                "file_size": file_size,
-                "key": key,
-                "emoji_id": emoji_id,
-                "emoji_package_id": emoji_package_id,
-            }))
+            await session.execute(
+                update(ImageSender)
+                .where(ImageSender.name == file_name)
+                .values(
+                    {
+                        "update_time": int(event.time),
+                        "file_uri": str(file.uri),
+                        "group_id": event.group_id,
+                        "user_id": event.user_id,
+                        "url": url,
+                        "file_size": file_size,
+                        "key": key,
+                        "emoji_id": emoji_id,
+                        "emoji_package_id": emoji_package_id,
+                    }
+                )
+            )
             logger.info(f"更新图片{file_name}成功")
 
 
@@ -358,10 +373,16 @@ async def upload_image() -> Optional[str]:
             res = await session.execute(select(ImageSender).where(ImageSender.name == local_file))
             first = res.scalars().first()
             if first is not None:  # 如果原来存在，则更新
-                await session.execute(update(ImageSender).where(ImageSender.name == local_file).values({
-                    "update_time": int(time.time()),
-                    "file_uri": str(file.uri),
-                }))
+                await session.execute(
+                    update(ImageSender)
+                    .where(ImageSender.name == local_file)
+                    .values(
+                        {
+                            "update_time": int(time.time()),
+                            "file_uri": str(file.uri),
+                        }
+                    )
+                )
                 logger.info(f"更新图片{local_file}成功")
 
     await session.close()
