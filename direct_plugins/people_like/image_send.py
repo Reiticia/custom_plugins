@@ -9,7 +9,7 @@ import nonebot_plugin_localstore as store  # noqa: E402
 from httpx import AsyncClient
 from aiofiles import open as aopen
 import aiofiles.os as aios
-from nonebot_plugin_orm import Model, async_scoped_session, get_scoped_session
+from nonebot_plugin_orm import get_session
 from sqlalchemy import select, update
 from .model import ImageSender
 
@@ -263,7 +263,7 @@ _HTTP_CLIENT = AsyncClient()
 
 
 @on_message(rule=inc_image).handle()
-async def add_image(event: GroupMessageEvent, session: async_scoped_session):
+async def add_image(event: GroupMessageEvent):
     if not image_dir_path.exists():
         image_dir_path.mkdir(parents=True)
     ms = event.message.include("image")
@@ -297,49 +297,49 @@ async def add_image(event: GroupMessageEvent, session: async_scoped_session):
         file = await _GEMINI_CLIENT.aio.files.upload(file=file_path, config=UploadFileConfig(mime_type=mime_type))
         _FILES.append(LocalFile(mime_type=mime_type, file_name=file_name, file=file))
         # 插入数据库
-        res = await session.execute(select(ImageSender).where(ImageSender.name == file_name))
-        first = res.scalars().first()
-        if first is None:  # 如果原来不存在，则插入
-            image_sender = ImageSender(
-                name=file_name,
-                summary=summary,
-                group_id=event.group_id,
-                user_id=event.user_id,
-                ext_name=suffix_name,
-                url=url,
-                file_uri=str(file.uri),
-                file_size=file_size,
-                key=key,
-                emoji_id=emoji_id,
-                emoji_package_id=emoji_package_id,
-                create_time=int(event.time),
-                update_time=int(event.time),
-            )
-            session.add(image_sender)
-            await session.commit()
-            logger.info(f"新增图片{file_name}成功")
-        else:  # 如果原来存在，则更新
-            await session.execute(
-                update(ImageSender)
-                .where(ImageSender.name == file_name)
-                .values(
-                    {
-                        "update_time": int(event.time),
-                        "file_uri": str(file.uri),
-                        "group_id": event.group_id,
-                        "user_id": event.user_id,
-                        "summary": summary,
-                        "url": url,
-                        "file_size": file_size,
-                        "key": key,
-                        "emoji_id": emoji_id,
-                        "emoji_package_id": emoji_package_id,
-                    }
+        session = get_session()
+        async with session.begin():
+            res = await session.execute(select(ImageSender).where(ImageSender.name == file_name))
+            first = res.scalars().first()
+            if first is None:  # 如果原来不存在，则插入
+                image_sender = ImageSender(
+                    name=file_name,
+                    summary=summary,
+                    group_id=event.group_id,
+                    user_id=event.user_id,
+                    ext_name=suffix_name,
+                    url=url,
+                    file_uri=str(file.uri),
+                    file_size=file_size,
+                    key=key,
+                    emoji_id=emoji_id,
+                    emoji_package_id=emoji_package_id,
+                    create_time=int(event.time),
+                    update_time=int(event.time),
                 )
-            )
-            logger.info(f"更新图片{file_name}成功")
-
-    await session.close()
+                session.add(image_sender)
+                await session.commit()
+                logger.info(f"新增图片{file_name}成功")
+            else:  # 如果原来存在，则更新
+                await session.execute(
+                    update(ImageSender)
+                    .where(ImageSender.name == file_name)
+                    .values(
+                        {
+                            "update_time": int(event.time),
+                            "file_uri": str(file.uri),
+                            "group_id": event.group_id,
+                            "user_id": event.user_id,
+                            "summary": summary,
+                            "url": url,
+                            "file_size": file_size,
+                            "key": key,
+                            "emoji_id": emoji_id,
+                            "emoji_package_id": emoji_package_id,
+                        }
+                    )
+                )
+                logger.info(f"更新图片{file_name}成功")
 
 driver = get_driver()
 
@@ -359,61 +359,63 @@ async def upload_image() -> Optional[str]:
     # 重置缓存键名
     _FILES = []
     files = []
-    session = get_scoped_session()
-    # 遍历图片，组成contents
-    for _, _, files in os.walk(image_dir_path):
-        for local_file in files:
-            suffix_name = str(local_file).split(".")[-1]
-            mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
-            match suffix_name:
-                case "jpg" | "gif":
-                    mime_type = "image/jpeg"
-                case "png":
-                    mime_type = "image/png"
-            file_path = image_dir_path / local_file
-            file = await _GEMINI_CLIENT.aio.files.upload(file=file_path, config=UploadFileConfig(mime_type=mime_type))
-            _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=file))
+    session = get_session()
+    async with session.begin():
+        # 遍历图片，组成contents
+        for _, _, files in os.walk(image_dir_path):
+            for local_file in files:
+                suffix_name = str(local_file).split(".")[-1]
+                mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
+                match suffix_name:
+                    case "jpg" | "gif":
+                        mime_type = "image/jpeg"
+                    case "png":
+                        mime_type = "image/png"
+                file_path = image_dir_path / local_file
+                file = await _GEMINI_CLIENT.aio.files.upload(file=file_path, config=UploadFileConfig(mime_type=mime_type))
+                _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=file))
 
-            res = await session.execute(select(ImageSender).where(ImageSender.name == local_file))
-            first = res.scalars().first()
-            if first is not None:  # 如果原来存在，则更新
-                await session.execute(
-                    update(ImageSender)
-                    .where(ImageSender.name == local_file)
-                    .values(
-                        {
-                            "update_time": int(time.time()),
-                            "file_uri": str(file.uri),
-                        }
+                res = await session.execute(select(ImageSender).where(ImageSender.name == local_file))
+                first = res.scalars().first()
+                if first is not None:  # 如果原来存在，则更新
+                    await session.execute(
+                        update(ImageSender)
+                        .where(ImageSender.name == local_file)
+                        .values(
+                            {
+                                "update_time": int(time.time()),
+                                "file_uri": str(file.uri),
+                            }
+                        )
                     )
-                )
-                logger.info(f"更新图片{local_file}成功")
+                    logger.info(f"更新图片{local_file}成功")
 
-    await session.close()
 
 
 who_send = on_command("谁发的", aliases={"谁发的图片", "图片来源"})
 
 
 @who_send.handle()
-async def who_send_image(session: async_scoped_session, msg: Message = CommandArg()):
+async def who_send_image(msg: Message = CommandArg()):
     img_name = msg.extract_plain_text()
     if not img_name:
         await who_send.finish("请指定图片名称")
-    res = await session.execute(select(ImageSender).where(ImageSender.name == img_name))
-    first = res.scalars().first()
-    if first is None:
-        await who_send.finish("图片不存在")
-    else:
-        time = datetime.fromtimestamp(first.update_time).strftime("%Y-%m-%d %H:%M:%S")
-        size = first.file_size
-        emoji_id = first.emoji_id
-        emoji_package_id = first.emoji_package_id
-        message = f"""
-来自群{first.group_id}的成员{first.user_id}
-上传时间{time}
-{f"大小{size}" if size else ""}
-{f"emoji_id{emoji_id}" if emoji_id else ""}
-{f"emoji_package_id{emoji_package_id}" if emoji_package_id else ""}
-        """
-        await who_send.finish(message.strip())
+    session = get_session()
+    async with session.begin():
+        res = await session.execute(select(ImageSender).where(ImageSender.name == img_name))
+        first = res.scalars().first()
+        if first is None:
+            await who_send.finish("图片不存在")
+        else:
+            time = datetime.fromtimestamp(first.update_time).strftime("%Y-%m-%d %H:%M:%S")
+            size = first.file_size
+            emoji_id = first.emoji_id
+            emoji_package_id = first.emoji_package_id
+            message = f"""
+    来自群{first.group_id}的成员{first.user_id}
+    上传时间{time}
+    {f"大小{size}" if size else ""}
+    {f"emoji_id{emoji_id}" if emoji_id else ""}
+    {f"emoji_package_id{emoji_package_id}" if emoji_package_id else ""}
+            """
+            await who_send.finish(message.strip())
