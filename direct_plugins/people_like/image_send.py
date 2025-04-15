@@ -341,6 +341,7 @@ async def add_image(event: GroupMessageEvent):
                 )
                 logger.info(f"更新图片{file_name}成功")
 
+
 driver = get_driver()
 
 
@@ -372,7 +373,9 @@ async def upload_image() -> Optional[str]:
                     case "png":
                         mime_type = "image/png"
                 file_path = image_dir_path / local_file
-                file = await _GEMINI_CLIENT.aio.files.upload(file=file_path, config=UploadFileConfig(mime_type=mime_type))
+                file = await _GEMINI_CLIENT.aio.files.upload(
+                    file=file_path, config=UploadFileConfig(mime_type=mime_type)
+                )
                 _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=file))
 
                 res = await session.execute(select(ImageSender).where(ImageSender.name == local_file))
@@ -391,7 +394,6 @@ async def upload_image() -> Optional[str]:
                     logger.info(f"更新图片{local_file}成功")
 
 
-
 who_send = on_command("谁发的", aliases={"谁发的图片", "图片来源"})
 
 
@@ -400,6 +402,7 @@ async def who_send_image(msg: Message = CommandArg()):
     img_name = msg.extract_plain_text()
     if not img_name:
         await who_send.finish("请指定图片名称")
+
     session = get_session()
     async with session.begin():
         res = await session.execute(select(ImageSender).where(ImageSender.name == img_name))
@@ -412,10 +415,10 @@ async def who_send_image(msg: Message = CommandArg()):
             emoji_id = first.emoji_id
             emoji_package_id = first.emoji_package_id
             message = f"""
-    来自群{first.group_id}的成员{first.user_id}
-    上传时间{time}
-    {f"大小{size}" if size else ""}
-    {f"emoji_id{emoji_id}" if emoji_id else ""}
-    {f"emoji_package_id{emoji_package_id}" if emoji_package_id else ""}
-            """
+来自群{first.group_id}的成员{first.user_id}
+上传时间: {time}
+"大小: {size}
+"emoji_id: {emoji_id}
+"emoji_package_id: {emoji_package_id}
+"""
             await who_send.finish(message.strip())
