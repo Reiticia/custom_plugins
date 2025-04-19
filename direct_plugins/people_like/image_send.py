@@ -5,6 +5,7 @@ from nonebot.params import CommandArg
 from nonebot.adapters import Message
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent, MessageSegment, Bot as OB11Bot
 from nonebot.adapters.onebot.utils import b2s, f2s
+from nonebot.permission import SUPERUSER
 import nonebot_plugin_localstore as store  # noqa: E402
 from httpx import AsyncClient
 from aiofiles import open as aopen
@@ -422,3 +423,15 @@ async def who_send_image(msg: Message = CommandArg()):
 "emoji_package_id: {emoji_package_id}
 """
             await who_send.finish(message.strip())
+
+
+count_image = on_command("图片统计", aliases={"图片数量", "图片总数"}, permission=SUPERUSER)
+
+
+@count_image.handle()
+async def count_image_handle():
+    session = get_session()
+    async with session.begin():
+        res = await session.execute(select(ImageSender))
+        all = res.scalars().fetchall()
+        await count_image.send(str(len(all)))
