@@ -418,9 +418,9 @@ async def who_send_image(msg: Message = CommandArg()):
             message = f"""
 来自群{first.group_id}的成员{first.user_id}
 上传时间: {time}
-"大小: {size}
-"emoji_id: {emoji_id}
-"emoji_package_id: {emoji_package_id}
+大小: {size}
+emoji_id: {emoji_id}
+emoji_package_id: {emoji_package_id}
 """
             await who_send.finish(message.strip())
 
