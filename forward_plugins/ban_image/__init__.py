@@ -7,7 +7,7 @@ from nonebot.matcher import Matcher
 from .struct import BanImage
 from nonebot.params import Depends
 from common.struct import ExpirableDict
-from common.permission import admin_permission
+from common.permission import owner_permission
 from .metadata import __plugin_meta__ as __plugin_meta__
 from nonebot import require
 
@@ -86,7 +86,7 @@ async def check_message_add(
     return False
 
 
-@on_message(rule=check_message_add, permission=admin_permission).handle()
+@on_message(rule=check_message_add, permission=owner_permission).handle()
 async def add_ban_image(event: GroupMessageEvent, matcher: Matcher, ban_image: BanImage = Depends(get_ban_image)):
     """添加违禁图片"""
     reply_msg: Optional[Reply] = event.reply
@@ -113,7 +113,7 @@ async def check_message_del(event: GroupMessageEvent):
         return False
 
 
-@on_message(rule=check_message_del, permission=admin_permission).handle()
+@on_message(rule=check_message_del, permission=owner_permission).handle()
 async def remove_ban_image(event: GroupMessageEvent, matcher: Matcher, ban_image: BanImage = Depends(get_ban_image)):
     """移除违禁图片"""
     reply_msg: Optional[Reply] = event.reply
@@ -148,7 +148,7 @@ async def list_ban_images(bot: Bot, event: GroupMessageEvent, ban_image: BanImag
         await bot.send_group_msg(group_id=event.group_id, message="当前没有违禁图片")
 
 
-@on_fullmatch(msg="都可以发", permission=admin_permission).handle()
+@on_fullmatch(msg="都可以发", permission=owner_permission).handle()
 async def rm_all_ban_images(bot: Bot, event: GroupMessageEvent, ban_image: BanImage = Depends(get_ban_image)):
     await ban_image.clear_ban_image()
     await bot.send_group_msg(group_id=event.group_id, message="已清空违禁图片")
