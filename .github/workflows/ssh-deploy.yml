@@ -1,47 +1,95 @@
-# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-nodejs
-
-name: ssh deploy 
+name: Smart SSH Deploy
 
 on:
   push:
     branches: [ "main" ]
-    tags:
-      - '*'
+    tags: ['*']
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
-  build:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      files_json: ${{ steps.get-files.outputs.files_json }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get changed files
+        id: get-files
+        run: |
+          # 仅非手动触发时执行变更检测
+          if [[ "${{ github.event_name }}" != "workflow_dispatch" ]]; then
+            if [[ "${{ github.event_name }}" == "push" ]]; then
+              git diff --name-only HEAD^ HEAD > changed_files.log
+            else
+              git fetch origin ${{ github.base_ref }}:tmp_branch
+              git diff --name-only tmp_branch...HEAD > changed_files.log
+            fi
+          else
+            echo "[]" > changed_files.log  # 手动触发时生成空变更列表
+          fi
+          echo "files_json=$(jq -Rn '[inputs | select(length>0)]' < changed_files.log)" >> $GITHUB_OUTPUT
+
+  deploy:
+    needs: detect-changes
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - name: scp ssh pipelines
-      uses: cross-the-world/ssh-scp-ssh-pipelines@latest
-      env:
-        PORT_FORWARD: ${{ secrets.FORWARD_PORT }}
-        PORT_DIRECT: ${{ secrets.DIRECT_PORT }}
-      with:
-        host: ${{ secrets.DC_HOST }}
-        user: ${{ secrets.DC_USER }}
-        key: ${{ secrets.DC_KEY }}
-        first_ssh: |
-          bash ~/kill_process.sh $PORT_FORWARD
-          bash ~/kill_process.sh $PORT_DIRECT
-          rm -rf ~/forward/src/plugins
-          rm -rf ~/direct/src/plugins
-        scp: |
-          './forward_plugins/*' => ~/forward/src/plugins
-          './common/*' => ~/forward/common
-          './direct_plugins/*' => ~/direct/src/plugins
-          './common/*' => ~/direct/common
-        last_ssh: |
-          cd ~/forward
-          source ~/forward/.venv/bin/activate
-          nohup ~/.local/bin/nb orm upgrade
-          nohup ~/.local/bin/nb run >> ~/forward/forward.log 2>&1 &;
-          cd ~/direct
-          source ~/direct/.venv/bin/activate
-          nohup ~/.local/bin/nb orm upgrade
-          nohup ~/.local/bin/nb run >> ~/direct/direct.log 2>&1 &;
+      - uses: actions/checkout@v3
+      
+      - name: Forward Env Deploy
+        # 手动触发 或 检测到相关变更
+        if: |
+          ${{ github.event_name == 'workflow_dispatch' }} || 
+          fromJSON(needs.detect-changes.outputs.files_json).some(x => 
+            x.startsWith('forward_plugins/') || 
+            x.startsWith('common/')
+          )
+        uses: cross-the-world/ssh-scp-ssh-pipelines@latest
+        env:
+          PORT_FORWARD: ${{ secrets.FORWARD_PORT }}
+        with:
+          host: ${{ secrets.DC_HOST }}
+          user: ${{ secrets.DC_USER }}
+          key: ${{ secrets.DC_KEY }}
+          first_ssh: |
+            bash ~/kill_process.sh $PORT_FORWARD
+            rm -rf ~/forward/src/plugins
+          scp: |
+            './forward_plugins/*' => ~/forward/src/plugins
+            './common/*' => ~/forward/common
+          last_ssh: |
+            cd ~/forward
+            source ~/forward/.venv/bin/activate
+            nohup ~/.local/bin/nb orm upgrade
+            nohup ~/.local/bin/nb run >> ~/forward/forward.log 2>&1 &;
+
+      - name: Direct Env Deploy
+        # 手动触发 或 检测到相关变更
+        if: |
+          ${{ github.event_name == 'workflow_dispatch' }} || 
+          fromJSON(needs.detect-changes.outputs.files_json).some(x => 
+            x.startsWith('direct_plugins/') || 
+            x.startsWith('common/')
+          )
+        uses: cross-the-world/ssh-scp-ssh-pipelines@latest
+        env:
+          PORT_DIRECT: ${{ secrets.DIRECT_PORT }}
+        with:
+          host: ${{ secrets.DC_HOST }}
+          user: ${{ secrets.DC_USER }}
+          key: ${{ secrets.DC_KEY }}
+          first_ssh: |
+            bash ~/kill_process.sh $PORT_DIRECT
+            rm -rf ~/direct/src/plugins
+          scp: |
+            './direct_plugins/*' => ~/direct/src/plugins
+            './common/*' => ~/direct/common
+          last_ssh: |
+            cd ~/direct
+            source ~/direct/.venv/bin/activate
+            nohup ~/.local/bin/nb orm upgrade
+            nohup ~/.local/bin/nb run >> ~/direct/direct.log 2>&1 &;

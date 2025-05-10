@@ -141,16 +141,33 @@ async def send_image(file_name: str, group_id: int) -> MessageSegment | None:
     async with aopen(image_dir_path.joinpath(file_name), "rb") as f:
         content = await f.read()
     if isinstance(bot, OB11Bot):
-        # return MessageSegment.image(content)
-        return MessageSegment(
-            "image",
-            {
-                "file": f2s(content),
-                "sub_type": str(1),
-                "cache": b2s(True),
-                "proxy": b2s(True),
-            },
-        )
+        # TODO 查询数据库中指定名称的文件，判断其是否为商店表情
+        session = get_session()
+        async with session.begin():
+            res = await session.execute(select(ImageSender).where(ImageSender.name == file_name))
+            first = res.scalars().first()
+            if first is None:
+                return None
+            if first.key is None:
+                return MessageSegment(
+                    "image",
+                    {
+                        "file": f2s(content),
+                        "sub_type": str(1),
+                        "cache": b2s(True),
+                        "proxy": b2s(True),
+                    },
+                )
+            else:
+                return MessageSegment(
+                    "mface",
+                    {
+                        "emoji_id": first.emoji_id,
+                        "emoji_package_id": first.emoji_package_id,
+                        "key": first.key,
+                        "summary": first.summary,
+                    },
+                )
     else:
         return None
 
