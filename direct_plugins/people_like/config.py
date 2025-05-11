@@ -18,7 +18,7 @@ class Config(BaseModel):
     """是否开启图片分析"""
     gemini_key: Optional[str]
     """Gemini API Key"""
-    gemini_model: str = "gemini-2.0-flash-exp"
+    gemini_model: str = "gemini-2.0-flash"
     """Gemini API Model"""
 
 

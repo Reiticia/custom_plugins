@@ -532,7 +532,7 @@ async def chat_with_gemini(
     if enable_search:
         tools.append(Tool(google_search=GoogleSearch()))
 
-    model = get_value_or_default(group_id, "model", "gemini-2.0-flash-exp")
+    model = get_value_or_default(group_id, "model", "gemini-2.0-flash")
 
     resp = await _GEMINI_CLIENT.aio.models.generate_content(
         model=model,

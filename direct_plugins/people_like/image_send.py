@@ -96,7 +96,7 @@ async def get_file_name_of_image_will_sent(description: str, group_id: int) -> M
         )
     )
 
-    model = get_value_or_default(group_id, "model", "gemini-2.0-flash-exp")
+    model = get_value_or_default(group_id, "model", "gemini-2.0-flash")
 
     resp = await _GEMINI_CLIENT.aio.models.generate_content(
         model=model,
@@ -186,7 +186,7 @@ class AnalysisResult(BaseModel):
 async def analysis_image(file_part: list[Part], group_id: int = 0) -> AnalysisResult:
     """分析图片是否包含违禁内容"""
 
-    model = get_value_or_default(group_id, "model", "gemini-2.0-flash-exp")
+    model = get_value_or_default(group_id, "model", "gemini-2.0-flash")
 
     global _GEMINI_CLIENT
     prompt = "根据给出的图片内容，判断是否含有色情内容，暴力内容或日本动漫形象内容，返回指定数据类型"
