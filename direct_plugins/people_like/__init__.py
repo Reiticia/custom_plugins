@@ -158,7 +158,7 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
 
     # 触发复读
     if random.random() < plugin_config.repeat_probability and not GROUP_SPEAK_DISABLE.get(gid, False):
-        logger.debug(f"群{gid}触发复读")
+        logger.info(f"群{gid}触发复读")
         # 过滤掉图片消息，留下meme消息，mface消息，text消息
         new_message: Message = Message()
         for ms in em:
@@ -201,6 +201,7 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
             )
         )
     ) and not GROUP_SPEAK_DISABLE.get(gid, False):
+        logger.info(f"receive: {em}")
         await chat_with_gemini(gid, msgs, nickname, await get_bot_gender(), await is_bot_admin(gid))
 
 
@@ -562,7 +563,7 @@ async def chat_with_gemini(
                 if will_send_img:
                     await on_msg.send(will_send_img)
             elif "ignore" in txt or "忽略" in txt or "mute_sb" in txt or "禁言" in txt:
-                logger.debug(f"群{group_id}调用函数ignore，忽略回复")
+                logger.info(f"群{group_id}调用函数ignore，忽略回复")
                 return
             else:
                 logger.info(f"群{group_id}回复：{txt}")
@@ -591,10 +592,10 @@ async def chat_with_gemini(
             if fc.name == "mute_sb" and fc.args:
                 user_id = int(str(fc.args.get("user_id")))
                 minute = int(str(fc.args.get("minute")))
-                logger.debug(f"群{group_id}调用函数{fc.name}，参数{user_id}，{minute}分钟")
+                logger.info(f"群{group_id}调用函数{fc.name}，参数{user_id}，{minute}分钟")
                 await mute_sb(group_id, user_id, minute)
             if fc.name == "ignore":
-                logger.debug(f"群{group_id}调用函数{fc.name}")
+                logger.info(f"群{group_id}调用函数{fc.name}")
                 return
         else:
             pass
