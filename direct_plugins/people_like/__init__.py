@@ -8,6 +8,7 @@ from enum import Enum
 from pathlib import Path
 from asyncio import sleep
 from typing import Any, Literal, Optional
+from pydantic import BaseModel
 from nonebot import get_bot, logger, on_keyword, on_message, require, get_driver
 
 from nonebot.rule import Rule, to_me
@@ -440,7 +441,7 @@ class ReturnMsgEnum(Enum):
     FUNCTION_CALL: "function_call"
     """函数调用"""
 
-class ReturnMsg:
+class ReturnMsg(BaseModel):
     """返回消息"""
     content: str
     """消息内容或提及人id或函数调用名称"""
