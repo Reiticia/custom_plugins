@@ -8,7 +8,7 @@ from enum import Enum
 from pathlib import Path
 from asyncio import sleep
 from typing import Any, Literal, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from nonebot import get_bot, logger, on_keyword, on_message, require, get_driver
 
 from nonebot.rule import Rule, to_me
@@ -49,9 +49,11 @@ __plugin_meta__ = PluginMetadata(
     config=Config,
 )
 
+
 class Character(Enum):
     BOT = 1
     USER = 2
+
 
 @dataclass
 class ChatMsg:
@@ -81,7 +83,6 @@ GROUP_MESSAGE_SEQUENT: dict[int, list[ChatMsg]] = {}
 GROUP_SPEAK_DISABLE: dict[int, bool] = {}
 
 driver = get_driver()
-
 
 
 @driver.on_bot_connect
@@ -317,12 +318,12 @@ async def extract_msg_in_group_message_event(event: GroupMessageEvent) -> list[P
                     # 下载图片进行处理
                     data = await _HTTP_CLIENT.get(ms.data["url"])
                     suffix_name = str(ms.data["file"]).split(".")[-1]
-                    mime_type: Literal["image/jpeg", "image/gif", "image/png"] = "image/jpeg"
+                    mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
                     match suffix_name:
                         case "jpg":
                             mime_type = "image/jpeg"
                         case "gif":
-                            mime_type = "image/gif"
+                            mime_type = "image/jpeg"
                         case "png":
                             mime_type = "image/png"
                     if data.status_code == 200:
@@ -389,10 +390,24 @@ async def get_bot_gender() -> Optional[str]:
             new_info: dict[str, Any] = dict(await bot.call_api("get_stranger_info", user_id=bot_id))
             # 缓存一天
             _BOT_INFO.set(bot_id, new_info, 60 * 60 * 24)
-            # TODO 看看拿到的 sex 字段是什么数据
-            return str(new_info.get("sex"))
+            # 看看拿到的 sex 字段是什么数据
+            if sex := new_info.get("sex"):
+                match sex:
+                    case "male":
+                        return "男"
+                    case "female":
+                        return "女"
+            else:
+                return None
         else:
-            return str(info.get("sex"))
+            if sex := info.get("sex"):
+                match sex:
+                    case "male":
+                        return "男"
+                    case "female":
+                        return "女"
+            else:
+                return None
     else:
         return None
 
@@ -432,21 +447,21 @@ def handle_context_list(
     else:
         return context
 
+
 class ReturnMsgEnum(Enum):
     """返回消息枚举"""
+
     TEXT = "text"
     """文本消息"""
     AT = "at"
     """提交消息"""
-    FUNCTION_CALL: "function_call"
-    """函数调用"""
+
 
 class ReturnMsg(BaseModel):
     """返回消息"""
+
     content: str
     """消息内容或提及人id或函数调用名称"""
-    params: Optional[dict[str, Any]]
-    """函数调用参数"""
     msg_type: ReturnMsgEnum
     """消息类型"""
 
@@ -465,6 +480,8 @@ async def chat_with_gemini(
     words = [s.strip() for s in do_not_send_words.read_text(encoding="utf-8").splitlines()]
     # 将我是xxx过滤掉
     words.append(f"我是{bot_nickname}")
+    words.append("ignore")
+    words.append("忽略")
 
     default_prompt = f"""
 ## 基础设定
@@ -489,7 +506,6 @@ async def chat_with_gemini(
 请明确别人的对话目标，当别人的问题提及到其他人回答时，请不要抢答。
 当需要回复纯文本时，请设置 ReturnMsgEnum 为 TEXT, content 为回复内容。
 当需要回复@某人时，请设置 ReturnMsgEnum 为 AT, content 为需要提及的人的 id, 必须为纯数字。
-当需要调用函数时，请设置 ReturnMsgEnum 为 FUNCTION_CALL, content 为函数名称，params 为函数参数。
 请以最近的一条消息作为优先级最高的回复对象，越早的消息优先级越低。
 
 ## 函数调用
@@ -581,88 +597,45 @@ async def chat_with_gemini(
         ),
     )
 
-    text = resp.text
-    returnMsgs: list[ReturnMsg] = json.loads(text)
-    message = Message()
-    for returnMsg in returnMsgs:
-        if returnMsg.msg_type == ReturnMsgEnum.AT:
-            if not returnMsg.content.isdigit():
-                continue
-            message.append(MessageSegment.at(int(returnMsg.content)))
-        elif returnMsg.msg_type == ReturnMsgEnum.TEXT:
-            message.append(MessageSegment.text(returnMsg.content))
-        elif returnMsg.msg_type == ReturnMsgEnum.FUNCTION_CALL:
-            if returnMsg.content == "send_meme" and (args := returnMsg.params):
-                description = args.get("description")
-                logger.debug(f"群{group_id}调用函数{returnMsg.content}，参数{description}")
+    if text := resp.text:
+        returnMsgs: list[ReturnMsg] = json.loads(text)
+        message = Message()
+        for returnMsg in returnMsgs:
+            if returnMsg.msg_type == ReturnMsgEnum.AT:
+                if not returnMsg.content.isdigit():
+                    continue
+                message.append(MessageSegment.at(int(returnMsg.content)))
+            elif returnMsg.msg_type == ReturnMsgEnum.TEXT:
+                message.append(MessageSegment.text(returnMsg.content))
+
+        if message:
+            plain_text = message.extract_plain_text()
+            if all(ignore not in plain_text for ignore in words) and not GROUP_SPEAK_DISABLE.get(group_id, False):
+                # 先睡，睡完再发
+                await sleep_sometime(len(plain_text))
+                if not GROUP_SPEAK_DISABLE.get(group_id, False):
+                    # 将回复消息种的 @xxx 转换成对应消息段
+                    logger.debug(f"群{group_id}回复消息：{message.extract_plain_text()}")
+                    await on_msg.send(message)
+
+    # 如果有函数调用，则传递函数调用的参数，进行图片发送
+    for part in resp.candidates[0].content.parts:  # type: ignore
+        if fc := part.function_call:
+            if fc.name == "send_meme" and fc.args:
+                description = fc.args.get("description")
+                logger.debug(f"群{group_id}调用函数{fc.name}，参数{description}")
                 will_send_img = await get_file_name_of_image_will_sent(str(description), group_id)
                 if will_send_img:
                     logger.info(f"群{group_id}回复图片：{will_send_img}")
                     await on_msg.send(will_send_img)
-            if returnMsg.msg_type == "mute_sb" and (args := returnMsg.params):
-                user_id = int(str(args.get("user_id")))
-                minute = int(str(args.get("minute")))
-                logger.info(f"群{group_id}调用函数{returnMsg.msg_type}，参数{user_id}，{minute}分钟")
+            if fc.name == "mute_sb" and fc.args:
+                user_id = int(str(fc.args.get("user_id")))
+                minute = int(str(fc.args.get("minute")))
+                logger.info(f"群{group_id}调用函数{fc.name}，参数{user_id}，{minute}分钟")
                 await mute_sb(group_id, user_id, minute)
-            if returnMsg.msg_type == "ignore":
-                logger.info(f"群{group_id}调用函数{returnMsg.msg_type}")
+            if fc.name == "ignore":
+                logger.info(f"群{group_id}调用函数{fc.name}")
                 return
-    
-    plain_text = message.extract_plain_text()
-    if all(ignore not in plain_text for ignore in words) and not GROUP_SPEAK_DISABLE.get(
-        group_id, False
-    ):
-        # 先睡，睡完再发
-        await sleep_sometime(len(plain_text))
-        if not GROUP_SPEAK_DISABLE.get(group_id, False):
-            # 将回复消息种的 @xxx 转换成对应消息段
-            logger.debug(f"群{group_id}回复消息：{message.extract_plain_text()}")
-            await on_msg.send(message)
-
-    # 如果有函数调用，则传递函数调用的参数，进行图片发送
-    # for part in resp.candidates[0].content.parts:  # type: ignore
-    #     if txt := part.text:
-    #         if "meme" in txt or "图片" in txt or "表情" in txt:
-    #             will_send_img = await get_file_name_of_image_will_sent(str(txt), group_id)
-    #             if will_send_img:
-    #                 await on_msg.send(will_send_img)
-    #         elif "ignore" in txt or "忽略" in txt or "mute_sb" in txt or "禁言" in txt:
-    #             logger.info(f"群{group_id}调用函数ignore，忽略回复")
-    #             return
-    #         else:
-    #             logger.info(f"群{group_id}回复：{txt}")
-    #             for split_msg in [s_s for s in txt.split("\n") if len(s_s := s.strip()) != 0]:
-    #                 split_msg = remove_first_bracket_at_start(split_msg)  # 修正输出
-    #                 if split_msg.endswith("。"):
-    #                     split_msg = split_msg[0:-1]
-    #                 if all(ignore not in split_msg for ignore in words) and not GROUP_SPEAK_DISABLE.get(
-    #                     group_id, False
-    #                 ):
-    #                     # 先睡，睡完再发
-    #                     await sleep_sometime(len(split_msg))
-    #                     if not GROUP_SPEAK_DISABLE.get(group_id, False):
-    #                         # 将回复消息种的 @xxx 转换成对应消息段
-    #                         split_msg = convert_at_to_at_segment(split_msg)
-    #                         logger.debug(f"群{group_id}回复消息：{split_msg.extract_plain_text()}")
-    #                         await on_msg.send(split_msg)
-    #     elif fc := part.function_call:
-    #         if fc.name == "send_meme" and fc.args:
-    #             description = fc.args.get("description")
-    #             logger.debug(f"群{group_id}调用函数{fc.name}，参数{description}")
-    #             will_send_img = await get_file_name_of_image_will_sent(str(description), group_id)
-    #             if will_send_img:
-    #                 logger.info(f"群{group_id}回复图片：{will_send_img}")
-    #                 await on_msg.send(will_send_img)
-    #         if fc.name == "mute_sb" and fc.args:
-    #             user_id = int(str(fc.args.get("user_id")))
-    #             minute = int(str(fc.args.get("minute")))
-    #             logger.info(f"群{group_id}调用函数{fc.name}，参数{user_id}，{minute}分钟")
-    #             await mute_sb(group_id, user_id, minute)
-    #         if fc.name == "ignore":
-    #             logger.info(f"群{group_id}调用函数{fc.name}")
-    #             return
-    #     else:
-    #         pass
 
 
 GROUP_BAN_DICT: dict[int, dict[int, int]] = {}
@@ -685,4 +658,3 @@ async def mute_sb(group_id: int, user_id: int, minute: int):
         if int(time.time()) >= GROUP_BAN_DICT[group_id][user_id]:
             GROUP_BAN_DICT[group_id][user_id] = int(time.time()) + minute * 60
             await get_bot().call_api("set_group_ban", group_id=group_id, user_id=user_id, duration=minute * 60)
-
