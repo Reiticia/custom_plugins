@@ -8,7 +8,7 @@ from enum import Enum
 from pathlib import Path
 from asyncio import sleep
 from typing import Any, Literal, Optional
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 from nonebot import get_bot, logger, on_keyword, on_message, require, get_driver
 
 from nonebot.rule import Rule, to_me
@@ -461,7 +461,7 @@ class ReturnMsg(BaseModel):
     """返回消息"""
 
     content: str
-    """消息内容或提及人id或函数调用名称"""
+    """消息内容或者被提及的数字id"""
     msg_type: ReturnMsgEnum
     """消息类型"""
 
@@ -504,8 +504,7 @@ async def chat_with_gemini(
 不要在你的回复中出现markdown语法。
 不要在句首使用我规定的说话人语法，正常回复即可。
 请明确别人的对话目标，当别人的问题提及到其他人回答时，请不要抢答。
-当需要回复纯文本时，请设置 ReturnMsgEnum 为 TEXT, content 为回复内容。
-当需要回复@某人时，请设置 ReturnMsgEnum 为 AT, content 为需要提及的人的 id, 必须为纯数字。
+回复内容可以有多段，请将纯文本消息与提及消息分割为不同的段落，并以列表返回对象。
 请以最近的一条消息作为优先级最高的回复对象，越早的消息优先级越低。
 
 ## 函数调用
