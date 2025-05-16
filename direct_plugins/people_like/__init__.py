@@ -451,7 +451,7 @@ def handle_context_list(
         return context
 
 
-class ReturnMsgEnum(Enum):
+class ReturnMsgEnum(str, Enum):
     """返回消息枚举"""
 
     TEXT = "text"
@@ -658,24 +658,25 @@ async def chat_with_gemini(
             if fc.name == "send_text_message" and fc.args:
                 messages = fc.args.get("messages")
                 logger.debug(f"群{group_id}调用函数{fc.name}，参数{messages}")
-                if isinstance(messages, list):
-                    message = Message()
-                    for returnMsg in messages:
-                        if returnMsg.get("msg_type") == ReturnMsgEnum.AT:
-                            if not returnMsg.get("content").isdigit():
-                                continue
-                            message.append(MessageSegment.at(int(returnMsg.get("content"))))
-                        elif returnMsg.get("msg_type") == ReturnMsgEnum.TEXT:
-                            message.append(MessageSegment.text(returnMsg.get("content")))
+                msg_str = str(messages)
+                returnMsgs: list[ReturnMsg] = [ReturnMsg(**item) for item in json.loads(msg_str.replace("'", '"'))]
+                message = Message()
+                for returnMsg in returnMsgs:
+                    if returnMsg.msg_type == ReturnMsgEnum.AT:
+                        if not returnMsg.content.isdigit():
+                            continue
+                        message.append(MessageSegment.at(int(returnMsg.content)))
+                    elif returnMsg.msg_type == ReturnMsgEnum.TEXT:
+                        message.append(MessageSegment.text(returnMsg.content))
 
-                    if message:
-                        plain_text = message.extract_plain_text()
-                        if all(ignore not in plain_text for ignore in words) and not GROUP_SPEAK_DISABLE.get(group_id, False):
-                            # 先睡，睡完再发
-                            await sleep_sometime(len(plain_text))
-                            if not GROUP_SPEAK_DISABLE.get(group_id, False):
-                                logger.debug(f"群{group_id}回复消息：{message.extract_plain_text()}")
-                                await on_msg.send(message)
+                if len(message) > 0:
+                    plain_text = message.extract_plain_text()
+                    if all(ignore not in plain_text for ignore in words) and not GROUP_SPEAK_DISABLE.get(group_id, False):
+                        # 先睡，睡完再发
+                        await sleep_sometime(len(plain_text))
+                        if not GROUP_SPEAK_DISABLE.get(group_id, False):
+                            logger.debug(f"群{group_id}回复消息：{message.extract_plain_text()}")
+                            await on_msg.send(message)
 
             if fc.name == "send_meme" and fc.args:
                 description = fc.args.get("description")
