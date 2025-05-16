@@ -207,45 +207,8 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
             )
         )
     ) and not GROUP_SPEAK_DISABLE.get(gid, False):
-        logger.info(f"receive: {em}")
+        logger.info(f"reply: {em}")
         await chat_with_gemini(gid, msgs, nickname, await get_bot_gender(), await is_bot_admin(gid))
-
-
-def convert_at_to_at_segment(text: str) -> Message:
-    """将 @xxx 转换成对应消息段
-
-    Args:
-        text (str): 原消息
-
-    Returns:
-        str: 转换后的消息
-    """
-    ms_list = []
-
-    at_pattern = r"((?:@\d+)|(?:\[\<\d+\>\]))"
-
-    # 使用 re.split 方法进行切割，保留 @id 字段
-    parts = re.split(at_pattern, text)
-
-    # 去除空字符串
-    parts = [part for part in parts if part.strip()]
-
-    for part in parts:
-        if part.startswith("@"):
-            # 找到 @id 字段
-            user_id = int(part[1:])
-            ms_list.append(MessageSegment.at(user_id))
-            ms_list.append(MessageSegment.text(" "))
-        elif part.startswith("[<") and part.endswith(">]"):
-            # 找到 @id 字段
-            user_id = int(part[2:-2])
-            ms_list.append(MessageSegment.at(user_id))
-            ms_list.append(MessageSegment.text(" "))
-        else:
-            # 非 @id 字段，直接添加
-            ms_list.append(MessageSegment.text(part.strip()))
-    return Message(ms_list)
-
 
 def is_self_msg(bot: Bot, event: Event) -> bool:
     """判断是否是机器人自己发的消息事件"""
@@ -278,11 +241,6 @@ async def receive_group_self_msg(event: GroupMessageEvent = Depends(convert_to_g
         return
     msgs = handle_context_list(msgs, target, Character.BOT)
     GROUP_MESSAGE_SEQUENT.update({gid: msgs})
-
-
-def remove_first_bracket_at_start(text: str) -> str:
-    """使用正则表达式匹配字符串开头的方括号及其内容，并将其替换为空字符串"""
-    return re.sub(r"^\[.*?\]", "", text)
 
 
 async def sleep_sometime(size: int):

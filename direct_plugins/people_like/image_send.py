@@ -1,5 +1,5 @@
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from nonebot import get_bot, logger, on_command, on_message, get_driver
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
