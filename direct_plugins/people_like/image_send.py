@@ -378,24 +378,23 @@ async def upload_image() -> Optional[str]:
     # 重置缓存键名
     _FILES = []
     files = []
-    session = get_session()
-    async with session.begin():
-        # 遍历图片，组成contents
-        for _, _, files in os.walk(image_dir_path):
-            for local_file in files:
-                suffix_name = str(local_file).split(".")[-1]
-                mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
-                match suffix_name:
-                    case "jpg" | "gif":
-                        mime_type = "image/jpeg"
-                    case "png":
-                        mime_type = "image/png"
-                file_path = image_dir_path / local_file
-                file = await _GEMINI_CLIENT.aio.files.upload(
-                    file=file_path, config=UploadFileConfig(mime_type=mime_type)
-                )
-                _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=file))
-
+    # 遍历图片，组成contents
+    for _, _, files in os.walk(image_dir_path):
+        for local_file in files:
+            suffix_name = str(local_file).split(".")[-1]
+            mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
+            match suffix_name:
+                case "jpg" | "gif":
+                    mime_type = "image/jpeg"
+                case "png":
+                    mime_type = "image/png"
+            file_path = image_dir_path / local_file
+            file = await _GEMINI_CLIENT.aio.files.upload(
+                file=file_path, config=UploadFileConfig(mime_type=mime_type)
+            )
+            _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=file))
+            session = get_session()
+            async with session.begin():
                 res = await session.execute(select(ImageSender).where(ImageSender.name == local_file))
                 first = res.scalars().first()
                 if first is not None:  # 如果原来存在，则更新
