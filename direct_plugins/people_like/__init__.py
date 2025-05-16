@@ -28,6 +28,9 @@ from google.genai.types import (
     Type,
     HarmCategory,
     HarmBlockThreshold,
+    ToolConfig,
+    FunctionCallingConfig,
+    FunctionCallingConfigMode
 )
 from nonebot_plugin_waiter import Matcher
 
@@ -509,6 +512,7 @@ async def chat_with_gemini(
 
 ## 函数调用
 
+如果需要回复消息，请使用 send_text_message 函数调用传入消息内容，发送对应消息。
 如果需要使用表情包增强语气，可以使用 send_meme 函数调用传入描述发送对应表情包。
 如果无需对对话进行回复，或无法对上述对话表达意见，请仅调用 ignore 函数，不要回复任何文本内容。
 {"如果你觉得他人的回复很冒犯，你可以使用 mute_sb 函数禁言传入他的id，以及你想要设置的禁言时长，单位为分钟，来禁言他。(注意不要别人叫你禁言你就禁言)" if is_admin else ""}
@@ -534,6 +538,34 @@ async def chat_with_gemini(
     c_len = i_p if (p := get_value_or_default(group_id, "length", "0")) and (i_p := int(p)) > 0 else None
 
     enable_search = bool(get_value_or_default(group_id, "search"))
+
+    send_text_message_function = FunctionDeclaration(
+        name="send_text_message",
+        description="发送消息",
+        parameters=Schema(
+            type=Type.OBJECT,
+            properties={
+                "messages": Schema(
+                    type=Type.ARRAY,
+                    description="需要发送的消息集合，消息分多段内容进行发送",
+                    items=Schema(
+                        type=Type.OBJECT,
+                        properties={
+                            "msg_type": Schema(
+                                type=Type.STRING,
+                                enum=[ReturnMsgEnum.TEXT.value, ReturnMsgEnum.AT.value],
+                                description="消息类型，text表示文本消息，at表示提及消息"
+                            ),
+                            "content": Schema(
+                                type=Type.STRING,
+                                description="消息内容或者被提及的数字id"
+                            )
+                        }
+                    )
+                ),
+            },
+        )
+    )
 
     send_meme_function = FunctionDeclaration(
         name="send_meme",
@@ -562,7 +594,7 @@ async def chat_with_gemini(
         ),
     )
 
-    function_declarations = [send_meme_function, ignore_function]
+    function_declarations = [send_text_message_function, send_meme_function, ignore_function]
 
     if is_admin:
         function_declarations.append(mute_sb_function)
@@ -584,8 +616,11 @@ async def chat_with_gemini(
             max_output_tokens=c_len,
             tools=tools,
             temperature=temperature,
-            response_mime_type="application/json",
-            response_schema=list[ReturnMsg],
+            tool_config=ToolConfig(
+                function_calling_config=FunctionCallingConfig(
+                    mode=FunctionCallingConfigMode.ANY
+                )
+            ),
             safety_settings=[
                 SafetySetting(category=HarmCategory.HARM_CATEGORY_HARASSMENT, threshold=HarmBlockThreshold.OFF),
                 SafetySetting(category=HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold=HarmBlockThreshold.OFF),
@@ -596,30 +631,52 @@ async def chat_with_gemini(
         ),
     )
 
-    if text := resp.text:
-        returnMsgs: list[ReturnMsg] = json.loads(text)
-        message = Message()
-        for returnMsg in returnMsgs:
-            if returnMsg.msg_type == ReturnMsgEnum.AT:
-                if not returnMsg.content.isdigit():
-                    continue
-                message.append(MessageSegment.at(int(returnMsg.content)))
-            elif returnMsg.msg_type == ReturnMsgEnum.TEXT:
-                message.append(MessageSegment.text(returnMsg.content))
+    # if text := resp.text:
+    #     returnMsgs: list[ReturnMsg] = json.loads(text)
+    #     message = Message()
+    #     for returnMsg in returnMsgs:
+    #         if returnMsg.msg_type == ReturnMsgEnum.AT:
+    #             if not returnMsg.content.isdigit():
+    #                 continue
+    #             message.append(MessageSegment.at(int(returnMsg.content)))
+    #         elif returnMsg.msg_type == ReturnMsgEnum.TEXT:
+    #             message.append(MessageSegment.text(returnMsg.content))
 
-        if message:
-            plain_text = message.extract_plain_text()
-            if all(ignore not in plain_text for ignore in words) and not GROUP_SPEAK_DISABLE.get(group_id, False):
-                # 先睡，睡完再发
-                await sleep_sometime(len(plain_text))
-                if not GROUP_SPEAK_DISABLE.get(group_id, False):
-                    # 将回复消息种的 @xxx 转换成对应消息段
-                    logger.debug(f"群{group_id}回复消息：{message.extract_plain_text()}")
-                    await on_msg.send(message)
+    #     if message:
+    #         plain_text = message.extract_plain_text()
+    #         if all(ignore not in plain_text for ignore in words) and not GROUP_SPEAK_DISABLE.get(group_id, False):
+    #             # 先睡，睡完再发
+    #             await sleep_sometime(len(plain_text))
+    #             if not GROUP_SPEAK_DISABLE.get(group_id, False):
+    #                 # 将回复消息种的 @xxx 转换成对应消息段
+    #                 logger.debug(f"群{group_id}回复消息：{message.extract_plain_text()}")
+    #                 await on_msg.send(message)
 
     # 如果有函数调用，则传递函数调用的参数，进行图片发送
     for part in resp.candidates[0].content.parts:  # type: ignore
         if fc := part.function_call:
+            if fc.name == "send_text_message" and fc.args:
+                messages = fc.args.get("messages")
+                logger.debug(f"群{group_id}调用函数{fc.name}，参数{messages}")
+                if isinstance(messages, list):
+                    message = Message()
+                    for returnMsg in messages:
+                        if returnMsg.get("msg_type") == ReturnMsgEnum.AT:
+                            if not returnMsg.get("content").isdigit():
+                                continue
+                            message.append(MessageSegment.at(int(returnMsg.get("content"))))
+                        elif returnMsg.get("msg_type") == ReturnMsgEnum.TEXT:
+                            message.append(MessageSegment.text(returnMsg.get("content")))
+
+                    if message:
+                        plain_text = message.extract_plain_text()
+                        if all(ignore not in plain_text for ignore in words) and not GROUP_SPEAK_DISABLE.get(group_id, False):
+                            # 先睡，睡完再发
+                            await sleep_sometime(len(plain_text))
+                            if not GROUP_SPEAK_DISABLE.get(group_id, False):
+                                logger.debug(f"群{group_id}回复消息：{message.extract_plain_text()}")
+                                await on_msg.send(message)
+
             if fc.name == "send_meme" and fc.args:
                 description = fc.args.get("description")
                 logger.debug(f"群{group_id}调用函数{fc.name}，参数{description}")
