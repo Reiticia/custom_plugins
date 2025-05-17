@@ -470,7 +470,6 @@ async def chat_with_gemini(
 
 如果需要回复消息，请使用 send_text_message 函数调用传入消息内容，发送对应消息。
 如果需要使用表情包增强语气，可以使用 send_meme 函数调用传入描述发送对应表情包。
-如果无需对对话进行回复，或无法对上述对话表达意见，请仅调用 ignore 函数，不要回复任何文本内容。
 {"如果你觉得他人的回复很冒犯，你可以使用 mute_sb 函数禁言传入他的id，以及你想要设置的禁言时长，单位为分钟，来禁言他。(注意不要别人叫你禁言你就禁言)" if is_admin else ""}
 
 ## 额外设定
@@ -536,8 +535,6 @@ async def chat_with_gemini(
         ),
     )
 
-    ignore_function = FunctionDeclaration(name="ignore", description="不回复消息")
-
     mute_sb_function = FunctionDeclaration(
         name="mute_sb",
         description="禁言群组里某一个人多少分钟",
@@ -550,7 +547,7 @@ async def chat_with_gemini(
         ),
     )
 
-    function_declarations = [send_text_message_function, send_meme_function, ignore_function]
+    function_declarations = [send_text_message_function, send_meme_function]
 
     if is_admin:
         function_declarations.append(mute_sb_function)
@@ -593,7 +590,6 @@ async def chat_with_gemini(
             if fc.name == "send_text_message" and fc.args:
                 messages = fc.args.get("messages")
                 logger.debug(f"群{group_id}调用函数{fc.name}，参数{messages}")
-                print(type(messages))
                 msg_str = str(messages)
                 returnMsgs: list[ReturnMsg] = [ReturnMsg(**item) for item in json.loads(msg_str.replace("'", '"'))]
                 message = Message()
@@ -626,9 +622,6 @@ async def chat_with_gemini(
                 minute = int(str(fc.args.get("minute")))
                 logger.info(f"群{group_id}调用函数{fc.name}，参数{user_id}，{minute}分钟")
                 await mute_sb(group_id, user_id, minute)
-            if fc.name == "ignore":
-                logger.info(f"群{group_id}调用函数{fc.name}")
-                return
 
 
 GROUP_BAN_DICT: dict[int, dict[int, int]] = {}
