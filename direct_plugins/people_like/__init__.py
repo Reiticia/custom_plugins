@@ -30,7 +30,8 @@ from google.genai.types import (
     HarmBlockThreshold,
     ToolConfig,
     FunctionCallingConfig,
-    FunctionCallingConfigMode
+    FunctionCallingConfigMode,
+    HttpOptions
 )
 from nonebot_plugin_waiter import Matcher
 
@@ -563,6 +564,9 @@ async def chat_with_gemini(
         model=model,
         contents=contents,
         config=GenerateContentConfig(
+            http_options=HttpOptions(
+                timeout=6*60*1000
+            ),
             system_instruction=prompt,
             top_p=top_p,
             top_k=top_k,
