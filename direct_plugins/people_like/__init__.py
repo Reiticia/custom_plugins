@@ -265,7 +265,7 @@ async def extract_msg_in_group_message_event(event: GroupMessageEvent) -> list[P
 
     target.append(Part.from_text(text=f"[{sender_nickname}<{sender_user_id}>]"))
     if event.is_tome():
-        target.append(Part.from_text(text=f"@{await get_bot_nickname_of_group(gid)} "))
+        target.append(Part.from_text(text=f"@{event.self_id} "))
     for ms in em:
         match ms.type:
             case "text":
@@ -281,9 +281,7 @@ async def extract_msg_in_group_message_event(event: GroupMessageEvent) -> list[P
                     suffix_name = str(ms.data["file"]).split(".")[-1]
                     mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
                     match suffix_name:
-                        case "jpg":
-                            mime_type = "image/jpeg"
-                        case "gif":
+                        case "jpg" | "gif":
                             mime_type = "image/jpeg"
                         case "png":
                             mime_type = "image/png"
@@ -492,7 +490,7 @@ async def chat_with_gemini(
     prompt = default_prompt + prompt
     top_p = float(p) if (p := get_value_or_default(group_id, "topP")) else None
     top_k = int(p) if (p := get_value_or_default(group_id, "topK")) else None
-    temperature = float(p) if (p := get_value_or_default(group_id, "temperature")) else None
+    temperature = float(p) if (p := get_value_or_default(group_id, "temperature")) else 0
     c_len = i_p if (p := get_value_or_default(group_id, "length", "0")) and (i_p := int(p)) > 0 else None
 
     enable_search = bool(get_value_or_default(group_id, "search"))
@@ -589,33 +587,13 @@ async def chat_with_gemini(
         ),
     )
 
-    # if text := resp.text:
-    #     returnMsgs: list[ReturnMsg] = json.loads(text)
-    #     message = Message()
-    #     for returnMsg in returnMsgs:
-    #         if returnMsg.msg_type == ReturnMsgEnum.AT:
-    #             if not returnMsg.content.isdigit():
-    #                 continue
-    #             message.append(MessageSegment.at(int(returnMsg.content)))
-    #         elif returnMsg.msg_type == ReturnMsgEnum.TEXT:
-    #             message.append(MessageSegment.text(returnMsg.content))
-
-    #     if message:
-    #         plain_text = message.extract_plain_text()
-    #         if all(ignore not in plain_text for ignore in words) and not GROUP_SPEAK_DISABLE.get(group_id, False):
-    #             # 先睡，睡完再发
-    #             await sleep_sometime(len(plain_text))
-    #             if not GROUP_SPEAK_DISABLE.get(group_id, False):
-    #                 # 将回复消息种的 @xxx 转换成对应消息段
-    #                 logger.debug(f"群{group_id}回复消息：{message.extract_plain_text()}")
-    #                 await on_msg.send(message)
-
     # 如果有函数调用，则传递函数调用的参数，进行图片发送
     for part in resp.candidates[0].content.parts:  # type: ignore
         if fc := part.function_call:
             if fc.name == "send_text_message" and fc.args:
                 messages = fc.args.get("messages")
                 logger.debug(f"群{group_id}调用函数{fc.name}，参数{messages}")
+                print(type(messages))
                 msg_str = str(messages)
                 returnMsgs: list[ReturnMsg] = [ReturnMsg(**item) for item in json.loads(msg_str.replace("'", '"'))]
                 message = Message()
