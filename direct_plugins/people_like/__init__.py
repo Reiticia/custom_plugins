@@ -148,7 +148,7 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
     words.append(f"我是{nickname}")
     # 黑名单内，不检查
     if str(gid) in get_blacklist():
-        logger.debug(f"群{gid}消息黑名单内，不处理")
+        logger.warning(f"群{gid}消息黑名单内，不处理")
         return
     em = event.message
     # 8位及以上数字字母组合为无意义消息，可能为密码或邀请码之类，过滤不做处理
@@ -185,7 +185,7 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
 
     # 如果内存中记录到的消息不足指定数量，则不进行处理
     if len(msgs) < plugin_config.context_size:
-        logger.debug(f"群{gid}消息上下文长度{len(msgs)}不足{plugin_config.context_size}，不处理")
+        logger.warning(f"群{gid}消息上下文长度{len(msgs)}不足{plugin_config.context_size}，不处理")
         return
     # 触发回复
     # 规则：
