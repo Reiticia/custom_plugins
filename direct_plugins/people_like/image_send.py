@@ -362,10 +362,6 @@ async def add_image(event: GroupMessageEvent):
 
 driver = get_driver()
 
-
-inited = False
-
-
 @driver.on_bot_connect
 @scheduler.scheduled_job("interval", days=2, id="my_job_id")
 async def upload_image() -> Optional[str]:

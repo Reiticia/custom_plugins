@@ -4,13 +4,42 @@
 name: ssh deploy 
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+    tags:
+      - '*'
+  pull_request:
+    branches: [ "main" ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+
+    - name: get changed files
+      id: changed-files
+      uses: tj-actions/changed-files@v44
+
+    - name: generate scp upload command
+      id: scp-cmd
+      run: |
+        echo "SCP_FILES=" > scp_files.env
+        for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+          # 只处理 forward_plugins、direct_plugins、common 目录下的文件
+          if [[ "$file" == forward_plugins/* ]]; then
+            echo "'$file' => ~/forward/src/plugins/$(basename $file)" >> scp_files.env
+          elif [[ "$file" == direct_plugins/* ]]; then
+            echo "'$file' => ~/direct/src/plugins/$(basename $file)" >> scp_files.env
+          elif [[ "$file" == common/* ]]; then
+            echo "'$file' => ~/forward/common/$(basename $file)" >> scp_files.env
+            echo "'$file' => ~/direct/common/$(basename $file)" >> scp_files.env
+          fi
+        done
+        echo "SCP_FILES<<EOF" > $GITHUB_ENV
+        cat scp_files.env >> $GITHUB_ENV
+        echo "EOF" >> $GITHUB_ENV
+
     - name: scp ssh pipelines
       uses: cross-the-world/ssh-scp-ssh-pipelines@latest
       env:
@@ -23,13 +52,7 @@ jobs:
         first_ssh: |
           bash ~/kill_process.sh $PORT_FORWARD
           bash ~/kill_process.sh $PORT_DIRECT
-          rm -rf ~/forward/src/plugins
-          rm -rf ~/direct/src/plugins
-        scp: |
-          './forward_plugins/*' => ~/forward/src/plugins
-          './common/*' => ~/forward/common
-          './direct_plugins/*' => ~/direct/src/plugins
-          './common/*' => ~/direct/common
+        scp: ${{ env.SCP_FILES }}
         last_ssh: |
           cd ~/forward
           source ~/forward/.venv/bin/activate
