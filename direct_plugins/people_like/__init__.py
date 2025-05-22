@@ -603,7 +603,10 @@ async def chat_with_gemini(
                             continue
                         message.append(MessageSegment.at(int(returnMsg.content)))
                     elif returnMsg.msg_type == ReturnMsgEnum.TEXT:
-                        message.append(MessageSegment.text(returnMsg.content))
+                        if len(message) > 0 and message[-1].type == 'at':
+                            message.append(MessageSegment.text(' ' + returnMsg.content))
+                        else:
+                            message.append(MessageSegment.text(returnMsg.content))
 
                 if len(message) > 0:
                     plain_text = message.extract_plain_text()
