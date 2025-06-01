@@ -142,10 +142,6 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
     # 群组id
     gid = event.group_id
     nickname = await get_bot_nickname_of_group(gid)
-    do_not_send_words = Path(__file__).parent / "do_not_send.txt"
-    words = [s.strip() for s in do_not_send_words.read_text(encoding="utf-8").splitlines()]
-    # 将我是xxx过滤掉
-    words.append(f"我是{nickname}")
     # 黑名单内，不检查
     if str(gid) in get_blacklist():
         logger.warning(f"群{gid}消息黑名单内，不处理")
@@ -164,7 +160,7 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
     logger.debug(f"receive: {em}")
 
     # 触发复读
-    if random.random() < plugin_config.repeat_probability and not GROUP_SPEAK_DISABLE.get(gid, False):
+    if random.random() < plugin_config.repeat_probability and not GROUP_SPEAK_DISABLE.get(gid, False) and event.user_id != event.self_id:
         logger.info(f"群{gid}触发复读")
         # 过滤掉图片消息，留下meme消息，mface消息，text消息
         new_message: Message = Message()
@@ -207,7 +203,7 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
                 or send
             )
         )
-    ) and not GROUP_SPEAK_DISABLE.get(gid, False):
+    ) and not GROUP_SPEAK_DISABLE.get(gid, False) and event.user_id != event.self_id:
         logger.info(f"reply: {em}")
         await chat_with_gemini(gid, msgs, nickname, await get_bot_gender(), await is_bot_admin(gid))
 
@@ -602,11 +598,21 @@ async def chat_with_gemini(
                         if not returnMsg.content.isdigit():
                             continue
                         message.append(MessageSegment.at(int(returnMsg.content)))
+                        message.append(MessageSegment.text(" "))
                     elif returnMsg.msg_type == ReturnMsgEnum.TEXT:
-                        if len(message) > 0 and message[-1].type == 'at':
-                            message.append(MessageSegment.text(' ' + returnMsg.content))
-                        else:
-                            message.append(MessageSegment.text(returnMsg.content))
+                        # 处理文本中包含 @123 的情况，转换成 TEXT+AT+TEXT 串
+                        content = returnMsg.content
+                        parts = re.split(r'(@\d+)', content)
+                        for part in parts:
+                            if not part:  # 跳过空字符串
+                                continue
+                            if re.fullmatch(r'@\d+', part):
+                                user_id = int(part[1:])
+                                message.append(MessageSegment.at(user_id))
+                                # AT之后通常需要一个空格，除非它是消息的末尾或者后面紧跟着非文本内容
+                                # 这里暂时不自动加空格，依赖于模型返回的文本本身是否包含空格
+                            else:
+                                message.append(MessageSegment.text(part))
 
                 if len(message) > 0:
                     plain_text = message.extract_plain_text()
