@@ -273,9 +273,6 @@ async def store_message_segment_into_milvus(event: GroupMessageEvent) -> list[li
     file_ids: list[str] = []
     sender_nickname = await get_user_nickname_of_group(gid, int(sender_user_id))
 
-    target.append(Part.from_text(text=f"[{sender_nickname}<{sender_user_id}>]"))
-    if event.is_tome():
-        target.append(Part.from_text(text=f"@{event.self_id} "))
     for ms in em:
         match ms.type:
             case "text":
