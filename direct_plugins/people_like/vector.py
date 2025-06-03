@@ -74,6 +74,7 @@ class MilvusVector:
     async def query_data(self, group_id: int, query_vector: list[list[float]]) -> list[VectorData]:
         today_zero_time = int(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
         expr = f"group_id == {group_id} and time >= {today_zero_time}"
+        await self.async_client.load_collection(collection_name=self.collection_name)
         results = await self.async_client.search(
             collection_name=self.collection_name,
             data=query_vector,
