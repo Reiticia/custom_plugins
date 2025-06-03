@@ -90,7 +90,12 @@ GROUP_SPEAK_DISABLE: dict[int, bool] = {}
 
 driver = get_driver()
 
-_MILVUS_VECTOR_CLIENT = MilvusVector()
+
+@driver.on_startup
+async def init_milvus_vector():
+    global _MILVUS_VECTOR_CLIENT
+    """初始化 Milvus 向量数据库客户端"""
+    _MILVUS_VECTOR_CLIENT = MilvusVector()
 
 
 # @driver.on_bot_connect
