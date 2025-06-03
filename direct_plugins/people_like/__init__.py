@@ -46,7 +46,7 @@ import nonebot_plugin_localstore as store
 from .setting import get_value_or_default, get_blacklist
 from .config import Config, plugin_config
 from .image_send import _GEMINI_CLIENT, get_file_name_of_image_will_sent
-from .vector import MilvusVector
+from .vector import MilvusVector, VectorData
 
 __plugin_meta__ = PluginMetadata(
     name="people-like",
@@ -372,7 +372,8 @@ async def store_message_segment_into_milvus(event: GroupMessageEvent) -> list[li
                     result.append(vec)
 
     # 插入数据到 Milvus
-    await _MILVUS_VECTOR_CLIENT.insert_data(vector_data)
+    vector_data_list = [VectorData(**data) for data in vector_data]
+    await _MILVUS_VECTOR_CLIENT.insert_data(vector_data_list)
     return result
 
 
