@@ -96,4 +96,12 @@ class MilvusVector:
             limit=5,  # 限制返回数量
             consistency_level="Strong",  # 强一致性
         )
-        return [VectorData(**result) for result in results[0]] if results else []
+
+        # 适配 Milvus 返回结构
+        vector_data_list = []
+        if results and len(results) > 0:
+            for item in results[0]:
+                # 如果是 entity 结构
+                entity = item.get("entity", item)
+                vector_data_list.append(VectorData(**entity))
+        return vector_data_list
