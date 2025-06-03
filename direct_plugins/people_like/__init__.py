@@ -31,7 +31,8 @@ from google.genai.types import (
     ToolConfig,
     FunctionCallingConfig,
     FunctionCallingConfigMode,
-    HttpOptions
+    HttpOptions,
+    Content,
 )
 from nonebot_plugin_waiter import Matcher
 
@@ -45,6 +46,7 @@ import nonebot_plugin_localstore as store
 from .setting import get_value_or_default, get_blacklist
 from .config import Config, plugin_config
 from .image_send import _GEMINI_CLIENT, get_file_name_of_image_will_sent
+from .vector import MilvusVector
 
 __plugin_meta__ = PluginMetadata(
     name="people-like",
@@ -80,45 +82,47 @@ class GroupMemberDict:
         return None
 
 
-GROUP_MESSAGE_SEQUENT: dict[int, list[ChatMsg]] = {}
-"""群号，消息上下文列表
-"""
+# GROUP_MESSAGE_SEQUENT: dict[int, list[ChatMsg]] = {}
+# """群号，消息上下文列表
+# """
 
 GROUP_SPEAK_DISABLE: dict[int, bool] = {}
 
 driver = get_driver()
 
+_MILVUS_VECTOR_CLIENT = MilvusVector()
 
-@driver.on_bot_connect
-async def cache_message(bot: Bot):
-    global GROUP_MESSAGE_SEQUENT
-    # 获取所有群组
-    group_list = await bot.get_group_list()
-    for group in group_list:
-        if str(gid := group["group_id"]) in get_blacklist():
-            continue
-        msgs = GROUP_MESSAGE_SEQUENT.get(gid, [])
-        limit = plugin_config.context_size + 10
-        # 获取群消息历史
-        history: dict[str, Any] = await bot.call_api(
-            "get_group_msg_history", group_id=int(gid), message_seq=0, count=limit, reverseOrder=False
-        )
-        # 读取历史消息填充到缓存中
-        messages = history["messages"]
-        for event_dict in messages:
-            event_dict["post_type"] = "message"
-            event = GroupMessageEvent(**event_dict)
-            is_bot_msg = event.user_id == int(bot.self_id)
-            target = await extract_msg_in_group_message_event(event)
-            if len(target) < 2:
-                continue
-            # 判断是否是机器人自己发的消息
-            if is_bot_msg:
-                msgs = handle_context_list(msgs, target, Character.BOT)
-            else:
-                msgs = handle_context_list(msgs, target)
-        GROUP_MESSAGE_SEQUENT.update({gid: msgs})
-        logger.info(f"群{gid}消息缓存完成")
+
+# @driver.on_bot_connect
+# async def cache_message(bot: Bot):
+#     global GROUP_MESSAGE_SEQUENT
+#     # 获取所有群组
+#     group_list = await bot.get_group_list()
+#     for group in group_list:
+#         if str(gid := group["group_id"]) in get_blacklist():
+#             continue
+#         msgs = GROUP_MESSAGE_SEQUENT.get(gid, [])
+#         limit = plugin_config.context_size + 10
+#         # 获取群消息历史
+#         history: dict[str, Any] = await bot.call_api(
+#             "get_group_msg_history", group_id=int(gid), message_seq=0, count=limit, reverseOrder=False
+#         )
+#         # 读取历史消息填充到缓存中
+#         messages = history["messages"]
+#         for event_dict in messages:
+#             event_dict["post_type"] = "message"
+#             event = GroupMessageEvent(**event_dict)
+#             is_bot_msg = event.user_id == int(bot.self_id)
+#             target = await store_message_segment_into_milvus(event)
+#             if len(target) < 2:
+#                 continue
+#             # 判断是否是机器人自己发的消息
+#             if is_bot_msg:
+#                 msgs = handle_context_list(msgs, target, Character.BOT)
+#             else:
+#                 msgs = handle_context_list(msgs, target)
+#         GROUP_MESSAGE_SEQUENT.update({gid: msgs})
+#         logger.info(f"群{gid}消息缓存完成")
 
 
 shutup = on_keyword(keywords={"闭嘴", "shut up", "shutup", "Shut Up", "Shut up", "滚", "一边去"}, rule=to_me())
@@ -150,17 +154,16 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
     # 8位及以上数字字母组合为无意义消息，可能为密码或邀请码之类，过滤不做处理
     if re.match(r"^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$", em.extract_plain_text()):
         return
-    msgs = GROUP_MESSAGE_SEQUENT.get(gid, [])
-    target = await extract_msg_in_group_message_event(event)
-    if len(target) < 2:
-        return
-    msgs = handle_context_list(msgs, target)
-    GROUP_MESSAGE_SEQUENT.update({gid: msgs})
+    vec_data = await store_message_segment_into_milvus(event)
 
     logger.debug(f"receive: {em}")
 
     # 触发复读
-    if random.random() < plugin_config.repeat_probability and not GROUP_SPEAK_DISABLE.get(gid, False) and event.user_id != event.self_id:
+    if (
+        random.random() < plugin_config.repeat_probability
+        and not GROUP_SPEAK_DISABLE.get(gid, False)
+        and event.user_id != event.self_id
+    ):
         logger.info(f"群{gid}触发复读")
         # 过滤掉图片消息，留下meme消息，mface消息，text消息
         new_message: Message = Message()
@@ -180,9 +183,9 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
         await on_msg.finish(new_message)
 
     # 如果内存中记录到的消息不足指定数量，则不进行处理
-    if len(msgs) < plugin_config.context_size:
-        logger.warning(f"群{gid}消息上下文长度{len(msgs)}不足{plugin_config.context_size}，不处理")
-        return
+    # if len(msgs) < plugin_config.context_size:
+    #     logger.warning(f"群{gid}消息上下文长度{len(msgs)}不足{plugin_config.context_size}，不处理")
+    #     return
     # 触发回复
     # 规则：
     # 1. 该群聊没有被闭嘴
@@ -191,21 +194,31 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
 
     if (
         (
-            send := (
-                (r := random.random())
-                < float(get_value_or_default(gid, "reply_probability", str(plugin_config.reply_probability)))
+            (
+                send := (
+                    (r := random.random())
+                    < float(get_value_or_default(gid, "reply_probability", str(plugin_config.reply_probability)))
+                )
+            )
+            or (
+                event.is_tome()
+                and (
+                    (
+                        r
+                        < float(
+                            get_value_or_default(gid, "at_reply_probability", str(plugin_config.reply_probability * 4))
+                        )
+                    )
+                    or send
+                )
             )
         )
-        or (
-            event.is_tome()
-            and (
-                (r < float(get_value_or_default(gid, "at_reply_probability", str(plugin_config.reply_probability * 4))))
-                or send
-            )
-        )
-    ) and not GROUP_SPEAK_DISABLE.get(gid, False) and event.user_id != event.self_id:
+        and not GROUP_SPEAK_DISABLE.get(gid, False)
+        and event.user_id != event.self_id
+    ):
         logger.info(f"reply: {em}")
-        await chat_with_gemini(gid, msgs, nickname, await get_bot_gender(), await is_bot_admin(gid))
+        await chat_with_gemini(gid, nickname, vec_data, await get_bot_gender(), await is_bot_admin(gid))
+
 
 def is_self_msg(bot: Bot, event: Event) -> bool:
     """判断是否是机器人自己发的消息事件"""
@@ -230,14 +243,7 @@ on_self_msg = on_message(priority=5, rule=Rule(is_self_msg))
 @on_self_msg.handle()
 async def receive_group_self_msg(event: GroupMessageEvent = Depends(convert_to_group_message_event)) -> None:
     """处理机器人自己发的消息"""
-    global GROUP_MESSAGE_SEQUENT
-    gid = event.group_id
-    msgs = GROUP_MESSAGE_SEQUENT.get(gid, [])
-    target = await extract_msg_in_group_message_event(event)
-    if len(target) < 2:
-        return
-    msgs = handle_context_list(msgs, target, Character.BOT)
-    GROUP_MESSAGE_SEQUENT.update({gid: msgs})
+    await store_message_segment_into_milvus(event)
 
 
 async def sleep_sometime(size: int):
@@ -251,13 +257,15 @@ _HTTP_CLIENT = AsyncClient()
 _CACHE_DIR = store.get_cache_dir("people_like")
 
 
-async def extract_msg_in_group_message_event(event: GroupMessageEvent) -> list[Part]:
+async def store_message_segment_into_milvus(event: GroupMessageEvent) -> list[list[float]]:
     """提取群消息事件中的消息内容"""
     global _HTTP_CLIENT, _CACHE_DIR
     em = event.message
     gid = event.group_id
     sender_user_id = event.user_id
+    self_msg = event.self_id == event.user_id
     target: list[Part] = []
+    file_ids: list[str] = []
     sender_nickname = await get_user_nickname_of_group(gid, int(sender_user_id))
 
     target.append(Part.from_text(text=f"[{sender_nickname}<{sender_user_id}>]"))
@@ -267,15 +275,34 @@ async def extract_msg_in_group_message_event(event: GroupMessageEvent) -> list[P
         match ms.type:
             case "text":
                 text = ms.data["text"]
-                # 生成对应文本向量数据并插入数据库
-                target.append(Part.from_text(text=text))
+                try:
+                    part = target.pop()
+                    if txt := part.text:
+                        target.append(Part.from_text(text=f"{txt}{text}"))
+                    else:
+                        target.append(Part.from_text(text=text))
+                        file_ids.append("")
+                except IndexError:
+                    target.append(Part.from_text(text=text))
+                    file_ids.append("")
             case "at":
-                target.append(Part.from_text(text=f"@{ms.data['qq']} "))
+                try:
+                    part = target.pop()
+                    if txt := part.text:
+                        target.append(Part.from_text(text=f"{txt}@{ms.data['qq']} "))
+                    else:
+                        target.append(Part.from_text(text=f"@{ms.data['qq']} "))
+                        file_ids.append("")
+                except IndexError:
+                    target.append(Part.from_text(text=f"@{ms.data['qq']} "))
+                    file_ids.append("")
             case "image":
                 if plugin_config.image_analyze:
                     # 下载图片进行处理
                     data = await _HTTP_CLIENT.get(ms.data["url"])
-                    suffix_name = str(ms.data["file"]).split(".")[-1]
+                    file_id = str(ms.data["file"])
+                    file_ids.append(file_id)
+                    suffix_name = file_id.split(".")[-1]
                     mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
                     match suffix_name:
                         case "jpg" | "gif":
@@ -286,7 +313,67 @@ async def extract_msg_in_group_message_event(event: GroupMessageEvent) -> list[P
                         target.append(Part.from_bytes(data=data.content, mime_type=mime_type))
             case _:
                 pass
-    return target
+
+    # 新增数据到 Milvus 向量数据库
+    message_id = event.message_id
+    group_id = event.group_id
+    user_id = event.user_id
+    vector_data = []
+    result: list[list[float]] = []
+    for index, part in enumerate(target):
+        file_id = file_ids[index] if index < len(file_ids) else ""
+        if part.text:
+            # 生成向量
+            vec = await get_text_embedding(part.text)
+            if vec:
+                # 创建 VectorData 对象
+                vector_data.append(
+                    {
+                        "message_id": message_id,
+                        "group_id": group_id,
+                        "user_id": user_id,
+                        "self_msg": self_msg,
+                        "to_me": event.is_tome(),
+                        "index": index,
+                        "nick_name": sender_nickname,
+                        "content": part.text,
+                        "file_id": file_id,
+                        "vec": vec,
+                        "time": int(time.time()),
+                    }
+                )
+            result.append(vec)
+        if part.inline_data:
+            # 如果是图片，则先分析图片
+            parts = []
+            parts.append(Part.from_text(text="分析一下这张图片描述的内容"))
+            parts.append(part)
+            content = await analysis_image(parts=parts)
+            if content:
+                # 生成向量
+                vec = await get_text_embedding(content)
+                if vec:
+                    # 创建 VectorData 对象
+                    vector_data.append(
+                        {
+                            "message_id": message_id,
+                            "group_id": group_id,
+                            "user_id": user_id,
+                            "self_msg": self_msg,
+                            "to_me": event.is_tome(),
+                            "index": index,
+                            "nick_name": sender_nickname,
+                            "content": content,
+                            "file_id": file_id,
+                            "vec": vec,
+                            "time": int(time.time()),
+                        }
+                    )
+                    result.append(vec)
+
+    # 插入数据到 Milvus
+    await _MILVUS_VECTOR_CLIENT.insert_data(vector_data)
+    return result
 
 
 _USER_OF_GROUP_NICKNAME: dict[int, ExpirableDict[int, str]] = dict()
@@ -424,13 +511,48 @@ class ReturnMsg(BaseModel):
 
 async def chat_with_gemini(
     group_id: int,
-    context: list[ChatMsg],
     bot_nickname: str = "",
+    vec_data: list[list[float]] = [],
     bot_gender: Optional[str] = None,
     is_admin: bool = False,
 ):
     """与gemini聊天"""
-    global _GEMINI_CLIENT, GROUP_MESSAGE_SEQUENT
+    global _GEMINI_CLIENT
+    bot = get_bot()
+
+    data = await _MILVUS_VECTOR_CLIENT.query_data(group_id, vec_data)
+    context: list[ChatMsg] = []
+    for item in data:
+        if item.self_msg:
+            character = Character.BOT
+        else:
+            character = Character.USER
+        # 生成 parts
+        if item.file_id:
+            # 判断为图片消息
+            resp = await bot.call_api("get_image", file_id=item.file_id)
+            data = await _HTTP_CLIENT.get(resp["url"])
+            suffix_name = item.file_id.split(".")[-1]
+            mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
+            match suffix_name:
+                case "jpg" | "gif":
+                    mime_type = "image/jpeg"
+                case "png":
+                    mime_type = "image/png"
+            if data.status_code == 200:
+                parts = []
+                parts.append(Part.from_text(text=f"[{item.nick_name}<{item.user_id}>]"))
+                if item.to_me:
+                    parts.append(Part.from_text(text=f"@{bot.self_id} "))
+                parts.append(Part.from_bytes(data=data.content, mime_type=mime_type))
+                context.append(ChatMsg(sender=character, content=parts))
+        else:
+            parts = []
+            parts.append(Part.from_text(text=f"[{item.nick_name}<{item.user_id}>]"))
+            if item.to_me:
+                parts.append(Part.from_text(text=f"@{bot.self_id} "))
+            parts.append(Part.from_text(text=item.content))
+            context.append(ChatMsg(sender=character, content=parts))
 
     do_not_send_words = Path(__file__).parent / "do_not_send.txt"
     words = [s.strip() for s in do_not_send_words.read_text(encoding="utf-8").splitlines()]
@@ -506,17 +628,14 @@ async def chat_with_gemini(
                             "msg_type": Schema(
                                 type=Type.STRING,
                                 enum=[ReturnMsgEnum.TEXT.value, ReturnMsgEnum.AT.value],
-                                description="消息类型，text表示文本消息，at表示提及消息"
+                                description="消息类型，text表示文本消息，at表示提及消息",
                             ),
-                            "content": Schema(
-                                type=Type.STRING,
-                                description="消息内容或者被提及的数字id"
-                            )
-                        }
-                    )
+                            "content": Schema(type=Type.STRING, description="消息内容或者被提及的数字id"),
+                        },
+                    ),
                 ),
             },
-        )
+        ),
     )
 
     send_meme_function = FunctionDeclaration(
@@ -560,20 +679,14 @@ async def chat_with_gemini(
         model=model,
         contents=contents,
         config=GenerateContentConfig(
-            http_options=HttpOptions(
-                timeout=6*60*1000
-            ),
+            http_options=HttpOptions(timeout=6 * 60 * 1000),
             system_instruction=prompt,
             top_p=top_p,
             top_k=top_k,
             max_output_tokens=c_len,
             tools=tools,
             temperature=temperature,
-            tool_config=ToolConfig(
-                function_calling_config=FunctionCallingConfig(
-                    mode=FunctionCallingConfigMode.ANY
-                )
-            ),
+            tool_config=ToolConfig(function_calling_config=FunctionCallingConfig(mode=FunctionCallingConfigMode.ANY)),
             safety_settings=[
                 SafetySetting(category=HarmCategory.HARM_CATEGORY_HARASSMENT, threshold=HarmBlockThreshold.OFF),
                 SafetySetting(category=HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold=HarmBlockThreshold.OFF),
@@ -602,11 +715,11 @@ async def chat_with_gemini(
                     elif returnMsg.msg_type == ReturnMsgEnum.TEXT:
                         # 处理文本中包含 @123 的情况，转换成 TEXT+AT+TEXT 串
                         content = returnMsg.content
-                        parts = re.split(r'(@\d+)', content)
+                        parts = re.split(r"(@\d+)", content)
                         for part in parts:
                             if not part:  # 跳过空字符串
                                 continue
-                            if re.fullmatch(r'@\d+', part):
+                            if re.fullmatch(r"@\d+", part):
                                 user_id = int(part[1:])
                                 message.append(MessageSegment.at(user_id))
                                 # AT之后通常需要一个空格，除非它是消息的末尾或者后面紧跟着非文本内容
@@ -616,7 +729,9 @@ async def chat_with_gemini(
 
                 if len(message) > 0:
                     plain_text = message.extract_plain_text()
-                    if all(ignore not in plain_text for ignore in words) and not GROUP_SPEAK_DISABLE.get(group_id, False):
+                    if all(ignore not in plain_text for ignore in words) and not GROUP_SPEAK_DISABLE.get(
+                        group_id, False
+                    ):
                         # 先睡，睡完再发
                         await sleep_sometime(len(plain_text))
                         if not GROUP_SPEAK_DISABLE.get(group_id, False):
@@ -659,7 +774,6 @@ async def mute_sb(group_id: int, user_id: int, minute: int):
             await get_bot().call_api("set_group_ban", group_id=group_id, user_id=user_id, duration=minute * 60)
 
 
-
 async def get_text_embedding(text: str) -> list[float]:
     """获取文本的向量表示"""
     global _GEMINI_CLIENT
@@ -672,3 +786,18 @@ async def get_text_embedding(text: str) -> list[float]:
     embedding = resp.embeddings
     value = embedding[0].values if embedding else []
     return value if value else [0.0] * 768  # 假设向量维度为768，如果没有返回值则返回全0向量
+
+
+async def analysis_image(parts: list[Part]) -> str:
+    """分析图片，返回图片分析内容"""
+    global _GEMINI_CLIENT
+    response = await _GEMINI_CLIENT.aio.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=[
+            Content(
+                role="user",
+                parts=parts,
+            )
+        ],
+    )
+    return response.text.strip() if response.text else ""
