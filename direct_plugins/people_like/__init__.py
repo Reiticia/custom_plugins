@@ -657,3 +657,18 @@ async def mute_sb(group_id: int, user_id: int, minute: int):
         if int(time.time()) >= GROUP_BAN_DICT[group_id][user_id]:
             GROUP_BAN_DICT[group_id][user_id] = int(time.time()) + minute * 60
             await get_bot().call_api("set_group_ban", group_id=group_id, user_id=user_id, duration=minute * 60)
+
+
+
+async def get_text_embedding(text: str) -> list[float]:
+    """获取文本的向量表示"""
+    global _GEMINI_CLIENT
+    if not text:
+        return []
+    resp = await _GEMINI_CLIENT.aio.models.embed_content(
+        model="text-embedding-004",
+        contents=text,
+    )
+    embedding = resp.embeddings
+    value = embedding[0].values if embedding else []
+    return value if value else [0.0] * 768  # 假设向量维度为768，如果没有返回值则返回全0向量
