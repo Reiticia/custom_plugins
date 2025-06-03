@@ -21,10 +21,10 @@ class VectorData(BaseModel):
 
 
 class MilvusVector:
-    def __init__(self):
+    def __init__(self, username: str, password: str):
         self.collection_name = "people_like"
-        self.client = MilvusClient(uri="http://localhost:19530")
-        self.async_client = AsyncMilvusClient(uri="http://localhost:19530")
+        self.client = MilvusClient(uri="http://localhost:19530", user=username, password=password)
+        self.async_client = AsyncMilvusClient(uri="http://localhost:19530", user=username, password=password)
         # 创建集合
         self.create_collection()
 

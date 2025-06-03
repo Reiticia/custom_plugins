@@ -95,7 +95,7 @@ driver = get_driver()
 async def init_milvus_vector():
     global _MILVUS_VECTOR_CLIENT
     """初始化 Milvus 向量数据库客户端"""
-    _MILVUS_VECTOR_CLIENT = MilvusVector()
+    _MILVUS_VECTOR_CLIENT = MilvusVector(plugin_config.milvus_user, plugin_config.milvus_password)
 
 
 # @driver.on_bot_connect

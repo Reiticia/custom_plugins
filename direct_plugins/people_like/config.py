@@ -20,6 +20,10 @@ class Config(BaseModel):
     """Gemini API Key"""
     gemini_model: str = "gemini-2.0-flash"
     """Gemini API Model"""
+    milvus_user: str = ""
+    """Milvus 用户"""
+    milvus_password: str = ""
+    """Milvus 密码"""
 
 
 plugin_config = get_plugin_config(Config)
