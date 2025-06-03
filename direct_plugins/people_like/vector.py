@@ -67,6 +67,8 @@ class MilvusVector:
 
     async def insert_data(self, data: list[VectorData]):
         data_dict = [item.model_dump() for item in data]
+        for d in data_dict:
+            d.pop("id", None)
         res = await self.async_client.insert(collection_name=self.collection_name, data=data_dict)
 
     async def query_data(self, group_id: int, query_vector: list[list[float]]) -> list[VectorData]:
