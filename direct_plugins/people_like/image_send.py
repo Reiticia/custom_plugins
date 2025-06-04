@@ -9,7 +9,6 @@ from nonebot.permission import SUPERUSER
 import nonebot_plugin_localstore as store  # noqa: E402
 from httpx import AsyncClient
 from aiofiles import open as aopen
-import aiofiles.os as aios
 from nonebot_plugin_orm import get_session
 from sqlalchemy import select, update
 from .model import ImageSender
@@ -280,7 +279,7 @@ async def inc_image(event: GroupMessageEvent) -> bool:
 _HTTP_CLIENT = AsyncClient()
 
 
-@on_message(rule=inc_image).handle()
+@on_message(rule=inc_image, priority=10).handle()
 async def add_image(event: GroupMessageEvent):
     if not image_dir_path.exists():
         image_dir_path.mkdir(parents=True)
@@ -303,61 +302,62 @@ async def add_image(event: GroupMessageEvent):
         if not (file_path := image_dir_path.joinpath(file_name)).exists():
             async with aopen(file_path, "wb") as f:
                 await f.write(resp.content)
-        logger.info(f"下载图片{file_name}成功")
-        # 上传图片到gemini
-        suffix_name = str(file_name).split(".")[-1]
-        mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
-        match suffix_name:
-            case "jpg" | "gif":
-                mime_type = "image/jpeg"
-            case "png":
-                mime_type = "image/png"
-        file = await _GEMINI_CLIENT.aio.files.upload(file=file_path, config=UploadFileConfig(mime_type=mime_type))
-        _FILES.append(LocalFile(mime_type=mime_type, file_name=file_name, file=file))
-        # 插入数据库
-        session = get_session()
-        async with session.begin():
-            res = await session.execute(select(ImageSender).where(ImageSender.name == file_name))
-            first = res.scalars().first()
-            if first is None:  # 如果原来不存在，则插入
-                image_sender = ImageSender(
-                    name=file_name,
-                    summary=summary,
-                    group_id=event.group_id,
-                    user_id=event.user_id,
-                    ext_name=suffix_name,
-                    url=url,
-                    file_uri=str(file.uri),
-                    file_size=file_size,
-                    key=key,
-                    emoji_id=emoji_id,
-                    emoji_package_id=emoji_package_id,
-                    create_time=int(event.time),
-                    update_time=int(event.time),
-                )
-                session.add(image_sender)
-                await session.commit()
-                logger.info(f"新增图片{file_name}成功")
-            else:  # 如果原来存在，则更新
-                await session.execute(
-                    update(ImageSender)
-                    .where(ImageSender.name == file_name)
-                    .values(
-                        {
-                            "update_time": int(event.time),
-                            "file_uri": str(file.uri),
-                            "group_id": event.group_id,
-                            "user_id": event.user_id,
-                            "summary": summary,
-                            "url": url,
-                            "file_size": file_size,
-                            "key": key,
-                            "emoji_id": emoji_id,
-                            "emoji_package_id": emoji_package_id,
-                        }
+            logger.info(f"下载图片{file_name}成功")
+            # 上传图片到gemini
+            suffix_name = str(file_name).split(".")[-1]
+            mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
+            match suffix_name:
+                case "jpg" | "gif":
+                    mime_type = "image/jpeg"
+                case "png":
+                    mime_type = "image/png"
+            file = await _GEMINI_CLIENT.aio.files.upload(file=file_path, config=UploadFileConfig(mime_type=mime_type))
+            _FILES.append(LocalFile(mime_type=mime_type, file_name=file_name, file=file))
+            # 插入数据库
+            session = get_session()
+            async with session.begin():
+                res = await session.execute(select(ImageSender).where(ImageSender.name == file_name))
+                first = res.scalars().first()
+                if first is None:  # 如果原来不存在，则插入
+                    image_sender = ImageSender(
+                        name=file_name,
+                        summary=summary,
+                        group_id=event.group_id,
+                        user_id=event.user_id,
+                        ext_name=suffix_name,
+                        url=url,
+                        file_uri=str(file.uri),
+                        file_size=file_size,
+                        key=key,
+                        emoji_id=emoji_id,
+                        emoji_package_id=emoji_package_id,
+                        create_time=int(event.time),
+                        update_time=int(event.time),
                     )
-                )
-                logger.info(f"更新图片{file_name}成功")
+                    session.add(image_sender)
+                    await session.commit()
+                    logger.info(f"新增图片{file_name}成功")
+                else:  # 如果原来存在，则更新
+                    await session.execute(
+                        update(ImageSender)
+                        .where(ImageSender.name == file_name)
+                        .values(
+                            {
+                                "update_time": int(event.time),
+                                "file_uri": str(file.uri),
+                                "group_id": event.group_id,
+                                "user_id": event.user_id,
+                                "summary": summary,
+                                "url": url,
+                                "file_size": file_size,
+                                "key": key,
+                                "emoji_id": emoji_id,
+                                "emoji_package_id": emoji_package_id,
+                            }
+                        )
+                    )
+                    logger.info(f"更新图片{file_name}成功")
+    
 
 
 driver = get_driver()

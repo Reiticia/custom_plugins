@@ -43,7 +43,7 @@ class MilvusVector:
             schema.add_field("to_me", DataType.BOOL, default=False)  # 是否为提及自己的消息
             schema.add_field("index", DataType.INT32)
             schema.add_field("nick_name", DataType.VARCHAR, max_length=255)
-            schema.add_field("content", DataType.VARCHAR, max_length=1024)
+            schema.add_field("content", DataType.VARCHAR, max_length=4096)
             schema.add_field("file_id", DataType.VARCHAR, max_length=1024)
             schema.add_field("vec", DataType.FLOAT_VECTOR, dim=768)  # 向量维度需自定义
             schema.add_field("time", DataType.INT64)
@@ -70,6 +70,7 @@ class MilvusVector:
         for d in data_dict:
             d.pop("id", None)
         res = await self.async_client.insert(collection_name=self.collection_name, data=data_dict)
+        return res["insert_count"]
 
     async def query_data(self, group_id: int, query_vector: list[list[float]]) -> list[VectorData]:
         today_zero_time = int(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp())

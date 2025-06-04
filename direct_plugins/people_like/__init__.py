@@ -82,10 +82,6 @@ class GroupMemberDict:
         return None
 
 
-# GROUP_MESSAGE_SEQUENT: dict[int, list[ChatMsg]] = {}
-# """群号，消息上下文列表
-# """
-
 GROUP_SPEAK_DISABLE: dict[int, bool] = {}
 
 driver = get_driver()
@@ -96,38 +92,6 @@ async def init_milvus_vector():
     global _MILVUS_VECTOR_CLIENT
     """初始化 Milvus 向量数据库客户端"""
     _MILVUS_VECTOR_CLIENT = MilvusVector(plugin_config.milvus_user, plugin_config.milvus_password)
-
-
-# @driver.on_bot_connect
-# async def cache_message(bot: Bot):
-#     global GROUP_MESSAGE_SEQUENT
-#     # 获取所有群组
-#     group_list = await bot.get_group_list()
-#     for group in group_list:
-#         if str(gid := group["group_id"]) in get_blacklist():
-#             continue
-#         msgs = GROUP_MESSAGE_SEQUENT.get(gid, [])
-#         limit = plugin_config.context_size + 10
-#         # 获取群消息历史
-#         history: dict[str, Any] = await bot.call_api(
-#             "get_group_msg_history", group_id=int(gid), message_seq=0, count=limit, reverseOrder=False
-#         )
-#         # 读取历史消息填充到缓存中
-#         messages = history["messages"]
-#         for event_dict in messages:
-#             event_dict["post_type"] = "message"
-#             event = GroupMessageEvent(**event_dict)
-#             is_bot_msg = event.user_id == int(bot.self_id)
-#             target = await store_message_segment_into_milvus(event)
-#             if len(target) < 2:
-#                 continue
-#             # 判断是否是机器人自己发的消息
-#             if is_bot_msg:
-#                 msgs = handle_context_list(msgs, target, Character.BOT)
-#             else:
-#                 msgs = handle_context_list(msgs, target)
-#         GROUP_MESSAGE_SEQUENT.update({gid: msgs})
-#         logger.info(f"群{gid}消息缓存完成")
 
 
 shutup = on_keyword(keywords={"闭嘴", "shut up", "shutup", "Shut Up", "Shut up", "滚", "一边去"}, rule=to_me())
@@ -147,7 +111,7 @@ on_msg: type[Matcher] = on_message(priority=5)
 
 @on_msg.handle()
 async def receive_group_msg(event: GroupMessageEvent) -> None:
-    global GROUP_MESSAGE_SEQUENT, GROUP_SPEAK_DISABLE
+    global GROUP_SPEAK_DISABLE
     # 群组id
     gid = event.group_id
     nickname = await get_bot_nickname_of_group(gid)
@@ -187,10 +151,6 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
             return
         await on_msg.finish(new_message)
 
-    # 如果内存中记录到的消息不足指定数量，则不进行处理
-    # if len(msgs) < plugin_config.context_size:
-    #     logger.warning(f"群{gid}消息上下文长度{len(msgs)}不足{plugin_config.context_size}，不处理")
-    #     return
     # 触发回复
     # 规则：
     # 1. 该群聊没有被闭嘴
@@ -351,6 +311,8 @@ async def store_message_segment_into_milvus(event: GroupMessageEvent) -> list[li
             parts.append(Part.from_text(text="分析一下这张图片描述的内容"))
             parts.append(part)
             content = await analysis_image(parts=parts)
+            logger.debug(f"anaylysis iamge {file_id}" )
+            logger.debug(content)
             if content:
                 # 生成向量
                 vec = await get_text_embedding(content)
@@ -376,6 +338,7 @@ async def store_message_segment_into_milvus(event: GroupMessageEvent) -> list[li
     # 插入数据到 Milvus
     vector_data_list = [VectorData(**data) for data in vector_data]
     await _MILVUS_VECTOR_CLIENT.insert_data(vector_data_list)
+    logger.debug(f"{type(result)}")
     return result
 
 
