@@ -5,12 +5,21 @@ name: ssh deploy
 
 on:
   workflow_dispatch:
+    inputs:
+      commit:
+        description: 'Commit SHA to deploy (leave empty for latest)'
+        required: false
+        default: ''
+
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        ref: ${{ inputs.commit || github.sha }}
     - name: scp ssh pipelines
       uses: cross-the-world/ssh-scp-ssh-pipelines@latest
       env:
