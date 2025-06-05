@@ -493,6 +493,7 @@ async def chat_with_gemini(
         # 如果查询结果少于5条，则不进行回复
         logger.info(f"群{group_id}查询结果少于5条，不进行回复")
         return
+    data = sorted(data, key=lambda x: x.time, reverse=False)
     context: list[ChatMsg] = []
     for item in data:
         if item.self_msg:
