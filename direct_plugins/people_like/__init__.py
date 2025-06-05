@@ -487,6 +487,10 @@ async def chat_with_gemini(
     bot = get_bot()
 
     data = await _MILVUS_VECTOR_CLIENT.query_data(group_id, vec_data)
+    if len(data) < 5:
+        # 如果查询结果少于5条，则不进行回复
+        logger.info(f"群{group_id}查询结果少于5条，不进行回复")
+        return
     context: list[ChatMsg] = []
     for item in data:
         if item.self_msg:

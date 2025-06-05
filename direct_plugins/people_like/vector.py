@@ -80,6 +80,13 @@ class MilvusVector:
             collection_name=self.collection_name,
             data=query_vector,
             filter=expr,
+            search_params={
+                "metric_type": "COSINE",
+                "params": {
+                    "nprobe": 128,  # 搜索空间大小（精度-性能平衡点）
+                    "radius": 0.7    # 最小相似度阈值（可选）
+                }
+            },
             output_fields=[
                 "id",
                 "message_id",
