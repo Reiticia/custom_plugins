@@ -358,8 +358,10 @@ async def get_user_nickname_of_group(group_id: int, user_id: int) -> str:
         except Exception as e:
             logger.error("获取群成员信息失败", str(e))
             info: dict[str, Any] = {}
-
-        nickname: str = str(info.get("card", info.get("nickname", str(info.get("user_id")))))
+        nickname_obj = info.get("card")
+        if not nickname_obj:
+            nickname_obj = info.get("nickname")
+        nickname: str = str(nickname_obj)
         # 缓存一天
         gd.set(user_id, nickname, 60 * 60 * 24)
         _USER_OF_GROUP_NICKNAME.update({group_id: gd})
