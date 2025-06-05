@@ -20,6 +20,8 @@ class ImageSender(Model):
     """图片url"""
     file_uri: Mapped[str]
     """图片文件uri"""
+    remote_file_name: Mapped[str] = mapped_column(nullable=True)
+    """图片远程文件名"""
     file_size: Mapped[int] = mapped_column(nullable=True)
     """动画表情文件大小"""
     key: Mapped[str] = mapped_column(nullable=True)

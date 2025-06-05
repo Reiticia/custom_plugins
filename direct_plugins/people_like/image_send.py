@@ -357,10 +357,10 @@ async def add_image(event: GroupMessageEvent):
                         )
                     )
                     logger.info(f"更新图片{file_name}成功")
-    
 
 
 driver = get_driver()
+
 
 @driver.on_bot_connect
 @scheduler.scheduled_job("interval", days=2, id="my_job_id")
@@ -384,27 +384,36 @@ async def upload_image() -> Optional[str]:
                     mime_type = "image/jpeg"
                 case "png":
                     mime_type = "image/png"
-            file_path = image_dir_path / local_file
-            file = await _GEMINI_CLIENT.aio.files.upload(
-                file=file_path, config=UploadFileConfig(mime_type=mime_type)
-            )
-            _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=file))
             session = get_session()
             async with session.begin():
                 res = await session.execute(select(ImageSender).where(ImageSender.name == local_file))
                 first = res.scalars().first()
+                now = int(time.time())
                 if first is not None:  # 如果原来存在，则更新
-                    await session.execute(
-                        update(ImageSender)
-                        .where(ImageSender.name == local_file)
-                        .values(
-                            {
-                                "update_time": int(time.time()),
-                                "file_uri": str(file.uri),
-                            }
+                    if now - int(first.update_time) > 36 * 60 * 60 and (remote_fn := first.remote_file_name) is not None:
+                        exsit_file = await _GEMINI_CLIENT.aio.files.get(name=remote_fn)
+                        if exsit_file is not None:
+                            _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=exsit_file))
+                            logger.info(f"图片{local_file}未过期，跳过上传")
+                    else:
+                        # 图片即将过期，或者图片名未设置，则更新图片
+                        file_path = image_dir_path / local_file
+                        file = await _GEMINI_CLIENT.aio.files.upload(
+                            file=file_path, config=UploadFileConfig(mime_type=mime_type)
                         )
-                    )
-                    logger.info(f"更新图片{local_file}成功")
+                        _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=file))
+                        await session.execute(
+                            update(ImageSender)
+                            .where(ImageSender.name == local_file)
+                            .values(
+                                {
+                                    "update_time": int(time.time()),
+                                    "file_uri": str(file.uri),
+                                    "remote_file_name": str(file.name),
+                                }
+                            )
+                        )
+                        logger.info(f"更新图片{local_file}成功")
 
 
 who_send = on_command("谁发的", aliases={"谁发的图片", "图片来源"})
