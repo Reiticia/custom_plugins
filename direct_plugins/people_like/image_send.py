@@ -384,9 +384,10 @@ async def upload_image() -> Optional[str]:
                     mime_type = "image/jpeg"
                 case "png":
                     mime_type = "image/png"
-            session = get_session()
-            async with session.begin():
-                res = await session.execute(select(ImageSender).where(ImageSender.name == local_file))
+            need_upload = True
+            search_session = get_session()
+            async with search_session.begin():
+                res = await search_session.execute(select(ImageSender).where(ImageSender.name == local_file))
                 first = res.scalars().first()
                 now = int(time.time())
                 if first is not None:  # 如果原来存在，则更新
@@ -395,25 +396,29 @@ async def upload_image() -> Optional[str]:
                         if exsit_file is not None:
                             _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=exsit_file))
                             logger.info(f"图片{local_file}未过期，跳过上传")
-                    else:
-                        # 图片即将过期，或者图片名未设置，则更新图片
-                        file_path = image_dir_path / local_file
-                        file = await _GEMINI_CLIENT.aio.files.upload(
-                            file=file_path, config=UploadFileConfig(mime_type=mime_type)
+                            need_upload = False
+
+            if need_upload:
+                # 图片即将过期，或者图片名未设置，则更新图片
+                file_path = image_dir_path / local_file
+                file = await _GEMINI_CLIENT.aio.files.upload(
+                    file=file_path, config=UploadFileConfig(mime_type=mime_type)
+                )
+                _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=file))
+                update_session = get_session()
+                async with update_session.begin():
+                    await update_session.execute(
+                        update(ImageSender)
+                        .where(ImageSender.name == local_file)
+                        .values(
+                            {
+                                "update_time": int(time.time()),
+                                "file_uri": str(file.uri),
+                                "remote_file_name": str(file.name),
+                            }
                         )
-                        _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=file))
-                        await session.execute(
-                            update(ImageSender)
-                            .where(ImageSender.name == local_file)
-                            .values(
-                                {
-                                    "update_time": int(time.time()),
-                                    "file_uri": str(file.uri),
-                                    "remote_file_name": str(file.name),
-                                }
-                            )
-                        )
-                        logger.info(f"更新图片{local_file}成功")
+                    )
+                    logger.info(f"更新图片{local_file}成功")
 
 
 who_send = on_command("谁发的", aliases={"谁发的图片", "图片来源"})
