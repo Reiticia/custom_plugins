@@ -9,6 +9,7 @@ on:
       commit:
         description: 'Commit SHA to deploy (leave empty for latest)'
         required: false
+        type: string
         default: ''
 
 
@@ -48,3 +49,13 @@ jobs:
           source ~/direct/.venv/bin/activate
           nohup ~/.local/bin/nb orm upgrade
           nohup ~/.local/bin/nb run >> ~/direct/direct.log 2>&1 &;
+          # 检查端口是否有进程监听
+          sleep 10
+          if ! lsof -i :$PORT_FORWARD | grep LISTEN; then
+            echo "Error: forward 端口 $PORT_FORWARD 没有进程监听"
+            exit 1
+          fi
+          if ! lsof -i :$PORT_DIRECT | grep LISTEN; then
+            echo "Error: direct 端口 $PORT_DIRECT 没有进程监听"
+            exit 1
+          fi
