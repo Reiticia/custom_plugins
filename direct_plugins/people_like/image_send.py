@@ -36,8 +36,8 @@ import json
 
 from nonebot_plugin_apscheduler import scheduler
 
-os.environ["http_proxy"] = "http://127.0.0.1:7890/"
-os.environ["https_proxy"] = "http://127.0.0.1:7890/"
+# os.environ["http_proxy"] = "http://127.0.0.1:7890/"
+# os.environ["https_proxy"] = "http://127.0.0.1:7890/"
 
 _GEMINI_CLIENT = genai.Client(
     api_key=plugin_config.gemini_key,

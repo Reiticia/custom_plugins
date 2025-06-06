@@ -1,6 +1,20 @@
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from nonebot import get_plugin_config
+
+
+
+class MilvusConfig(BaseModel):
+    """Milvus 配置"""
+    username: str = ""
+    """用户名
+    """
+    password: str = ""
+    """密码
+    """
+    uri: str = "http://localhost:19530"
+    """连接地址
+    """
 
 
 class Config(BaseModel):
@@ -19,11 +33,9 @@ class Config(BaseModel):
     gemini_key: Optional[str]
     """Gemini API Key"""
     gemini_model: str = "gemini-2.0-flash"
-    """Gemini API Model"""
-    milvus_user: str = ""
-    """Milvus 用户"""
-    milvus_password: str = ""
-    """Milvus 密码"""
+    """Gemini 模型"""
+    milvus: MilvusConfig = Field(default_factory=MilvusConfig)
+    """Milvus 配置"""
 
 
 plugin_config = get_plugin_config(Config)
