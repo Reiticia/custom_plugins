@@ -9,7 +9,7 @@ from pathlib import Path
 from asyncio import sleep
 from typing import Any, Literal, Optional
 from pydantic import BaseModel
-from nonebot import get_bot, logger, on_keyword, on_message, require, get_driver
+from nonebot import get_bot, logger, on_keyword, on_message, require, get_driver, on
 
 from nonebot.rule import Rule, to_me
 from nonebot.plugin import PluginMetadata
@@ -184,17 +184,6 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
         logger.info(f"reply: {em}")
         await chat_with_gemini(gid, nickname, vec_data, await get_bot_gender(), await is_bot_admin(gid))
 
-
-def is_self_msg(bot: Bot, event: Event) -> bool:
-    """判断是否是机器人自己发的消息事件"""
-    model = event.model_dump()
-    return (
-        event.get_user_id() == bot.self_id
-        and str(model.get("message_type")) == "group"
-        and str(model.get("post_type")) == "message"
-    )
-
-
 def convert_to_group_message_event(event: Event) -> GroupMessageEvent:
     """转换为群消息事件"""
     model = event.model_dump()
@@ -202,12 +191,14 @@ def convert_to_group_message_event(event: Event) -> GroupMessageEvent:
     return GroupMessageEvent(**model)
 
 
-on_self_msg = on_message(priority=5, rule=Rule(is_self_msg))
+on_self_msg = on("message_sent", priority=5)
 
 
 @on_self_msg.handle()
-async def receive_group_self_msg(event: GroupMessageEvent = Depends(convert_to_group_message_event)) -> None:
+async def receive_group_self_msg(raw_event: Event) -> None:
     """处理机器人自己发的消息"""
+    event = convert_to_group_message_event(raw_event)
+
     await store_message_segment_into_milvus(event)
 
 
