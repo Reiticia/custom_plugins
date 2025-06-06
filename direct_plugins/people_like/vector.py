@@ -71,8 +71,37 @@ class MilvusVector:
             d.pop("id", None)
         res = await self.async_client.insert(collection_name=self.collection_name, data=data_dict)
         return res["insert_count"]
+    
+    async def query_data(self, group_id: int) -> list[VectorData]:
+        today_zero_time = int(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+        expr = f"group_id == {group_id} and time >= {today_zero_time}"
+        await self.async_client.load_collection(collection_name=self.collection_name)
+        # 按时间戳降序排序（获取最新的消息）
+        sort_key = [("time", "desc")]
+        results = await self.async_client.query(
+            collection_name=self.collection_name,
+            filter=expr,
+            sort_by=sort_key,
+            output_fields=[
+                "id",
+                "message_id",
+                "group_id",
+                "user_id",
+                "self_msg",
+                "to_me",
+                "index",
+                "nick_name",
+                "content",
+                "file_id",
+                "vec",
+                "time",
+            ],
+            limit=5,  # 限制返回数量
+            consistency_level="Strong"
+        )
+        return [VectorData(**item) for item in results]
 
-    async def query_data(self, group_id: int, query_vector: list[list[float]]) -> list[VectorData]:
+    async def search_data(self, group_id: int, query_vector: list[list[float]]) -> list[VectorData]:
         today_zero_time = int(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
         expr = f"group_id == {group_id} and time >= {today_zero_time}"
         await self.async_client.load_collection(collection_name=self.collection_name)

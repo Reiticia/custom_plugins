@@ -488,11 +488,18 @@ async def chat_with_gemini(
     global _GEMINI_CLIENT
     bot = get_bot()
 
-    data = await _MILVUS_VECTOR_CLIENT.query_data(group_id, vec_data)
+    query_data = await _MILVUS_VECTOR_CLIENT.query_data(group_id)
+    search_data = await _MILVUS_VECTOR_CLIENT.search_data(group_id, vec_data)
+    combined_list = query_data + search_data
+    unique_dict = {}
+    for item in combined_list:
+        unique_dict[item.id] = item  # 使用 item.id 作为键，item 对象作为值
+    data = list(unique_dict.values()) # 返回字典的值的列表 (元素对象)
     if len(data) < 5:
-        # 如果查询结果少于5条，则不进行回复
+        # 如果没有数据，则不进行回复
         logger.info(f"群{group_id}查询结果少于5条，不进行回复")
         return
+
     data = sorted(data, key=lambda x: x.time, reverse=False)
     context: list[ChatMsg] = []
     for item in data:
@@ -504,7 +511,7 @@ async def chat_with_gemini(
         if item.file_id:
             # 判断为图片消息
             resp = await bot.call_api("get_image", file_id=item.file_id)
-            data = await _HTTP_CLIENT.get(resp["url"])
+            query_data = await _HTTP_CLIENT.get(resp["url"])
             suffix_name = item.file_id.split(".")[-1]
             mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
             match suffix_name:
@@ -512,12 +519,12 @@ async def chat_with_gemini(
                     mime_type = "image/jpeg"
                 case "png":
                     mime_type = "image/png"
-            if data.status_code == 200:
+            if query_data.status_code == 200:
                 parts = []
                 parts.append(Part.from_text(text=f"[{item.nick_name}<{item.user_id}>]"))
                 if item.to_me:
                     parts.append(Part.from_text(text=f"@{bot.self_id} "))
-                parts.append(Part.from_bytes(data=data.content, mime_type=mime_type))
+                parts.append(Part.from_bytes(data=query_data.content, mime_type=mime_type))
                 context.append(ChatMsg(sender=character, content=parts))
         else:
             parts = []
