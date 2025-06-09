@@ -44,11 +44,11 @@ jobs:
           cd ~/forward
           source ~/forward/.venv/bin/activate
           nohup ~/.local/bin/nb orm upgrade
-          nohup ~/.local/bin/nb run >> ~/forward/forward.log 2>&1 &;
+          nohup ~/.local/bin/nb run >> ~/forward/logs/forward.log 2>&1 &;
           cd ~/direct
           source ~/direct/.venv/bin/activate
           nohup ~/.local/bin/nb orm upgrade
-          nohup ~/.local/bin/nb run >> ~/direct/direct.log 2>&1 &;
+          nohup ~/.local/bin/nb run >> ~/direct/logs/direct.log 2>&1 &;
           # 检查端口是否有进程监听
           sleep 10
           if ! lsof -i :$PORT_FORWARD | grep LISTEN; then
