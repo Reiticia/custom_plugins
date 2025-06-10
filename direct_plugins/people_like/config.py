@@ -35,9 +35,11 @@ class Config(BaseModel):
     gemini_model: str = "gemini-2.0-flash"
     """Gemini 模型"""
     query_len: int = 10
-    """查询长度"""
+    """查询最近消息的数量"""
     search_len: int = 10
-    """搜索长度"""
+    """搜索相关消息的数量"""
+    self_len: int = 3
+    """查询自身发送消息的数量"""
     milvus: MilvusConfig = Field(default_factory=MilvusConfig)
     """Milvus 配置"""
 

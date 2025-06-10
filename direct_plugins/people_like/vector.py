@@ -21,9 +21,10 @@ class VectorData(BaseModel):
 
 
 class MilvusVector:
-    def __init__(self, uri: str, username: str, password: str, query_len: int = 10, search_len: int = 10):
+    def __init__(self, uri: str, username: str, password: str, query_len: int = 10, search_len: int = 10, self_len: int = 3):
         self.query_len = query_len
         self.search_len = search_len
+        self.self_len = self_len
         self.collection_name = "people_like"
         self.client = MilvusClient(uri=uri, user=username, password=password)
         self.async_client = AsyncMilvusClient(uri=uri, user=username, password=password)
@@ -98,6 +99,35 @@ class MilvusVector:
                 "time",
             ],
             limit=self.query_len,  # 限制返回数量
+            consistency_level="Strong"
+        )
+        return [VectorData(**item) for item in results]
+
+    async def query_self_data(self, group_id: int) -> list[VectorData]:
+        today_zero_time = int(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+        expr = f"group_id == {group_id} and self_msg = true and time >= {today_zero_time}"
+        await self.async_client.load_collection(collection_name=self.collection_name)
+        # 按时间戳降序排序（获取最新的消息）
+        sort_key = [("time", "desc")]
+        results = await self.async_client.query(
+            collection_name=self.collection_name,
+            filter=expr,
+            sort_by=sort_key,
+            output_fields=[
+                "id",
+                "message_id",
+                "group_id",
+                "user_id",
+                "self_msg",
+                "to_me",
+                "index",
+                "nick_name",
+                "content",
+                "file_id",
+                "vec",
+                "time",
+            ],
+            limit=self.self_len,  # 限制返回数量
             consistency_level="Strong"
         )
         return [VectorData(**item) for item in results]

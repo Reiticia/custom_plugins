@@ -87,7 +87,14 @@ driver = get_driver()
 async def init_milvus_vector():
     global _MILVUS_VECTOR_CLIENT
     """初始化 Milvus 向量数据库客户端"""
-    _MILVUS_VECTOR_CLIENT = MilvusVector(plugin_config.milvus.uri, plugin_config.milvus.username, plugin_config.milvus.password, plugin_config.query_len, plugin_config.search_len)
+    _MILVUS_VECTOR_CLIENT = MilvusVector(
+        plugin_config.milvus.uri,
+        plugin_config.milvus.username,
+        plugin_config.milvus.password,
+        plugin_config.query_len,
+        plugin_config.search_len,
+        plugin_config.self_len,
+    )
 
 
 shutup = on_keyword(keywords={"闭嘴", "shut up", "shutup", "Shut Up", "Shut up", "滚", "一边去"}, rule=to_me())
@@ -179,6 +186,7 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
     ):
         logger.info(f"reply: {em}")
         await chat_with_gemini(gid, nickname, vec_data, await get_bot_gender(), await is_bot_admin(gid))
+
 
 def convert_to_group_message_event(event: Event) -> GroupMessageEvent:
     """转换为群消息事件"""
@@ -298,7 +306,7 @@ async def store_message_segment_into_milvus(event: GroupMessageEvent) -> list[li
             parts.append(Part.from_text(text="分析一下这张图片描述的内容"))
             parts.append(part)
             content = await analysis_image(parts=parts)
-            logger.debug(f"anaylysis iamge {file_id}" )
+            logger.debug(f"anaylysis iamge {file_id}")
             logger.debug(content)
             if content:
                 # 生成向量
@@ -476,12 +484,13 @@ async def chat_with_gemini(
     bot = get_bot()
 
     query_data = await _MILVUS_VECTOR_CLIENT.query_data(group_id)
+    query_self_data = await _MILVUS_VECTOR_CLIENT.query_self_data(group_id)
     search_data = await _MILVUS_VECTOR_CLIENT.search_data(group_id, vec_data)
-    combined_list = query_data + search_data
+    combined_list = query_data + query_self_data + search_data
     unique_dict = {}
     for item in combined_list:
         unique_dict[item.id] = item  # 使用 item.id 作为键，item 对象作为值
-    data = list(unique_dict.values()) # 返回字典的值的列表 (元素对象)
+    data = list(unique_dict.values())  # 返回字典的值的列表 (元素对象)
     if len(data) < 5:
         # 如果没有数据，则不进行回复
         logger.info(f"群{group_id}查询结果少于5条，不进行回复")
