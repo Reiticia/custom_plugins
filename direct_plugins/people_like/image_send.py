@@ -386,18 +386,16 @@ async def upload_image() -> Optional[str]:
                 first = res.scalars().first()
                 now = int(time.time())
                 if first is not None:  # 如果原来存在，则更新
-                    logger.info(f"{first.name} update time is {first.update_time}")
                     if (
                         now - int(first.update_time) < 36 * 60 * 60
                         and first.remote_file_name is not None
                     ):
                         remote_file_name = f"files/{first.remote_file_name}"
-                        logger.info(f"direct get {remote_file_name}")
                         try:
                             exsit_file = await _GEMINI_CLIENT.aio.files.get(name=remote_file_name)
                             if exsit_file is not None:
                                 _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=exsit_file))
-                                logger.info(f"图片{local_file}未过期，跳过上传")
+                                logger.info(f"图片: {local_file} 文件名: {remote_file_name} 未过期，跳过上传")
                                 need_upload = False
                         except ClientError as e:
                             logger.error(f"{e.message}")
