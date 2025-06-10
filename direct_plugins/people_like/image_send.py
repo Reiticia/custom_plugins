@@ -29,6 +29,8 @@ from google.genai.types import (
 )
 from google import genai
 
+from google.genai.errors import ClientError
+
 from .setting import get_value_or_default
 from .config import plugin_config
 from pydantic import BaseModel
@@ -386,14 +388,18 @@ async def upload_image() -> Optional[str]:
                 if first is not None:  # 如果原来存在，则更新
                     logger.info(f"{first.name} update time is {first.update_time}")
                     if (
-                        now - int(first.update_time) > 36 * 60 * 60
+                        now - int(first.update_time) < 36 * 60 * 60
                         and (remote_fn := first.remote_file_name) is not None
                     ):
-                        exsit_file = await _GEMINI_CLIENT.aio.files.get(name=remote_fn)
-                        if exsit_file is not None:
-                            _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=exsit_file))
-                            logger.info(f"图片{local_file}未过期，跳过上传")
-                            need_upload = False
+                        try:
+                            exsit_file = await _GEMINI_CLIENT.aio.files.get(name=remote_fn)
+                            if exsit_file is not None:
+                                _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=exsit_file))
+                                logger.info(f"图片{local_file}未过期，跳过上传")
+                                need_upload = False
+                        except ClientError as e:
+                            logger.error(f"{e.message}")
+
 
             if need_upload:
                 # 图片即将过期，或者图片名未设置，则更新图片
