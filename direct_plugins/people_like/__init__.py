@@ -11,9 +11,8 @@ from typing import Any, Literal, Optional
 from pydantic import BaseModel
 from nonebot import get_bot, logger, on_keyword, on_message, require, get_driver, on
 
-from nonebot.rule import Rule, to_me
+from nonebot.rule import to_me
 from nonebot.plugin import PluginMetadata
-from nonebot.params import Depends
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Message, MessageSegment
 from google.genai.types import (
@@ -45,7 +44,7 @@ require("nonebot_plugin_apscheduler")
 import nonebot_plugin_localstore as store
 from .setting import get_value_or_default, get_blacklist
 from .config import Config, plugin_config
-from .image_send import _GEMINI_CLIENT, get_file_name_of_image_will_sent
+from .image_send import _GEMINI_CLIENT, get_file_name_of_image_will_sent, SAFETY_SETTINGS
 from .vector import MilvusVector, VectorData
 
 __plugin_meta__ = PluginMetadata(
@@ -664,13 +663,7 @@ async def chat_with_gemini(
             tools=tools,
             temperature=temperature,
             tool_config=ToolConfig(function_calling_config=FunctionCallingConfig(mode=FunctionCallingConfigMode.ANY)),
-            safety_settings=[
-                SafetySetting(category=HarmCategory.HARM_CATEGORY_HARASSMENT, threshold=HarmBlockThreshold.OFF),
-                SafetySetting(category=HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold=HarmBlockThreshold.OFF),
-                SafetySetting(category=HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold=HarmBlockThreshold.OFF),
-                SafetySetting(category=HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold=HarmBlockThreshold.OFF),
-                SafetySetting(category=HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY, threshold=HarmBlockThreshold.OFF),
-            ],
+            safety_settings=SAFETY_SETTINGS,
         ),
     )
 
@@ -720,7 +713,7 @@ async def chat_with_gemini(
                 logger.debug(f"群{group_id}调用函数{fc.name}，参数{description}")
                 will_send_img = await get_file_name_of_image_will_sent(str(description), group_id)
                 if will_send_img:
-                    logger.info(f"群{group_id}回复图片：{will_send_img}")
+                    logger.debug(f"群{group_id}回复图片：{will_send_img}")
                     await on_msg.send(will_send_img)
             if fc.name == "mute_sb" and fc.args:
                 user_id = int(str(fc.args.get("user_id")))

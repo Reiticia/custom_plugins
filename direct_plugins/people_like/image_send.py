@@ -36,9 +36,6 @@ import json
 
 from nonebot_plugin_apscheduler import scheduler
 
-# os.environ["http_proxy"] = "http://127.0.0.1:7890/"
-# os.environ["https_proxy"] = "http://127.0.0.1:7890/"
-
 _GEMINI_CLIENT = genai.Client(
     api_key=plugin_config.gemini_key,
     http_options={"api_version": "v1alpha", "timeout": 120_000, "headers": {"transport": "rest"}},
@@ -54,6 +51,14 @@ class LocalFile(BaseModel):
 
 
 _FILES: list[LocalFile] = []
+
+SAFETY_SETTINGS = [
+    SafetySetting(category=HarmCategory.HARM_CATEGORY_HARASSMENT, threshold=HarmBlockThreshold.OFF),
+    SafetySetting(category=HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold=HarmBlockThreshold.OFF),
+    SafetySetting(category=HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold=HarmBlockThreshold.OFF),
+    SafetySetting(category=HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold=HarmBlockThreshold.OFF),
+    SafetySetting(category=HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY, threshold=HarmBlockThreshold.OFF),
+]
 
 
 class ImageName(BaseModel):
@@ -104,18 +109,12 @@ async def get_file_name_of_image_will_sent(description: str, group_id: int) -> M
             system_instruction=prompt,
             response_mime_type="application/json",
             response_schema=ImageName,
-            safety_settings=[
-                SafetySetting(category=HarmCategory.HARM_CATEGORY_HARASSMENT, threshold=HarmBlockThreshold.OFF),
-                SafetySetting(category=HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold=HarmBlockThreshold.OFF),
-                SafetySetting(category=HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold=HarmBlockThreshold.OFF),
-                SafetySetting(category=HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold=HarmBlockThreshold.OFF),
-                SafetySetting(category=HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY, threshold=HarmBlockThreshold.OFF),
-            ],
+            safety_settings=SAFETY_SETTINGS,
         ),
     )
 
-    logger.debug(f"获取图片id成功，返回结果：{resp.text}")
     name = json.loads(str(resp.text))["name"]
+    logger.info(f"获取图片id成功，返回结果：{name}")
     parts = [
         Part.from_uri(file_uri=str(local_file.file.uri), mime_type=str(local_file.file.mime_type))
         for local_file in _FILES
@@ -198,13 +197,7 @@ async def analysis_image(file_part: list[Part], group_id: int = 0) -> AnalysisRe
             system_instruction=prompt,
             response_mime_type="application/json",
             response_schema=AnalysisResult,
-            safety_settings=[
-                SafetySetting(category=HarmCategory.HARM_CATEGORY_HARASSMENT, threshold=HarmBlockThreshold.OFF),
-                SafetySetting(category=HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold=HarmBlockThreshold.OFF),
-                SafetySetting(category=HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold=HarmBlockThreshold.OFF),
-                SafetySetting(category=HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold=HarmBlockThreshold.OFF),
-                SafetySetting(category=HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY, threshold=HarmBlockThreshold.OFF),
-            ],
+            safety_settings=SAFETY_SETTINGS,
         ),
     )
 
@@ -391,7 +384,10 @@ async def upload_image() -> Optional[str]:
                 first = res.scalars().first()
                 now = int(time.time())
                 if first is not None:  # 如果原来存在，则更新
-                    if now - int(first.update_time) > 36 * 60 * 60 and (remote_fn := first.remote_file_name) is not None:
+                    if (
+                        now - int(first.update_time) > 36 * 60 * 60
+                        and (remote_fn := first.remote_file_name) is not None
+                    ):
                         exsit_file = await _GEMINI_CLIENT.aio.files.get(name=remote_fn)
                         if exsit_file is not None:
                             _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=exsit_file))
