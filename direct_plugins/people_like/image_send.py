@@ -384,6 +384,7 @@ async def upload_image() -> Optional[str]:
                 first = res.scalars().first()
                 now = int(time.time())
                 if first is not None:  # 如果原来存在，则更新
+                    logger.info(f"{first.name} update time is {first.update_time}")
                     if (
                         now - int(first.update_time) > 36 * 60 * 60
                         and (remote_fn := first.remote_file_name) is not None
