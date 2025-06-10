@@ -389,10 +389,12 @@ async def upload_image() -> Optional[str]:
                     logger.info(f"{first.name} update time is {first.update_time}")
                     if (
                         now - int(first.update_time) < 36 * 60 * 60
-                        and (remote_fn := first.remote_file_name) is not None
+                        and first.remote_file_name is not None
                     ):
+                        remote_file_name = f"files/{first.remote_file_name}"
+                        logger.info(f"direct get {remote_file_name}")
                         try:
-                            exsit_file = await _GEMINI_CLIENT.aio.files.get(name=remote_fn)
+                            exsit_file = await _GEMINI_CLIENT.aio.files.get(name=remote_file_name)
                             if exsit_file is not None:
                                 _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=exsit_file))
                                 logger.info(f"图片{local_file}未过期，跳过上传")
