@@ -20,13 +20,10 @@ from google.genai.types import (
     Tool,
     GenerateContentConfig,
     GoogleSearch,
-    SafetySetting,
     ToolListUnion,
     FunctionDeclaration,
     Schema,
     Type,
-    HarmCategory,
-    HarmBlockThreshold,
     ToolConfig,
     FunctionCallingConfig,
     FunctionCallingConfigMode,
@@ -90,7 +87,7 @@ driver = get_driver()
 async def init_milvus_vector():
     global _MILVUS_VECTOR_CLIENT
     """初始化 Milvus 向量数据库客户端"""
-    _MILVUS_VECTOR_CLIENT = MilvusVector(plugin_config.milvus.uri, plugin_config.milvus.username, plugin_config.milvus.password)
+    _MILVUS_VECTOR_CLIENT = MilvusVector(plugin_config.milvus.uri, plugin_config.milvus.username, plugin_config.milvus.password, plugin_config.query_len, plugin_config.search_len)
 
 
 shutup = on_keyword(keywords={"闭嘴", "shut up", "shutup", "Shut Up", "Shut up", "滚", "一边去"}, rule=to_me())

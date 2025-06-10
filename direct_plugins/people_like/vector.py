@@ -21,7 +21,9 @@ class VectorData(BaseModel):
 
 
 class MilvusVector:
-    def __init__(self, uri: str, username: str, password: str):
+    def __init__(self, uri: str, username: str, password: str, query_len: int = 10, search_len: int = 10):
+        self.query_len = query_len
+        self.search_len = search_len
         self.collection_name = "people_like"
         self.client = MilvusClient(uri=uri, user=username, password=password)
         self.async_client = AsyncMilvusClient(uri=uri, user=username, password=password)
@@ -95,7 +97,7 @@ class MilvusVector:
                 "vec",
                 "time",
             ],
-            limit=5,  # 限制返回数量
+            limit=self.query_len,  # 限制返回数量
             consistency_level="Strong"
         )
         return [VectorData(**item) for item in results]
@@ -129,7 +131,7 @@ class MilvusVector:
                 "vec",
                 "time",
             ],
-            limit=5,  # 限制返回数量
+            limit=self.search_len,  # 限制返回数量
             consistency_level="Strong",  # 强一致性
         )
 

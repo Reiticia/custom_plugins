@@ -34,6 +34,10 @@ class Config(BaseModel):
     """Gemini API Key"""
     gemini_model: str = "gemini-2.0-flash"
     """Gemini 模型"""
+    query_len: int = 10
+    """查询长度"""
+    search_len: int = 10
+    """搜索长度"""
     milvus: MilvusConfig = Field(default_factory=MilvusConfig)
     """Milvus 配置"""
 
