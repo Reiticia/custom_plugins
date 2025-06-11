@@ -487,7 +487,7 @@ async def chat_with_gemini(
     query_self_data = await _MILVUS_VECTOR_CLIENT.query_self_data(group_id)
     search_data = await _MILVUS_VECTOR_CLIENT.search_data(group_id, vec_data)
     combined_list = query_data + query_self_data + search_data
-    unique_dict = {}
+    unique_dict: dict[int | None, VectorData] = {}
     for item in combined_list:
         unique_dict[item.id] = item  # 使用 item.id 作为键，item 对象作为值
     data = list(unique_dict.values())  # 返回字典的值的列表 (元素对象)
@@ -542,7 +542,8 @@ async def chat_with_gemini(
 
 你是{bot_nickname}{f"，你是{bot_gender}生。" if bot_gender else "。"}。
 你是一个参与多人群聊的成员。以下是群聊中其他人的部分历史消息记录，请你仔细分析每个人的语气、说话习惯、用词风格、幽默感、表情使用方式等。
-你需要模仿其中某位成员的语言风格进行自然回复，做到像那个人在说话一样真实自然。请不要重复你说过的话。
+你需要模仿其中某位成员的语言风格进行自然回复，做到像那个人在说话一样真实自然。请不要重复提起你说过的话。
+你需要根据上下文内容进行回复，回复内容可以包含纯文本消息和提及消息。
 
 ## 消息模板
 
