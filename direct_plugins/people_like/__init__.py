@@ -484,9 +484,8 @@ async def chat_with_gemini(
     bot = get_bot()
 
     query_data = await _MILVUS_VECTOR_CLIENT.query_data(group_id)
-    query_self_data = await _MILVUS_VECTOR_CLIENT.query_self_data(group_id)
     search_data = await _MILVUS_VECTOR_CLIENT.search_data(group_id, vec_data)
-    combined_list = query_data + query_self_data + search_data
+    combined_list = query_data + search_data
     unique_dict: dict[int | None, VectorData] = {}
     for item in combined_list:
         unique_dict[item.id] = item  # 使用 item.id 作为键，item 对象作为值
@@ -530,12 +529,18 @@ async def chat_with_gemini(
             parts.append(Part.from_text(text=item.content))
             context.append(ChatMsg(sender=character, content=parts))
 
+    
+    query_self_data = await _MILVUS_VECTOR_CLIENT.query_self_data(group_id)
+    self_has_speak = [data.content for data in query_self_data]
+
+
     do_not_send_words = Path(__file__).parent / "do_not_send.txt"
     words = [s.strip() for s in do_not_send_words.read_text(encoding="utf-8").splitlines()]
     # 将我是xxx过滤掉
     words.append(f"我是{bot_nickname}")
     words.append("ignore")
     words.append("忽略")
+    words.extend(self_has_speak)
 
     default_prompt = f"""
 ## 基础设定
