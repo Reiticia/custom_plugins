@@ -38,7 +38,7 @@ class Config(BaseModel):
     """查询最近消息的数量"""
     search_len: int = 5
     """搜索相关消息的数量"""
-    self_len: int = 5
+    self_len: int = 10
     """查询自身发送消息的数量"""
     milvus: MilvusConfig = Field(default_factory=MilvusConfig)
     """Milvus 配置"""

@@ -117,7 +117,7 @@ async def get_file_name_of_image_will_sent(description: str, group_id: int) -> M
     )
 
     name = json.loads(str(resp.text))["name"]
-    logger.info(f"获取图片id成功，返回结果：{name}")
+    logger.info(f"群聊 {group_id} 获取图片id成功，返回结果：{name}")
     parts = [
         Part.from_uri(file_uri=str(local_file.file.uri), mime_type=str(local_file.file.mime_type))
         for local_file in _FILES

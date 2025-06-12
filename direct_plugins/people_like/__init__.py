@@ -495,7 +495,7 @@ async def chat_with_gemini(
         logger.info(f"群{group_id}查询结果少于5条，不进行回复")
         return
 
-    data = sorted(data, key=lambda x: x.time, reverse=False)
+    data = sorted(data, key=lambda x: x.time, reverse=False) # type: ignore
     context: list[ChatMsg] = []
     for item in data:
         if item.self_msg:
@@ -529,18 +529,21 @@ async def chat_with_gemini(
             parts.append(Part.from_text(text=item.content))
             context.append(ChatMsg(sender=character, content=parts))
 
-    
-    query_self_data = await _MILVUS_VECTOR_CLIENT.query_self_data(group_id)
-    self_has_speak = [data.content for data in query_self_data]
+    try:    
+        query_self_data = await _MILVUS_VECTOR_CLIENT.query_self_data(group_id)
+        self_has_speak = [data.content for data in query_self_data]
+    except Exception as e:
+        logger.error(e)
+        self_has_speak = []
 
-
+    logger.info(self_has_speak)
     do_not_send_words = Path(__file__).parent / "do_not_send.txt"
     words = [s.strip() for s in do_not_send_words.read_text(encoding="utf-8").splitlines()]
     # 将我是xxx过滤掉
     words.append(f"我是{bot_nickname}")
     words.append("ignore")
     words.append("忽略")
-    words.extend(self_has_speak)
+    words.extend(self_has_speak) # type: ignore
 
     default_prompt = f"""
 ## 基础设定
@@ -717,12 +720,12 @@ async def chat_with_gemini(
                         # 先睡，睡完再发
                         await sleep_sometime(len(plain_text))
                         if not GROUP_SPEAK_DISABLE.get(group_id, False):
-                            logger.debug(f"群{group_id}回复消息：{message.extract_plain_text()}")
+                            logger.info(f"群{group_id}回复消息：{message.extract_plain_text()}")
                             await on_msg.send(message)
 
             if fc.name == "send_meme" and fc.args:
                 description = fc.args.get("description")
-                logger.debug(f"群{group_id}调用函数{fc.name}，参数{description}")
+                logger.info(f"群{group_id}调用函数{fc.name}，参数{description}")
                 will_send_img = await get_file_name_of_image_will_sent(str(description), group_id)
                 if will_send_img:
                     logger.debug(f"群{group_id}回复图片：{will_send_img}")

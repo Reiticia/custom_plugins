@@ -7,21 +7,23 @@ from nonebot import logger
 
 class VectorData(BaseModel):
     id: Optional[int] = None  # 自增主键
-    message_id: int
-    group_id: int
-    user_id: int
-    self_msg: bool  # 是否为自己的消息
-    to_me: bool  # 是否为提及自己的消息
-    index: int
-    nick_name: str
-    content: str
-    file_id: str
-    vec: list[float]  # 向量数据，假设为浮点数列表
-    time: int  # 时间戳
+    message_id: Optional[int]
+    group_id: Optional[int]
+    user_id: Optional[int]
+    self_msg: Optional[bool]  # 是否为自己的消息
+    to_me: Optional[bool]  # 是否为提及自己的消息
+    index: Optional[int]
+    nick_name: Optional[str]
+    content: Optional[str]
+    file_id: Optional[str]
+    vec: Optional[list[float]]  # 向量数据，假设为浮点数列表
+    time: Optional[int]  # 时间戳
 
 
 class MilvusVector:
-    def __init__(self, uri: str, username: str, password: str, query_len: int = 10, search_len: int = 10, self_len: int = 3):
+    def __init__(
+        self, uri: str, username: str, password: str, query_len: int = 10, search_len: int = 10, self_len: int = 3
+    ):
         self.query_len = query_len
         self.search_len = search_len
         self.self_len = self_len
@@ -74,7 +76,7 @@ class MilvusVector:
             d.pop("id", None)
         res = await self.async_client.insert(collection_name=self.collection_name, data=data_dict)
         return res["insert_count"]
-    
+
     async def query_data(self, group_id: int) -> list[VectorData]:
         expr = f"group_id == {group_id}"
         await self.async_client.load_collection(collection_name=self.collection_name)
@@ -99,7 +101,7 @@ class MilvusVector:
                 "time",
             ],
             limit=self.query_len,  # 限制返回数量
-            consistency_level="Strong"
+            consistency_level="Strong",
         )
         return [VectorData(**item) for item in results]
 
@@ -114,21 +116,21 @@ class MilvusVector:
             filter=expr,
             sort_by=sort_key,
             output_fields=[
-                "id",
-                "message_id",
-                "group_id",
-                "user_id",
-                "self_msg",
-                "to_me",
-                "index",
-                "nick_name",
+                # "id",
+                # "message_id",
+                # "group_id",
+                # "user_id",
+                # "self_msg",
+                # "to_me",
+                # "index",
+                # "nick_name",
                 "content",
-                "file_id",
-                "vec",
-                "time",
+                # "file_id",
+                # "vec",
+                # "time",
             ],
             limit=self.self_len,  # 限制返回数量
-            consistency_level="Strong"
+            consistency_level="Strong",
         )
         return [VectorData(**item) for item in results]
 
@@ -144,8 +146,8 @@ class MilvusVector:
                 "metric_type": "COSINE",
                 "params": {
                     "nprobe": 128,  # 搜索空间大小（精度-性能平衡点）
-                    "radius": 0.7    # 最小相似度阈值（可选）
-                }
+                    "radius": 0.7,  # 最小相似度阈值（可选）
+                },
             },
             output_fields=[
                 "id",
