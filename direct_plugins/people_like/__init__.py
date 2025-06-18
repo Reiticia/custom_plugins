@@ -1,3 +1,4 @@
+import logging
 import random
 import re
 import time
@@ -489,13 +490,25 @@ async def chat_with_gemini(
     unique_dict: dict[int | None, VectorData] = {}
     for item in combined_list:
         unique_dict[item.id] = item  # 使用 item.id 作为键，item 对象作为值
-    data = list(unique_dict.values())  # 返回字典的值的列表 (元素对象)
+    data: list[VectorData] = list(unique_dict.values())  # 返回字典的值的列表 (元素对象)
     if len(data) < 5:
         # 如果没有数据，则不进行回复
         logger.info(f"群{group_id}查询结果少于5条，不进行回复")
         return
 
-    data = sorted(data, key=lambda x: x.time, reverse=False) # type: ignore
+    data: list[VectorData] = sorted(data, key=lambda x: x.time, reverse=False) # type: ignore
+    # 判断当前日志等级是否为 DEBUG
+    current_log_level = get_driver().config.log_level
+    if isinstance(current_log_level, str):
+        is_debug_mode = current_log_level.upper() == "DEBUG"
+    else:
+        is_debug_mode = current_log_level == logging.DEBUG
+
+    if is_debug_mode:
+        print(f"群组 {group_id} 当前选取为上下文的消息 id 为")
+        print([line.message_id for line in data])
+
+
     context: list[ChatMsg] = []
     for item in data:
         if item.self_msg:
