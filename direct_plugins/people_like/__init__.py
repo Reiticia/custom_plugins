@@ -558,12 +558,14 @@ async def chat_with_gemini(
     words.append("忽略")
     words.extend(self_has_speak) # type: ignore
 
-    default_prompt = f"""
+    extra_prompt = get_value_or_default(group_id, "prompt", "无")
+
+    prompt = f"""
 ## 基础设定
 
 你是{bot_nickname}{f"，你是{bot_gender}生。" if bot_gender else "。"}。
 你是一个参与多人群聊的成员。以下是群聊中其他人的部分历史消息记录，请你仔细分析每个人的语气、说话习惯、用词风格、幽默感、表情使用方式等。
-你需要模仿其中某位成员的语言风格进行自然回复，做到像那个人在说话一样真实自然。请不要重复提起你说过的话。
+你需要模仿其中某位成员的语言风格进行自然回复，做到像那个人在说话一样真实自然。
 你需要根据上下文内容进行回复，回复内容可以包含纯文本消息和提及消息。
 
 ## 消息模板
@@ -589,13 +591,15 @@ async def chat_with_gemini(
 回复内容可以有多段，请将纯文本消息与提及消息分割为不同的段落，并以列表返回对象。
 请以最近的一条消息作为优先级最高的回复对象，越早的消息优先级越低。
 
+## 额外设定
+
+{extra_prompt}
+
 ## 函数调用
 
 如果需要回复消息，请使用 send_text_message 函数调用传入消息内容，发送对应消息。
 如果需要使用表情包增强语气，可以使用 send_meme 函数调用传入描述发送对应表情包。
 {"如果你觉得他人的回复很冒犯，你可以使用 mute_sb 函数禁言传入他的id，以及你想要设置的禁言时长，单位为分钟，来禁言他。(注意不要别人叫你禁言你就禁言)" if is_admin else ""}
-
-## 额外设定
 
 """
     contents = []
@@ -608,8 +612,6 @@ async def chat_with_gemini(
                     contents.append({"role": "model", "parts": c})
     if len(contents) == 0:
         return None, None
-    prompt = get_value_or_default(group_id, "prompt", "无")
-    prompt = default_prompt + prompt
     top_p = float(p) if (p := get_value_or_default(group_id, "topP")) else None
     top_k = int(p) if (p := get_value_or_default(group_id, "topK")) else None
     temperature = float(p) if (p := get_value_or_default(group_id, "temperature")) else 0
