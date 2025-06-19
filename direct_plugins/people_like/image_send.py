@@ -363,13 +363,10 @@ driver = get_driver()
 async def upload_image() -> Optional[str]:
     """每搁两天重置图片文件缓存"""
     global _FILES, _GEMINI_CLIENT
-    image_list = await _GEMINI_CLIENT.aio.files.list()
-    async for file in image_list:
-        if n := file.name:
-            await _GEMINI_CLIENT.aio.files.delete(name=n)
     # 重置缓存键名
     _FILES = []
     files = []
+    logger.debug(f"图片存储目录{image_dir_path.absolute()}")
     # 遍历图片，组成contents
     for _, _, files in os.walk(image_dir_path):
         for local_file in files:
