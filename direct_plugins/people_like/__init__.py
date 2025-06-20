@@ -268,7 +268,7 @@ async def store_message_segment_into_milvus(event: GroupMessageEvent) -> list[li
                     if first is None:
                         record = EmojiInfoStorer(
                             id= ms.data["id"],
-                            raw= ms.data['raw']
+                            raw= repr(ms.data['raw'])
                         )
                         session.add(record)
                         await session.commit()
