@@ -31,7 +31,6 @@ from google.genai.types import (
     HttpOptions,
     Content,
 )
-from nonebot_plugin_waiter import Matcher
 
 from common.struct import ExpirableDict
 
@@ -39,11 +38,16 @@ require("nonebot_plugin_localstore")
 require("nonebot_plugin_waiter")
 require("nonebot_plugin_apscheduler")
 
+from nonebot_plugin_waiter import Matcher
+from nonebot_plugin_orm import get_session
+
+from sqlalchemy import select, insert
 import nonebot_plugin_localstore as store
 from .setting import get_value_or_default, get_blacklist
 from .config import Config, plugin_config
 from .image_send import _GEMINI_CLIENT, get_file_name_of_image_will_sent, SAFETY_SETTINGS
 from .vector import MilvusVector, VectorData
+from .model import EmojiInfoStorer
 
 __plugin_meta__ = PluginMetadata(
     name="people-like",
@@ -254,6 +258,32 @@ async def store_message_segment_into_milvus(event: GroupMessageEvent) -> list[li
                 except IndexError:
                     target.append(Part.from_text(text=f"@{ms.data['qq']} "))
                     file_ids.append("")
+            case "face":
+                logger.debug(f"{ms.data['id']}:{ms.data['raw']['faceText']}")
+                
+                session = get_session()
+                async with session.begin():
+                    data = await session.execute(select(EmojiInfoStorer).where(EmojiInfoStorer.id == ms.data['id']).limit(1))
+                    first = data.scalars().first()
+                    if first is None:
+                        record = EmojiInfoStorer(
+                            id= ms.data["id"],
+                            raw= ms.data['raw']
+                        )
+                        session.add(record)
+                        await session.commit()
+
+                try:
+                    part = target.pop()
+                    if txt := part.text:
+                        target.append(Part.from_text(text=f"{txt}[{ms.data['raw']['faceText']}] "))
+                    else:
+                        target.append(Part.from_text(text=f"[{ms.data['raw']['faceText']}] "))
+                        file_ids.append("")
+                except IndexError:
+                    target.append(Part.from_text(text=f"[{ms.data['raw']['faceText']}] "))
+                    file_ids.append("")
+
             case "image":
                 if plugin_config.image_analyze:
                     # 下载图片进行处理

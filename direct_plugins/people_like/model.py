@@ -34,3 +34,8 @@ class ImageSender(Model):
     """创建时间"""
     update_time: Mapped[int]
     """更新时间"""
+
+class EmojiInfoStorer(Model):
+    """记录face表情id对应raw字段"""
+    id: Mapped[int] = mapped_column(primary_key=True)
+    raw: Mapped[str]

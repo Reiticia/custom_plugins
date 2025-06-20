@@ -44,7 +44,8 @@ _GEMINI_CLIENT = genai.Client(
     http_options={"api_version": "v1alpha", "timeout": 120_000, "headers": {"transport": "rest"}},
 )
 
-image_dir_path = store.get_data_dir("people_like") / "image"
+EMOJI_DIR_PATH = store.get_data_dir("people_like") / "image"
+NORMAL_IMAGE_DIR_PATH = store.get_data_dir("people_like") / "normal"
 
 
 class LocalFile(BaseModel):
@@ -126,7 +127,7 @@ async def get_file_name_of_image_will_sent(description: str, group_id: int) -> M
     res = await analysis_image(parts, group_id)
     if res.is_adult or res.is_violence:
         logger.info(f"图片{name}包含违禁内容, 已删除")
-        os.remove(image_dir_path.joinpath(name))
+        os.remove(EMOJI_DIR_PATH.joinpath(name))
         return None
     elif not res.is_japan_anime and bool(get_value_or_default(group_id, "anime_only")):
         logger.info(f"图片{name}不是二次元图片，不予展示")
@@ -139,7 +140,7 @@ async def send_image(file_name: str, group_id: int) -> MessageSegment | None:
     """根据文件名称发送图片"""
     bot = get_bot()
     logger.debug(f"发送图片{file_name}到群{group_id}")
-    async with aopen(image_dir_path.joinpath(file_name), "rb") as f:
+    async with aopen(EMOJI_DIR_PATH.joinpath(file_name), "rb") as f:
         content = await f.read()
     if isinstance(bot, OB11Bot):
         # TODO 查询数据库中指定名称的文件，判断其是否为商店表情
@@ -277,83 +278,86 @@ _HTTP_CLIENT = AsyncClient()
 
 @on_message(rule=inc_image, priority=10).handle()
 async def add_image(event: GroupMessageEvent):
-    if not image_dir_path.exists():
-        image_dir_path.mkdir(parents=True)
+    if not EMOJI_DIR_PATH.exists():
+        EMOJI_DIR_PATH.mkdir(parents=True)
     ms = event.message.include("image")
-    image_ms = [
-        m
-        for m in ms
-        if (s := m.data["summary"]) is not None and s != "" and ((st := m.data.get("sub_type")) is None or st != 0)
-    ]
-    for m in image_ms:
-        url = m.data["url"]
-        summary = m.data["summary"]
-        file_size = m.data.get("file_size")
-        key = m.data.get("key")
-        emoji_id = m.data.get("emoji_id")
-        emoji_package_id = m.data.get("emoji_package_id")
+    for m in ms:
+        url = m.data["url"]        
         file_name = str(m.data.get("file"))
-        resp = await _HTTP_CLIENT.get(url)
-        # 文件不存在则写入
-        if not (file_path := image_dir_path.joinpath(file_name)).exists():
-            async with aopen(file_path, "wb") as f:
-                await f.write(resp.content)
-            logger.info(f"下载图片{file_name}成功")
-            # 上传图片到gemini
-            suffix_name = str(file_name).split(".")[-1]
-            mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
-            match suffix_name:
-                case "jpg" | "gif":
-                    mime_type = "image/jpeg"
-                case "png":
-                    mime_type = "image/png"
-            file = await _GEMINI_CLIENT.aio.files.upload(file=file_path, config=UploadFileConfig(mime_type=mime_type))
-            _FILES.append(LocalFile(mime_type=mime_type, file_name=file_name, file=file))
-            # 插入数据库
-            session = get_session()
-            async with session.begin():
-                res = await session.execute(select(ImageSender).where(ImageSender.name == file_name))
-                first = res.scalars().first()
-                if first is None:  # 如果原来不存在，则插入
-                    image_sender = ImageSender(
-                        name=file_name,
-                        summary=summary,
-                        group_id=event.group_id,
-                        user_id=event.user_id,
-                        ext_name=suffix_name,
-                        url=url,
-                        file_uri=str(file.uri),
-                        file_size=file_size,
-                        key=key,
-                        emoji_id=emoji_id,
-                        emoji_package_id=emoji_package_id,
-                        create_time=int(event.time),
-                        update_time=int(event.time),
-                    )
-                    session.add(image_sender)
-                    await session.commit()
-                    logger.info(f"新增图片{file_name}成功")
-                else:  # 如果原来存在，则更新
-                    await session.execute(
-                        update(ImageSender)
-                        .where(ImageSender.name == file_name)
-                        .values(
-                            {
-                                "update_time": int(event.time),
-                                "file_uri": str(file.uri),
-                                "group_id": event.group_id,
-                                "user_id": event.user_id,
-                                "summary": summary,
-                                "url": url,
-                                "file_size": file_size,
-                                "key": key,
-                                "emoji_id": emoji_id,
-                                "emoji_package_id": emoji_package_id,
-                            }
+        if (s := m.data["summary"]) is not None and s != "" and ((st := m.data.get("sub_type")) is None or st != 0):
+            summary = m.data["summary"]
+            file_size = m.data.get("file_size")
+            key = m.data.get("key")
+            emoji_id = m.data.get("emoji_id")
+            emoji_package_id = m.data.get("emoji_package_id")
+            resp = await _HTTP_CLIENT.get(url)
+            # 文件不存在则写入
+            if not (file_path := EMOJI_DIR_PATH.joinpath(file_name)).exists():
+                async with aopen(file_path, "wb") as f:
+                    await f.write(resp.content)
+                logger.info(f"下载表情包图片{file_name}成功")
+                # 上传图片到gemini
+                suffix_name = str(file_name).split(".")[-1]
+                mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
+                match suffix_name:
+                    case "jpg" | "gif":
+                        mime_type = "image/jpeg"
+                    case "png":
+                        mime_type = "image/png"
+                file = await _GEMINI_CLIENT.aio.files.upload(file=file_path, config=UploadFileConfig(mime_type=mime_type))
+                _FILES.append(LocalFile(mime_type=mime_type, file_name=file_name, file=file))
+                # 插入数据库
+                session = get_session()
+                async with session.begin():
+                    res = await session.execute(select(ImageSender).where(ImageSender.name == file_name))
+                    first = res.scalars().first()
+                    if first is None:  # 如果原来不存在，则插入
+                        image_sender = ImageSender(
+                            name=file_name,
+                            summary=summary,
+                            group_id=event.group_id,
+                            user_id=event.user_id,
+                            ext_name=suffix_name,
+                            url=url,
+                            file_uri=str(file.uri),
+                            file_size=file_size,
+                            key=key,
+                            emoji_id=emoji_id,
+                            emoji_package_id=emoji_package_id,
+                            create_time=int(event.time),
+                            update_time=int(event.time),
                         )
-                    )
-                    logger.info(f"更新图片{file_name}成功")
+                        session.add(image_sender)
+                        await session.commit()
+                        logger.info(f"新增表情包图片{file_name}成功")
+                    else:  # 如果原来存在，则更新
+                        await session.execute(
+                            update(ImageSender)
+                            .where(ImageSender.name == file_name)
+                            .values(
+                                {
+                                    "update_time": int(event.time),
+                                    "file_uri": str(file.uri),
+                                    "group_id": event.group_id,
+                                    "user_id": event.user_id,
+                                    "summary": summary,
+                                    "url": url,
+                                    "file_size": file_size,
+                                    "key": key,
+                                    "emoji_id": emoji_id,
+                                    "emoji_package_id": emoji_package_id,
+                                }
+                            )
+                        )
+                        logger.info(f"更新表情包图片{file_name}成功")
 
+        else:
+            resp = await _HTTP_CLIENT.get(url)
+            # 文件不存在则写入
+            if not (file_path := NORMAL_IMAGE_DIR_PATH.joinpath(file_name)).exists():
+                async with aopen(file_path, "wb") as f:
+                    await f.write(resp.content)
+                logger.info(f"下载图片{file_name}成功")
 
 driver = get_driver()
 
@@ -366,9 +370,9 @@ async def upload_image() -> Optional[str]:
     # 重置缓存键名
     _FILES = []
     files = []
-    logger.debug(f"图片存储目录{image_dir_path.absolute()}")
+    logger.debug(f"图片存储目录{EMOJI_DIR_PATH.absolute()}")
     # 遍历图片，组成contents
-    for _, _, files in os.walk(image_dir_path):
+    for _, _, files in os.walk(EMOJI_DIR_PATH):
         for local_file in files:
             suffix_name = str(local_file).split(".")[-1]
             mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
@@ -401,7 +405,7 @@ async def upload_image() -> Optional[str]:
 
             if need_upload:
                 # 图片即将过期，或者图片名未设置，则更新图片
-                file_path = image_dir_path / local_file
+                file_path = EMOJI_DIR_PATH / local_file
                 try:
                     file = await _GEMINI_CLIENT.aio.files.upload(
                         file=file_path, config=UploadFileConfig(mime_type=mime_type)
