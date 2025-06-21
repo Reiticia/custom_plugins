@@ -9,8 +9,9 @@ from enum import Enum
 from pathlib import Path
 from asyncio import sleep
 from typing import Any, Literal, Optional
+from nonebot.permission import SUPERUSER
 from pydantic import BaseModel
-from nonebot import get_bot, logger, on_keyword, on_message, require, get_driver, on
+from nonebot import get_bot, logger, on_command, on_keyword, on_message, require, get_driver, on
 
 from nonebot.rule import to_me
 from nonebot.plugin import PluginMetadata
@@ -31,6 +32,7 @@ from google.genai.types import (
     HttpOptions,
     Content,
 )
+from google.genai.errors import APIError
 
 from common.struct import ExpirableDict
 
@@ -40,6 +42,8 @@ require("nonebot_plugin_apscheduler")
 
 from nonebot_plugin_waiter import Matcher
 from nonebot_plugin_orm import get_session
+
+from nonebot_plugin_apscheduler import scheduler
 
 from sqlalchemy import select, insert
 import nonebot_plugin_localstore as store
@@ -260,16 +264,15 @@ async def store_message_segment_into_milvus(event: GroupMessageEvent) -> list[li
                     file_ids.append("")
             case "face":
                 logger.debug(f"{ms.data['id']}:{ms.data['raw']['faceText']}")
-                
+
                 session = get_session()
                 async with session.begin():
-                    data = await session.execute(select(EmojiInfoStorer).where(EmojiInfoStorer.id == ms.data['id']).limit(1))
+                    data = await session.execute(
+                        select(EmojiInfoStorer).where(EmojiInfoStorer.id == ms.data["id"]).limit(1)
+                    )
                     first = data.scalars().first()
                     if first is None:
-                        record = EmojiInfoStorer(
-                            id= ms.data["id"],
-                            raw= repr(ms.data['raw'])
-                        )
+                        record = EmojiInfoStorer(id=ms.data["id"], raw=repr(ms.data["raw"]))
                         session.add(record)
                         await session.commit()
 
@@ -334,7 +337,7 @@ async def store_message_segment_into_milvus(event: GroupMessageEvent) -> list[li
         if part.inline_data:
             # 如果是图片，则先分析图片
             parts = []
-            parts.append(Part.from_text(text="分析一下这张图片描述的内容"))
+            parts.append(Part.from_text(text="分析一下这张图片描述的内容，用中文描述它"))
             parts.append(part)
             content = await analysis_image(parts=parts)
             logger.debug(f"anaylysis iamge {file_id}")
@@ -526,7 +529,7 @@ async def chat_with_gemini(
         logger.info(f"群{group_id}查询结果少于5条，不进行回复")
         return
 
-    data: list[VectorData] = sorted(data, key=lambda x: x.time, reverse=False) # type: ignore
+    data: list[VectorData] = sorted(data, key=lambda x: x.time, reverse=False)  # type: ignore
     # 判断当前日志等级是否为 DEBUG
     current_log_level = get_driver().config.log_level
     if isinstance(current_log_level, str):
@@ -537,7 +540,6 @@ async def chat_with_gemini(
     if is_debug_mode:
         print(f"群组 {group_id} 当前选取为上下文的消息 id 为")
         print([line.message_id for line in data])
-
 
     context: list[ChatMsg] = []
     for item in data:
@@ -572,7 +574,7 @@ async def chat_with_gemini(
             parts.append(Part.from_text(text=item.content))
             context.append(ChatMsg(sender=character, content=parts))
 
-    try:    
+    try:
         query_self_data = await _MILVUS_VECTOR_CLIENT.query_self_data(group_id)
         self_has_speak = [data.content for data in query_self_data]
     except Exception as e:
@@ -586,7 +588,7 @@ async def chat_with_gemini(
     words.append(f"我是{bot_nickname}")
     words.append("ignore")
     words.append("忽略")
-    words.extend(self_has_speak) # type: ignore
+    words.extend(self_has_speak)  # type: ignore
 
     extra_prompt = get_value_or_default(group_id, "prompt", "无")
 
@@ -709,23 +711,44 @@ async def chat_with_gemini(
     if enable_search:
         tools.append(Tool(google_search=GoogleSearch()))
 
-    model = get_value_or_default(group_id, "model", "gemini-2.0-flash")
+    model = get_model(group_id=group_id)
 
-    resp = await _GEMINI_CLIENT.aio.models.generate_content(
-        model=model,
-        contents=contents,
-        config=GenerateContentConfig(
-            http_options=HttpOptions(timeout=6 * 60 * 1000),
-            system_instruction=prompt,
-            top_p=top_p,
-            top_k=top_k,
-            max_output_tokens=c_len,
-            tools=tools,
-            temperature=temperature,
-            tool_config=ToolConfig(function_calling_config=FunctionCallingConfig(mode=FunctionCallingConfigMode.ANY)),
-            safety_settings=SAFETY_SETTINGS,
-        ),
-    )
+    try:
+        resp = await _GEMINI_CLIENT.aio.models.generate_content(
+            model=model,
+            contents=contents,
+            config=GenerateContentConfig(
+                http_options=HttpOptions(timeout=6 * 60 * 1000),
+                system_instruction=prompt,
+                top_p=top_p,
+                top_k=top_k,
+                max_output_tokens=c_len,
+                tools=tools,
+                temperature=temperature,
+                tool_config=ToolConfig(function_calling_config=FunctionCallingConfig(mode=FunctionCallingConfigMode.ANY)),
+                safety_settings=SAFETY_SETTINGS,
+            ),
+        )
+    except APIError as e:
+        if e.code == 429:
+            change_model()
+        model = get_model(group_id=group_id)
+        resp = await _GEMINI_CLIENT.aio.models.generate_content(
+            model=model,
+            contents=contents,
+            config=GenerateContentConfig(
+                http_options=HttpOptions(timeout=6 * 60 * 1000),
+                system_instruction=prompt,
+                top_p=top_p,
+                top_k=top_k,
+                max_output_tokens=c_len,
+                tools=tools,
+                temperature=temperature,
+                tool_config=ToolConfig(function_calling_config=FunctionCallingConfig(mode=FunctionCallingConfigMode.ANY)),
+                safety_settings=SAFETY_SETTINGS,
+            ),
+        )
+
 
     # 如果有函数调用，则传递函数调用的参数，进行图片发送
     for part in resp.candidates[0].content.parts:  # type: ignore
@@ -831,3 +854,55 @@ async def analysis_image(parts: list[Part]) -> str:
         ],
     )
     return response.text.strip() if response.text else ""
+
+
+ALL_MODEL = ["gemini-2.5-flash", "gemini-2.5-flash-lite-preview-06-17", "gemini-2.0-flash", "gemini-2.0-flash-lite"]
+CURRENT_MODEL_INDEX = 0
+DAILY_FAIL_COUNT: list[int] = [0] * len(ALL_MODEL)
+
+
+@scheduler.scheduled_job("interval", minute=1, id="reset_model_index_minute")
+def reset_model_index_minute():
+    global CURRENT_MODEL_INDEX, DAILY_FAIL_COUNT
+    for i in range(0, 4):
+        CURRENT_MODEL_INDEX = i
+        if DAILY_FAIL_COUNT[CURRENT_MODEL_INDEX] >= 3:
+            logger.info(f"模型{ALL_MODEL[CURRENT_MODEL_INDEX]}已在今日内禁用")
+        else:
+            logger.info(f"已启用模型{ALL_MODEL[CURRENT_MODEL_INDEX]}")
+            break
+    else:
+        DAILY_FAIL_COUNT = [0] * len(ALL_MODEL)
+
+
+
+@scheduler.scheduled_job("interval", days=2, id="reset_model_index_day")
+def reset_model_index_day():
+    global CURRENT_MODEL_INDEX, DAILY_FAIL_COUNT
+    CURRENT_MODEL_INDEX = 0
+    DAILY_FAIL_COUNT = [0] * len(ALL_MODEL)
+
+
+def change_model():
+    global CURRENT_MODEL_INDEX, DAILY_FAIL_COUNT
+    DAILY_FAIL_COUNT[CURRENT_MODEL_INDEX] += 1
+    for i in range(CURRENT_MODEL_INDEX, 4):
+        CURRENT_MODEL_INDEX = i
+        if DAILY_FAIL_COUNT[CURRENT_MODEL_INDEX] >= 3:
+            logger.info(f"模型{ALL_MODEL[CURRENT_MODEL_INDEX]}已在今日内禁用")
+        else:
+            logger.info(f"已启用模型{ALL_MODEL[CURRENT_MODEL_INDEX]}")
+            break
+    else:
+        DAILY_FAIL_COUNT = [0] * len(ALL_MODEL)
+
+
+def get_model(group_id: int) -> str:
+    default_model = ALL_MODEL[CURRENT_MODEL_INDEX]
+    return get_value_or_default(group_id, "model", default_model)
+
+
+current_model_matcher = on_command("当前模型", priority=1, permission=SUPERUSER)
+@current_model_matcher.handle()
+async def current_model():
+    await current_model_matcher.send(ALL_MODEL[CURRENT_MODEL_INDEX])

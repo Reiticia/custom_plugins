@@ -363,7 +363,7 @@ driver = get_driver()
 
 
 @driver.on_bot_connect
-@scheduler.scheduled_job("interval", days=2, id="my_job_id")
+@scheduler.scheduled_job("interval", days=2, id="update_file_cache")
 async def upload_image() -> Optional[str]:
     """每搁两天重置图片文件缓存"""
     global _FILES, _GEMINI_CLIENT
