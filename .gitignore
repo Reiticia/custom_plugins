@@ -145,3 +145,6 @@ template/
 
 /*.py
 /*.db
+/cache
+/data
+/config

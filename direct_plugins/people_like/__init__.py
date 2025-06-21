@@ -16,7 +16,7 @@ from nonebot import get_bot, logger, on_command, on_keyword, on_message, require
 from nonebot.rule import to_me
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters import Event
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Message, MessageSegment
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Message, MessageEvent, MessageSegment
 from google.genai.types import (
     Part,
     Tool,
@@ -861,7 +861,7 @@ CURRENT_MODEL_INDEX = 0
 DAILY_FAIL_COUNT: list[int] = [0] * len(ALL_MODEL)
 
 
-@scheduler.scheduled_job("interval", minute=1, id="reset_model_index_minute")
+@scheduler.scheduled_job("interval", minutes=1, id="reset_model_index_minute")
 def reset_model_index_minute():
     global CURRENT_MODEL_INDEX, DAILY_FAIL_COUNT
     for i in range(0, 4):
@@ -876,7 +876,7 @@ def reset_model_index_minute():
 
 
 
-@scheduler.scheduled_job("interval", days=2, id="reset_model_index_day")
+@scheduler.scheduled_job("interval", days=1, id="reset_model_index_day")
 def reset_model_index_day():
     global CURRENT_MODEL_INDEX, DAILY_FAIL_COUNT
     CURRENT_MODEL_INDEX = 0
@@ -902,7 +902,8 @@ def get_model(group_id: int) -> str:
     return get_value_or_default(group_id, "model", default_model)
 
 
-current_model_matcher = on_command("当前模型", priority=1, permission=SUPERUSER)
-@current_model_matcher.handle()
-async def current_model():
-    await current_model_matcher.send(ALL_MODEL[CURRENT_MODEL_INDEX])
+@on_command("当前模型", permission=SUPERUSER, rule=to_me(), priority=1, block=True).handle()
+async def current_model(bot: Bot, matcher: Matcher, e: MessageEvent):
+    model = ALL_MODEL[CURRENT_MODEL_INDEX]
+    logger.info(f"当前模型{model}")
+    await matcher.finish(model)

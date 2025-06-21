@@ -280,6 +280,8 @@ _HTTP_CLIENT = AsyncClient()
 async def add_image(event: GroupMessageEvent):
     if not EMOJI_DIR_PATH.exists():
         EMOJI_DIR_PATH.mkdir(parents=True)
+    if not NORMAL_IMAGE_DIR_PATH.exists():
+        NORMAL_IMAGE_DIR_PATH.mkdir(parents=True)
     ms = event.message.include("image")
     for m in ms:
         url = m.data["url"]        
