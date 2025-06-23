@@ -372,56 +372,59 @@ async def upload_image() -> Optional[str]:
     _FILES = []
     logger.debug(f"图片存储目录{EMOJI_DIR_PATH.absolute()}")
 
+    semaphore = asyncio.Semaphore(50)
+
     def get_mime_type(filename: str) -> Literal["image/jpeg", "image/png"]:
         ext = filename.lower().split(".")[-1]
         return "image/png" if ext == "png" else "image/jpeg"
 
     async def process_file(local_file: str):
-        mime_type = get_mime_type(local_file)
-        need_upload = True
-        search_session = get_session()
-        async with search_session.begin():
-            res = await search_session.execute(select(ImageSender).where(ImageSender.name == local_file))
-            first = res.scalars().first()
-            now = int(time.time())
-            if first is not None:
-                if (
-                    now - int(first.update_time) < 36 * 60 * 60
-                    and first.remote_file_name is not None
-                ):
-                    remote_file_name = f"files/{first.remote_file_name}"
-                    try:
-                        exsit_file = await _GEMINI_CLIENT.aio.files.get(name=remote_file_name)
-                        if exsit_file is not None:
-                            _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=exsit_file))
-                            logger.info(f"图片: {local_file} 文件名: {remote_file_name} 未过期，跳过上传")
-                            need_upload = False
-                    except ClientError as e:
-                        logger.error(f"{e.message}")
+        async with semaphore:
+            mime_type = get_mime_type(local_file)
+            need_upload = True
+            search_session = get_session()
+            async with search_session.begin():
+                res = await search_session.execute(select(ImageSender).where(ImageSender.name == local_file))
+                first = res.scalars().first()
+                now = int(time.time())
+                if first is not None:
+                    if (
+                        now - int(first.update_time) < 36 * 60 * 60
+                        and first.remote_file_name is not None
+                    ):
+                        remote_file_name = f"files/{first.remote_file_name}"
+                        try:
+                            exsit_file = await _GEMINI_CLIENT.aio.files.get(name=remote_file_name)
+                            if exsit_file is not None:
+                                _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=exsit_file))
+                                logger.info(f"图片: {local_file} 文件名: {remote_file_name} 未过期，跳过上传")
+                                need_upload = False
+                        except ClientError as e:
+                            logger.error(f"{e.message}")
 
-        if need_upload:
-            file_path = EMOJI_DIR_PATH / local_file
-            try:
-                file = await _GEMINI_CLIENT.aio.files.upload(
-                    file=file_path, config=UploadFileConfig(mime_type=mime_type)
-                )
-                _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=file))
-                update_session = get_session()
-                async with update_session.begin():
-                    await update_session.execute(
-                        update(ImageSender)
-                        .where(ImageSender.name == local_file)
-                        .values(
-                            {
-                                "update_time": int(time.time()),
-                                "file_uri": str(file.uri),
-                                "remote_file_name": str(file.name),
-                            }
-                        )
+            if need_upload:
+                file_path = EMOJI_DIR_PATH / local_file
+                try:
+                    file = await _GEMINI_CLIENT.aio.files.upload(
+                        file=file_path, config=UploadFileConfig(mime_type=mime_type)
                     )
-                    logger.info(f"更新图片{local_file}成功")
-            except RemoteProtocolError as e:
-                logger.error(f"文件{file_path}上传失败{repr(e)}")
+                    _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=file))
+                    update_session = get_session()
+                    async with update_session.begin():
+                        await update_session.execute(
+                            update(ImageSender)
+                            .where(ImageSender.name == local_file)
+                            .values(
+                                {
+                                    "update_time": int(time.time()),
+                                    "file_uri": str(file.uri),
+                                    "remote_file_name": str(file.name),
+                                }
+                            )
+                        )
+                        logger.info(f"更新图片{local_file}成功")
+                except RemoteProtocolError as e:
+                    logger.error(f"文件{file_path}上传失败{repr(e)}")
 
     tasks = []
     for _, _, file_list in os.walk(EMOJI_DIR_PATH):
