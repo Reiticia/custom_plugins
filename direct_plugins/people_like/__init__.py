@@ -870,12 +870,14 @@ DAILY_FAIL_COUNT: list[int] = [0] * len(ALL_MODEL)
 @scheduler.scheduled_job("interval", minutes=1, id="reset_model_index_minute")
 def reset_model_index_minute():
     global CURRENT_MODEL_INDEX, DAILY_FAIL_COUNT
+    pre_model = ALL_MODEL[CURRENT_MODEL_INDEX]
     for i in range(0, 4):
         CURRENT_MODEL_INDEX = i
         if DAILY_FAIL_COUNT[CURRENT_MODEL_INDEX] >= 3:
             logger.info(f"模型{ALL_MODEL[CURRENT_MODEL_INDEX]}已在今日内禁用")
         else:
-            logger.info(f"已启用模型{ALL_MODEL[CURRENT_MODEL_INDEX]}")
+            if pre_model != ALL_MODEL[CURRENT_MODEL_INDEX]:
+                logger.info(f"模型{pre_model}已禁用，切换到模型{ALL_MODEL[CURRENT_MODEL_INDEX]}")
             break
     else:
         DAILY_FAIL_COUNT = [0] * len(ALL_MODEL)
