@@ -388,6 +388,9 @@ async def upload_image() -> Optional[str]:
                 first = res.scalars().first()
                 now = int(time.time())
                 if first is not None:
+                    if first.create_time is None or now - int(first.create_time) > 30 * 24 * 60 * 60:
+                        logger.info(f"图片: {local_file} 创建时间超过30天，跳过")
+                        return
                     if (
                         now - int(first.update_time) < 36 * 60 * 60
                         and first.remote_file_name is not None
