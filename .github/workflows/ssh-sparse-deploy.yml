@@ -6,10 +6,18 @@ name: ssh sparse deploy
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - 'forward_plugins/**'
+      - 'direct_plugins/**'
+      - 'common/**'
     tags:
       - '*'
   pull_request:
     branches: [ "main" ]
+    paths:
+      - 'forward_plugins/**'
+      - 'direct_plugins/**'
+      - 'common/**'
 
 jobs:
   build:
