@@ -781,7 +781,7 @@ async def chat_with_gemini(
                                 message.append(MessageSegment.text(part))
 
                 if len(message) > 0:
-                    plain_text = message.extract_plain_text()
+                    plain_text = extract_plain_text_from_message(message)
                     
                     if is_debug_mode:
                         print(f"即将向群组 {group_id} 发送消息")
@@ -809,6 +809,23 @@ async def chat_with_gemini(
                 minute = int(str(fc.args.get("minute")))
                 logger.info(f"群{group_id}调用函数{fc.name}，参数{user_id}，{minute}分钟")
                 await mute_sb(group_id, user_id, minute)
+
+
+def extract_plain_text_from_message(msg: Message) -> str:
+    res = ""
+    for ms in msg:
+        match ms.type:
+            case "text":
+                text = ms.data["text"]
+                res += text
+            case "at":
+                res += f"@{ms.data['qq']} "
+            case "face":
+                res += f"[{ms.data['raw']['faceText']}] "
+            case _:
+                pass
+    return res
+
 
 
 GROUP_BAN_DICT: dict[int, dict[int, int]] = {}
