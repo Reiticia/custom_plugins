@@ -277,7 +277,7 @@ async def inc_image(event: GroupMessageEvent) -> bool:
 _HTTP_CLIENT = AsyncClient()
 
 
-@on_message(rule=inc_image, priority=10).handle()
+@on_message(rule=inc_image).handle()
 async def add_image(event: GroupMessageEvent):
     if not EMOJI_DIR_PATH.exists():
         EMOJI_DIR_PATH.mkdir(parents=True)

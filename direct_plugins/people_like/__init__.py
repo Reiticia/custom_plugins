@@ -118,7 +118,7 @@ async def _(event: GroupMessageEvent):
     GROUP_SPEAK_DISABLE.update({gid: False})
 
 
-on_msg: type[Matcher] = on_message(priority=5)
+on_msg: type[Matcher] = on_message()
 
 
 @on_msg.handle()
