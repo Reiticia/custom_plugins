@@ -782,6 +782,12 @@ async def chat_with_gemini(
 
                 if len(message) > 0:
                     plain_text = message.extract_plain_text()
+                    
+                    if is_debug_mode:
+                        print(f"即将向群组 {group_id} 发送消息")
+                        print(plain_text)
+                        print("被禁止出现在句子中的词汇或短语")
+                        print(words)
                     if all(ignore not in plain_text for ignore in words) and not GROUP_SPEAK_DISABLE.get(
                         group_id, False
                     ):
