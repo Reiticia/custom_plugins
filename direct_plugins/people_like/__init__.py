@@ -3,6 +3,7 @@ import random
 import re
 import time
 import json
+import aiofiles
 from httpx import AsyncClient
 from dataclasses import dataclass
 from enum import Enum
@@ -223,12 +224,11 @@ async def sleep_sometime(size: int):
 
 _HTTP_CLIENT = AsyncClient()
 
-_CACHE_DIR = store.get_cache_dir("people_like")
-
+ALL_IMAGE_FILE_CACHE_DIR = store.get_cache_dir("people_like") / "all"
 
 async def store_message_segment_into_milvus(event: GroupMessageEvent) -> list[list[float]]:
     """提取群消息事件中的消息内容"""
-    global _HTTP_CLIENT, _CACHE_DIR
+    global _HTTP_CLIENT, ALL_IMAGE_FILE_CACHE_DIR
     em = event.message
     gid = event.group_id
     sender_user_id = event.user_id
@@ -293,6 +293,12 @@ async def store_message_segment_into_milvus(event: GroupMessageEvent) -> list[li
                     data = await _HTTP_CLIENT.get(ms.data["url"])
                     file_id = str(ms.data["file"])
                     file_ids.append(file_id)
+                    # TODO 写入本地路径 ALL_IMAGE_DIR / file_id
+                    file_path = ALL_IMAGE_FILE_CACHE_DIR / file_id
+                    file_path.parent.mkdir(parents=True, exist_ok=True)  # Ensure directory exists
+                    async with aiofiles.open(file_path, "wb") as f:
+                        await f.write(data.content)
+                    
                     suffix_name = file_id.split(".")[-1]
                     mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
                     match suffix_name:
@@ -514,7 +520,7 @@ async def chat_with_gemini(
     is_admin: bool = False,
 ):
     """与gemini聊天"""
-    global _GEMINI_CLIENT
+    global _GEMINI_CLIENT, ALL_IMAGE_FILE_CACHE_DIR
     bot = get_bot()
 
     query_data = await _MILVUS_VECTOR_CLIENT.query_data(group_id)
@@ -550,8 +556,9 @@ async def chat_with_gemini(
         # 生成 parts
         if item.file_id:
             # 判断为图片消息
-            resp = await bot.call_api("get_image", file_id=item.file_id)
-            query_data = await _HTTP_CLIENT.get(resp["url"])
+            # 读取指定文件二进制信息
+            async with aiofiles.open(ALL_IMAGE_FILE_CACHE_DIR / item.file_id, 'rb') as f:
+                content = await f.read()
             suffix_name = item.file_id.split(".")[-1]
             mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
             match suffix_name:
@@ -559,13 +566,12 @@ async def chat_with_gemini(
                     mime_type = "image/jpeg"
                 case "png":
                     mime_type = "image/png"
-            if query_data.status_code == 200:
-                parts = []
-                parts.append(Part.from_text(text=f"[{item.nick_name}<{item.user_id}>]"))
-                if item.to_me:
-                    parts.append(Part.from_text(text=f"@{bot.self_id} "))
-                parts.append(Part.from_bytes(data=query_data.content, mime_type=mime_type))
-                context.append(ChatMsg(sender=character, content=parts))
+            parts = []
+            parts.append(Part.from_text(text=f"[{item.nick_name}<{item.user_id}>]"))
+            if item.to_me:
+                parts.append(Part.from_text(text=f"@{bot.self_id} "))
+            parts.append(Part.from_bytes(data=content, mime_type=mime_type))
+            context.append(ChatMsg(sender=character, content=parts))
         else:
             parts = []
             parts.append(Part.from_text(text=f"[{item.nick_name}<{item.user_id}>]"))

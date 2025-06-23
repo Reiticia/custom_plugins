@@ -144,7 +144,6 @@ async def send_image(file_name: str, group_id: int) -> MessageSegment | None:
     async with aopen(EMOJI_DIR_PATH.joinpath(file_name), "rb") as f:
         content = await f.read()
     if isinstance(bot, OB11Bot):
-        # TODO 查询数据库中指定名称的文件，判断其是否为商店表情
         session = get_session()
         async with session.begin():
             res = await session.execute(select(ImageSender).where(ImageSender.name == file_name))
