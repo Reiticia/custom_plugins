@@ -425,10 +425,12 @@ async def upload_image() -> Optional[str]:
 
     tasks = []
     for _, _, file_list in os.walk(EMOJI_DIR_PATH):
+        logger.info(f"检测到图片目录下共有 {len(file_list)} 个文件")
         for local_file in file_list:
             tasks.append(process_file(local_file))
     if tasks:
         await asyncio.gather(*tasks)
+        logger.info(f"图片缓存刷新完成，共有 {len(_FILES)} 个文件")
 
 
 who_send = on_command("谁发的", aliases={"谁发的图片", "图片来源"})
