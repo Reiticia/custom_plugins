@@ -14,6 +14,7 @@ from sqlalchemy import select, update
 from .model import ImageSender
 
 import os
+import asyncio
 from typing import Literal, Optional
 
 from google.genai.types import (
@@ -363,72 +364,71 @@ async def add_image(event: GroupMessageEvent):
 
 driver = get_driver()
 
-
 @driver.on_bot_connect
 @scheduler.scheduled_job("interval", days=2, id="update_file_cache")
 async def upload_image() -> Optional[str]:
     """每搁两天重置图片文件缓存"""
     global _FILES, _GEMINI_CLIENT
-    # 重置缓存键名
     _FILES = []
-    files = []
     logger.debug(f"图片存储目录{EMOJI_DIR_PATH.absolute()}")
-    # 遍历图片，组成contents
-    for _, _, files in os.walk(EMOJI_DIR_PATH):
-        for local_file in files:
-            suffix_name = str(local_file).split(".")[-1]
-            mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
-            match suffix_name:
-                case "jpg" | "gif":
-                    mime_type = "image/jpeg"
-                case "png":
-                    mime_type = "image/png"
-            need_upload = True
-            search_session = get_session()
-            async with search_session.begin():
-                res = await search_session.execute(select(ImageSender).where(ImageSender.name == local_file))
-                first = res.scalars().first()
-                now = int(time.time())
-                if first is not None:  # 如果原来存在，则更新
-                    if (
-                        now - int(first.update_time) < 36 * 60 * 60
-                        and first.remote_file_name is not None
-                    ):
-                        remote_file_name = f"files/{first.remote_file_name}"
-                        try:
-                            exsit_file = await _GEMINI_CLIENT.aio.files.get(name=remote_file_name)
-                            if exsit_file is not None:
-                                _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=exsit_file))
-                                logger.info(f"图片: {local_file} 文件名: {remote_file_name} 未过期，跳过上传")
-                                need_upload = False
-                        except ClientError as e:
-                            logger.error(f"{e.message}")
 
+    def get_mime_type(filename: str) -> Literal["image/jpeg", "image/png"]:
+        ext = filename.lower().split(".")[-1]
+        return "image/png" if ext == "png" else "image/jpeg"
 
-            if need_upload:
-                # 图片即将过期，或者图片名未设置，则更新图片
-                file_path = EMOJI_DIR_PATH / local_file
-                try:
-                    file = await _GEMINI_CLIENT.aio.files.upload(
-                        file=file_path, config=UploadFileConfig(mime_type=mime_type)
-                    )
-                    _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=file))
-                    update_session = get_session()
-                    async with update_session.begin():
-                        await update_session.execute(
-                            update(ImageSender)
-                            .where(ImageSender.name == local_file)
-                            .values(
-                                {
-                                    "update_time": int(time.time()),
-                                    "file_uri": str(file.uri),
-                                    "remote_file_name": str(file.name),
-                                }
-                            )
+    async def process_file(local_file: str):
+        mime_type = get_mime_type(local_file)
+        need_upload = True
+        search_session = get_session()
+        async with search_session.begin():
+            res = await search_session.execute(select(ImageSender).where(ImageSender.name == local_file))
+            first = res.scalars().first()
+            now = int(time.time())
+            if first is not None:
+                if (
+                    now - int(first.update_time) < 36 * 60 * 60
+                    and first.remote_file_name is not None
+                ):
+                    remote_file_name = f"files/{first.remote_file_name}"
+                    try:
+                        exsit_file = await _GEMINI_CLIENT.aio.files.get(name=remote_file_name)
+                        if exsit_file is not None:
+                            _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=exsit_file))
+                            logger.info(f"图片: {local_file} 文件名: {remote_file_name} 未过期，跳过上传")
+                            need_upload = False
+                    except ClientError as e:
+                        logger.error(f"{e.message}")
+
+        if need_upload:
+            file_path = EMOJI_DIR_PATH / local_file
+            try:
+                file = await _GEMINI_CLIENT.aio.files.upload(
+                    file=file_path, config=UploadFileConfig(mime_type=mime_type)
+                )
+                _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=file))
+                update_session = get_session()
+                async with update_session.begin():
+                    await update_session.execute(
+                        update(ImageSender)
+                        .where(ImageSender.name == local_file)
+                        .values(
+                            {
+                                "update_time": int(time.time()),
+                                "file_uri": str(file.uri),
+                                "remote_file_name": str(file.name),
+                            }
                         )
-                        logger.info(f"更新图片{local_file}成功")
-                except RemoteProtocolError as e:
-                    logger.error(f"文件{file_path}上传失败{repr(e)}")
+                    )
+                    logger.info(f"更新图片{local_file}成功")
+            except RemoteProtocolError as e:
+                logger.error(f"文件{file_path}上传失败{repr(e)}")
+
+    tasks = []
+    for _, _, file_list in os.walk(EMOJI_DIR_PATH):
+        for local_file in file_list:
+            tasks.append(process_file(local_file))
+    if tasks:
+        await asyncio.gather(*tasks)
 
 
 who_send = on_command("谁发的", aliases={"谁发的图片", "图片来源"})
