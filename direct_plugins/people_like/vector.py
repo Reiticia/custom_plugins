@@ -20,6 +20,7 @@ driver = get_driver()
 
 _MILVUS_VECTOR_CLIENT: Optional["MilvusVector"] = None
 
+
 async def init_milvus_vector() -> "MilvusVector":
     """初始化 Milvus 向量数据库客户端"""
     global _MILVUS_VECTOR_CLIENT
@@ -189,17 +190,17 @@ class MilvusVector:
         today_zero_time = int(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
         exprs: list[str] = []
         if time_limit:
-            if isinstance(time_limit, int):
-                exprs.append(f"time >= {time_limit}")
-            elif isinstance(time_limit, bool) and time_limit:
+            if isinstance(time_limit, bool) and time_limit:
                 exprs.append(f"time >= {today_zero_time}")
+            elif isinstance(time_limit, int):
+                exprs.append(f"time >= {time_limit}")
         if group_id != 0:
             exprs.append(f"group_id == {group_id}")
         if file_id:
-            if isinstance(file_id, str):
-                exprs.append(f"file_id == '{file_id}'")
-            elif isinstance(file_id, bool) and file_id:
+            if isinstance(file_id, bool) and file_id:
                 exprs.append("file_id != ''")
+            elif isinstance(file_id, str):
+                exprs.append(f"file_id == '{file_id}'")
         await self.async_client.load_collection(collection_name=self.collection_name)
         results = await self.async_client.search(
             collection_name=self.collection_name,
