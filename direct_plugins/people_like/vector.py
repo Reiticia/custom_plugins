@@ -122,7 +122,7 @@ class MilvusVector:
             exprs.append(f"group_id == {group_id}")
         await self.async_client.load_collection(collection_name=self.collection_name)
         # 按时间戳降序排序（获取最新的消息）
-        sort_key = [("time", "desc")]
+        sort_key = [("time", "descending")]
         results = await self.async_client.query(
             collection_name=self.collection_name,
             filter=" and ".join(exprs),
@@ -142,7 +142,6 @@ class MilvusVector:
                 "time",
             ],
             limit=self.query_len,  # 限制返回数量
-            consistency_level="Strong",
         )
         return [VectorData(**item) for item in results]
 
@@ -155,7 +154,7 @@ class MilvusVector:
             exprs.append(f"group_id == {group_id}")
         await self.async_client.load_collection(collection_name=self.collection_name)
         # 按时间戳降序排序（获取最新的消息）
-        sort_key = [("time", "desc")]
+        sort_key = [("time", "descending")]
         results = await self.async_client.query(
             collection_name=self.collection_name,
             filter=" and ".join(exprs),
@@ -175,7 +174,6 @@ class MilvusVector:
                 "time",
             ],
             limit=self.self_len,  # 限制返回数量
-            consistency_level="Strong",
         )
         return [VectorData(**item) for item in results]
 

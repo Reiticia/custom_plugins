@@ -510,8 +510,8 @@ async def chat_with_gemini(
     milvus_client = await get_milvus_vector_client()
 
     query_data = await milvus_client.query_data(group_id)
-    search_data = await milvus_client.search_data(vec_data, time_limit=True, group_id=group_id)
-    combined_list = query_data + search_data
+    # search_data = await milvus_client.search_data(vec_data, time_limit=True, group_id=group_id)
+    combined_list = query_data + []
     unique_dict: dict[int | None, VectorData] = {}
     for item in combined_list:
         unique_dict[item.id] = item  # 使用 item.id 作为键，item 对象作为值

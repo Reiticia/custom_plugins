@@ -2,19 +2,17 @@
 
 ## Pre action
 
-1. install pipx
+1. install uv
 
     ```shell
-    python -m pip install --user pipx
-    python -m pipx ensurepath
+    curl -LsSf https://astral.sh/uv/install.sh | sh
     ```
 
-2. install pdm `pipx install pdm`
-3. install nb-cli `pipx install nb-cli`
+2. install nb-cli `uv tool install nb-cli`
 
 ## How to start
 
-1. install dependencies `pdm install`.
+1. install dependencies `uv sync`.
 2. start project `nb run` .
 
 ## How to create a new plugin

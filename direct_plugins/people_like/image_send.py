@@ -15,7 +15,7 @@ from .model import ImageSender
 
 import os
 import asyncio
-from typing import Any, Literal, Optional
+from typing import Literal, Optional
 
 from google.genai.types import (
     File,
@@ -28,7 +28,6 @@ from google.genai.types import (
     ContentListUnion,
     UploadFileConfig,
 )
-from google import genai
 
 from google.genai.errors import ClientError
 
