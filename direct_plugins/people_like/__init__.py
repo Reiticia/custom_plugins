@@ -209,6 +209,7 @@ _HTTP_CLIENT = AsyncClient()
 
 ALL_IMAGE_FILE_CACHE_DIR = store.get_cache_dir("people_like") / "all"
 
+
 async def store_message_segment_into_milvus(event: GroupMessageEvent) -> list[list[float]]:
     """提取群消息事件中的消息内容"""
     global _HTTP_CLIENT, ALL_IMAGE_FILE_CACHE_DIR
@@ -281,7 +282,7 @@ async def store_message_segment_into_milvus(event: GroupMessageEvent) -> list[li
                     file_path.parent.mkdir(parents=True, exist_ok=True)  # Ensure directory exists
                     async with aiofiles.open(file_path, "wb") as f:
                         await f.write(data.content)
-                    
+
                     suffix_name = file_id.split(".")[-1]
                     mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
                     match suffix_name:
@@ -508,7 +509,6 @@ async def chat_with_gemini(
     bot = get_bot()
     milvus_client = await get_milvus_vector_client()
 
-
     query_data = await milvus_client.query_data(group_id)
     search_data = await milvus_client.search_data(vec_data, time_limit=True, group_id=group_id)
     combined_list = query_data + search_data
@@ -530,8 +530,8 @@ async def chat_with_gemini(
         is_debug_mode = current_log_level == logging.DEBUG
 
     if is_debug_mode:
-        print(f"群组 {group_id} 当前选取为上下文的消息 id 为")
-        print([line.message_id for line in data])
+        print(f"群组 {group_id} 当前选取为上下文的消息内容为")
+        print({line.message_id: line.content for line in data})
 
     context: list[ChatMsg] = []
     for item in data:
@@ -543,7 +543,7 @@ async def chat_with_gemini(
         if item.file_id:
             # 判断为图片消息
             # 读取指定文件二进制信息
-            async with aiofiles.open(ALL_IMAGE_FILE_CACHE_DIR / item.file_id, 'rb') as f:
+            async with aiofiles.open(ALL_IMAGE_FILE_CACHE_DIR / item.file_id, "rb") as f:
                 content = await f.read()
             suffix_name = item.file_id.split(".")[-1]
             mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
@@ -717,7 +717,9 @@ async def chat_with_gemini(
                 max_output_tokens=c_len,
                 tools=tools,
                 temperature=temperature,
-                tool_config=ToolConfig(function_calling_config=FunctionCallingConfig(mode=FunctionCallingConfigMode.ANY)),
+                tool_config=ToolConfig(
+                    function_calling_config=FunctionCallingConfig(mode=FunctionCallingConfigMode.ANY)
+                ),
                 safety_settings=SAFETY_SETTINGS,
             ),
         )
@@ -736,11 +738,12 @@ async def chat_with_gemini(
                 max_output_tokens=c_len,
                 tools=tools,
                 temperature=temperature,
-                tool_config=ToolConfig(function_calling_config=FunctionCallingConfig(mode=FunctionCallingConfigMode.ANY)),
+                tool_config=ToolConfig(
+                    function_calling_config=FunctionCallingConfig(mode=FunctionCallingConfigMode.ANY)
+                ),
                 safety_settings=SAFETY_SETTINGS,
             ),
         )
-
 
     # 如果有函数调用，则传递函数调用的参数，进行图片发送
     for part in resp.candidates[0].content.parts:  # type: ignore
@@ -774,7 +777,7 @@ async def chat_with_gemini(
 
                 if len(message) > 0:
                     plain_text = extract_plain_text_from_message(message)
-                    
+
                     if is_debug_mode:
                         print(f"即将向群组 {group_id} 发送消息")
                         print(plain_text)
@@ -820,7 +823,6 @@ def extract_plain_text_from_message(msg: Message) -> str:
     return res
 
 
-
 GROUP_BAN_DICT: dict[int, dict[int, int]] = {}
 """群组禁言列表
 群组id，用户id，解除禁言时间
@@ -862,7 +864,6 @@ def reset_model_index_minute():
             break
     else:
         DAILY_FAIL_COUNT = [0] * len(ALL_MODEL)
-
 
 
 @scheduler.scheduled_job("interval", days=1, id="reset_model_index_day")
