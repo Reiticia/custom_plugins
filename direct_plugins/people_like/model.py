@@ -39,3 +39,17 @@ class EmojiInfoStorer(Model):
     """记录face表情id对应raw字段"""
     id: Mapped[int] = mapped_column(primary_key=True)
     raw: Mapped[str]
+
+class GroupMsg(Model):
+    """记录消息数据结构"""
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)  # 自增主键
+    message_id: Mapped[int]
+    group_id: Mapped[int]
+    user_id: Mapped[int]
+    self_msg: Mapped[bool]  # 是否为自己的消息
+    to_me: Mapped[bool]  # 是否为提及自己的消息
+    index: Mapped[int]
+    nick_name: Mapped[str]
+    content: Mapped[str]
+    file_id: Mapped[str]
+    time: Mapped[int]  # 时间戳

@@ -52,7 +52,7 @@ from .setting import get_value_or_default, get_blacklist
 from .config import Config, plugin_config
 from .image_send import get_file_name_of_image_will_sent_by_description_vec, SAFETY_SETTINGS
 from .vector import VectorData, _GEMINI_CLIENT, analysis_image, get_text_embedding, get_milvus_vector_client
-from .model import EmojiInfoStorer
+from .model import EmojiInfoStorer, GroupMsg
 
 __plugin_meta__ = PluginMetadata(
     name="people-like",
@@ -358,6 +358,13 @@ async def store_message_segment_into_milvus(event: GroupMessageEvent) -> list[li
     vector_data_list = [VectorData(**data) for data in vector_data]
     milvus_client = await get_milvus_vector_client()
     await milvus_client.insert_data(vector_data_list)
+    # 插入数据到数据库
+    msg_data_list = [GroupMsg(**({k: v for k, v in data if k != "vec"})) for data in vector_data]
+    session = get_session()
+    async with session:
+        session.add_all(msg_data_list)
+        await session.commit()
+
     logger.debug(f"{type(result)}")
     return result
 
@@ -509,19 +516,26 @@ async def chat_with_gemini(
     bot = get_bot()
     milvus_client = await get_milvus_vector_client()
 
-    query_data = await milvus_client.query_data(group_id)
+    # query_data = await milvus_client.query_data(group_id)
     # search_data = await milvus_client.search_data(vec_data, time_limit=True, group_id=group_id)
-    combined_list = query_data + []
-    unique_dict: dict[int | None, VectorData] = {}
+    session = get_session()
+    query_data = list(await session.scalars(
+        select(GroupMsg)
+        .where(GroupMsg.group_id == group_id)
+        .order_by(GroupMsg.time.desc())
+        .limit(plugin_config.query_len)
+    ))
+    combined_list = list(query_data)
+    unique_dict: dict[int, GroupMsg] = {}
     for item in combined_list:
         unique_dict[item.id] = item  # 使用 item.id 作为键，item 对象作为值
-    data: list[VectorData] = list(unique_dict.values())  # 返回字典的值的列表 (元素对象)
+    data: list[GroupMsg] = list(unique_dict.values())  # 返回字典的值的列表 (元素对象)
     if len(data) < 5:
         # 如果没有数据，则不进行回复
         logger.info(f"群{group_id}查询结果少于5条，不进行回复")
         return
 
-    data: list[VectorData] = sorted(data, key=lambda x: x.time, reverse=False)  # type: ignore
+    data: list[GroupMsg] = sorted(data, key=lambda x: x.time, reverse=False)  # type: ignore
     # 判断当前日志等级是否为 DEBUG
     current_log_level = get_driver().config.log_level
     if isinstance(current_log_level, str):
