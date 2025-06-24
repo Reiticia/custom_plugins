@@ -2,7 +2,36 @@ from typing import Optional
 from pydantic import BaseModel
 from pymilvus import DataType, AsyncMilvusClient, MilvusClient
 from datetime import datetime
-from nonebot import logger
+from nonebot import get_driver, logger
+from google import genai
+from google.genai.types import (
+    Part,
+    Content,
+)
+
+from .config import plugin_config
+
+_GEMINI_CLIENT = genai.Client(
+    api_key=plugin_config.gemini_key,
+    http_options={"api_version": "v1alpha", "timeout": 120_000, "headers": {"transport": "rest"}},
+)
+
+driver = get_driver()
+
+_MILVUS_VECTOR_CLIENT: Optional["MilvusVector"] = None
+
+@driver.on_startup
+async def init_milvus_vector():
+    """初始化 Milvus 向量数据库客户端"""
+    global _MILVUS_VECTOR_CLIENT
+    _MILVUS_VECTOR_CLIENT = MilvusVector(
+        plugin_config.milvus.uri,
+        plugin_config.milvus.username,
+        plugin_config.milvus.password,
+        plugin_config.query_len,
+        plugin_config.search_len,
+        plugin_config.self_len,
+    )
 
 
 class VectorData(BaseModel):
@@ -77,14 +106,16 @@ class MilvusVector:
         res = await self.async_client.insert(collection_name=self.collection_name, data=data_dict)
         return res["insert_count"]
 
-    async def query_data(self, group_id: int) -> list[VectorData]:
-        expr = f"group_id == {group_id}"
+    async def query_data(self, group_id: int = 0) -> list[VectorData]:
+        exprs = []
+        if group_id != 0:
+            exprs.append(f"group_id == {group_id}")
         await self.async_client.load_collection(collection_name=self.collection_name)
         # 按时间戳降序排序（获取最新的消息）
         sort_key = [("time", "desc")]
         results = await self.async_client.query(
             collection_name=self.collection_name,
-            filter=expr,
+            filter=" and ".join(exprs),
             sort_by=sort_key,
             output_fields=[
                 "id",
@@ -105,15 +136,19 @@ class MilvusVector:
         )
         return [VectorData(**item) for item in results]
 
-    async def query_self_data(self, group_id: int) -> list[VectorData]:
+    async def query_self_data(self, group_id: int = 0) -> list[VectorData]:
         today_zero_time = int(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
-        expr = f"group_id == {group_id} and self_msg == true and time >= {today_zero_time}"
+        exprs = []
+        exprs.append("self_msg == true")  # 只查询自己的消息
+        exprs.append(f"time >= {today_zero_time}")  # 只查询今天的
+        if group_id != 0:
+            exprs.append(f"group_id == {group_id}")
         await self.async_client.load_collection(collection_name=self.collection_name)
         # 按时间戳降序排序（获取最新的消息）
         sort_key = [("time", "desc")]
         results = await self.async_client.query(
             collection_name=self.collection_name,
-            filter=expr,
+            filter=" and ".join(exprs),
             sort_by=sort_key,
             output_fields=[
                 "id",
@@ -134,14 +169,33 @@ class MilvusVector:
         )
         return [VectorData(**item) for item in results]
 
-    async def search_data(self, group_id: int, query_vector: list[list[float]]) -> list[VectorData]:
+    async def search_data(
+        self,
+        query_vector: list[list[float]],
+        file_id: str | bool = False,
+        time_limit: int | bool = False,
+        search_len: int = 0,
+        group_id: int = 0,
+    ) -> list[VectorData]:
         today_zero_time = int(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
-        expr = f"group_id == {group_id} and time >= {today_zero_time}"
+        exprs: list[str] = []
+        if time_limit:
+            if isinstance(time_limit, int):
+                exprs.append(f"time >= {time_limit}")
+            elif isinstance(time_limit, bool) and time_limit:
+                exprs.append(f"time >= {today_zero_time}")
+        if group_id != 0:
+            exprs.append(f"group_id == {group_id}")
+        if file_id:
+            if isinstance(file_id, str):
+                exprs.append(f"file_id == '{file_id}'")
+            elif isinstance(file_id, bool) and file_id:
+                exprs.append("file_id != ''")
         await self.async_client.load_collection(collection_name=self.collection_name)
         results = await self.async_client.search(
             collection_name=self.collection_name,
             data=query_vector,
-            filter=expr,
+            filter=" and ".join(exprs),
             search_params={
                 "metric_type": "COSINE",
                 "params": {
@@ -163,7 +217,7 @@ class MilvusVector:
                 "vec",
                 "time",
             ],
-            limit=self.search_len,  # 限制返回数量
+            limit=self.search_len if search_len == 0 else search_len,  # 限制返回数量
             consistency_level="Strong",  # 强一致性
         )
 
@@ -175,3 +229,32 @@ class MilvusVector:
                 entity = item.get("entity", item)
                 vector_data_list.append(VectorData(**entity))
         return vector_data_list
+
+
+async def get_text_embedding(text: str) -> list[float]:
+    """获取文本的向量表示"""
+    global _GEMINI_CLIENT
+    if not text:
+        return []
+    resp = await _GEMINI_CLIENT.aio.models.embed_content(
+        model="text-embedding-004",
+        contents=text,
+    )
+    embedding = resp.embeddings
+    value = embedding[0].values if embedding else []
+    return value if value else [0.0] * 768  # 假设向量维度为768，如果没有返回值则返回全0向量
+
+
+async def analysis_image(parts: list[Part]) -> str:
+    """分析图片，返回图片分析内容"""
+    global _GEMINI_CLIENT
+    response = await _GEMINI_CLIENT.aio.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=[
+            Content(
+                role="user",
+                parts=parts,
+            )
+        ],
+    )
+    return response.text.strip() if response.text else ""

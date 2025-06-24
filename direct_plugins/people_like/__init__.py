@@ -50,8 +50,8 @@ from sqlalchemy import select, insert
 import nonebot_plugin_localstore as store
 from .setting import get_value_or_default, get_blacklist
 from .config import Config, plugin_config
-from .image_send import _GEMINI_CLIENT, get_file_name_of_image_will_sent, SAFETY_SETTINGS
-from .vector import MilvusVector, VectorData
+from .image_send import get_file_name_of_image_will_sent_by_description_vec, SAFETY_SETTINGS
+from .vector import _MILVUS_VECTOR_CLIENT, MilvusVector, VectorData, _GEMINI_CLIENT, analysis_image, get_text_embedding
 from .model import EmojiInfoStorer
 
 __plugin_meta__ = PluginMetadata(
@@ -89,23 +89,6 @@ class GroupMemberDict:
 
 
 GROUP_SPEAK_DISABLE: dict[int, bool] = {}
-
-driver = get_driver()
-
-
-@driver.on_startup
-async def init_milvus_vector():
-    global _MILVUS_VECTOR_CLIENT
-    """初始化 Milvus 向量数据库客户端"""
-    _MILVUS_VECTOR_CLIENT = MilvusVector(
-        plugin_config.milvus.uri,
-        plugin_config.milvus.username,
-        plugin_config.milvus.password,
-        plugin_config.query_len,
-        plugin_config.search_len,
-        plugin_config.self_len,
-    )
-
 
 shutup = on_keyword(keywords={"闭嘴", "shut up", "shutup", "Shut Up", "Shut up", "滚", "一边去"}, rule=to_me())
 
@@ -524,7 +507,7 @@ async def chat_with_gemini(
     bot = get_bot()
 
     query_data = await _MILVUS_VECTOR_CLIENT.query_data(group_id)
-    search_data = await _MILVUS_VECTOR_CLIENT.search_data(group_id, vec_data)
+    search_data = await _MILVUS_VECTOR_CLIENT.search_data(vec_data, time_limit=True, group_id=group_id)
     combined_list = query_data + search_data
     unique_dict: dict[int | None, VectorData] = {}
     for item in combined_list:
@@ -577,7 +560,7 @@ async def chat_with_gemini(
             parts.append(Part.from_text(text=f"[{item.nick_name}<{item.user_id}>]"))
             if item.to_me:
                 parts.append(Part.from_text(text=f"@{bot.self_id} "))
-            parts.append(Part.from_text(text=item.content))
+            parts.append(Part.from_text(text=str(item.content)))
             context.append(ChatMsg(sender=character, content=parts))
 
     try:
@@ -806,7 +789,8 @@ async def chat_with_gemini(
             if fc.name == "send_meme" and fc.args:
                 description = fc.args.get("description")
                 logger.info(f"群{group_id}调用函数{fc.name}，参数{description}")
-                will_send_img = await get_file_name_of_image_will_sent(str(description), group_id)
+                # will_send_img = await get_file_name_of_image_will_sent(str(description), group_id)
+                will_send_img = await get_file_name_of_image_will_sent_by_description_vec(str(description), group_id)
                 if will_send_img:
                     logger.debug(f"群{group_id}回复图片：{will_send_img}")
                     await on_msg.send(will_send_img)
@@ -854,35 +838,6 @@ async def mute_sb(group_id: int, user_id: int, minute: int):
         if int(time.time()) >= GROUP_BAN_DICT[group_id][user_id]:
             GROUP_BAN_DICT[group_id][user_id] = int(time.time()) + minute * 60
             await get_bot().call_api("set_group_ban", group_id=group_id, user_id=user_id, duration=minute * 60)
-
-
-async def get_text_embedding(text: str) -> list[float]:
-    """获取文本的向量表示"""
-    global _GEMINI_CLIENT
-    if not text:
-        return []
-    resp = await _GEMINI_CLIENT.aio.models.embed_content(
-        model="text-embedding-004",
-        contents=text,
-    )
-    embedding = resp.embeddings
-    value = embedding[0].values if embedding else []
-    return value if value else [0.0] * 768  # 假设向量维度为768，如果没有返回值则返回全0向量
-
-
-async def analysis_image(parts: list[Part]) -> str:
-    """分析图片，返回图片分析内容"""
-    global _GEMINI_CLIENT
-    response = await _GEMINI_CLIENT.aio.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=[
-            Content(
-                role="user",
-                parts=parts,
-            )
-        ],
-    )
-    return response.text.strip() if response.text else ""
 
 
 ALL_MODEL = ["gemini-2.5-flash", "gemini-2.5-flash-lite-preview-06-17", "gemini-2.0-flash", "gemini-2.0-flash-lite"]

@@ -15,7 +15,7 @@ from .model import ImageSender
 
 import os
 import asyncio
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from google.genai.types import (
     File,
@@ -33,17 +33,12 @@ from google import genai
 from google.genai.errors import ClientError
 
 from .setting import get_value_or_default
-from .config import plugin_config
+from .vector import _GEMINI_CLIENT, get_text_embedding, _MILVUS_VECTOR_CLIENT
 from pydantic import BaseModel
 import json
 from httpx import RemoteProtocolError
 
 from nonebot_plugin_apscheduler import scheduler
-
-_GEMINI_CLIENT = genai.Client(
-    api_key=plugin_config.gemini_key,
-    http_options={"api_version": "v1alpha", "timeout": 120_000, "headers": {"transport": "rest"}},
-)
 
 EMOJI_DIR_PATH = store.get_data_dir("people_like") / "image"
 NORMAL_IMAGE_DIR_PATH = store.get_data_dir("people_like") / "normal"
@@ -55,7 +50,7 @@ class LocalFile(BaseModel):
     file: File
 
 
-_FILES: list[LocalFile] = []
+# _FILES: list[LocalFile] = []
 
 SAFETY_SETTINGS = [
     SafetySetting(category=HarmCategory.HARM_CATEGORY_HARASSMENT, threshold=HarmBlockThreshold.OFF),
@@ -72,85 +67,139 @@ class ImageName(BaseModel):
     """
 
 
-async def get_file_name_of_image_will_sent(description: str, group_id: int) -> MessageSegment | None:
-    """根据描述信息获取最匹配的图片文件名
+async def get_file_name_of_image_will_sent_by_description_vec(description: str, group_id: int) -> MessageSegment | None:
+    """根据描述信息的向量值获取最匹配的图片文件名
 
     Args:
         description (str): 描述信息
         group_id (int): 群号
     """
-    global _GEMINI_CLIENT
-    prompt = "根据给定的描述信息，从下面图片中选择一张最符合该描述信息的图片，返回其图片名称"
-    contents: ContentListUnion = [
-        Content(
-            role="user",
-            parts=[
-                Part.from_uri(file_uri=str(local_file.file.uri), mime_type=str(local_file.file.mime_type)),
-                Part.from_text(
-                    text=f"图片名称：{local_file.file_name}",
-                ),
-            ],
-        )
-        for local_file in _FILES
-    ]
-
-    contents.append(
-        Content(
-            role="user",
-            parts=[
-                Part.from_text(
-                    text=description,
-                )
-            ],
-        )
-    )
-
-    model = get_value_or_default(group_id, "model", "gemini-2.0-flash")
-
-    resp = await _GEMINI_CLIENT.aio.models.generate_content(
-        model=model,
-        contents=contents,
-        config=GenerateContentConfig(
-            system_instruction=prompt,
-            response_mime_type="application/json",
-            response_schema=ImageName,
-            safety_settings=SAFETY_SETTINGS,
-        ),
-    )
-
-    name = json.loads(str(resp.text))["name"]
-    logger.info(f"群聊 {group_id} 获取图片id成功，返回结果：{name}")
-    parts = [
-        Part.from_uri(file_uri=str(local_file.file.uri), mime_type=str(local_file.file.mime_type))
-        for local_file in _FILES
-        if local_file.file_name == name
-    ]
-    res = await analysis_image(parts, group_id)
-    if res.is_adult or res.is_violence:
-        logger.info(f"图片{name}包含违禁内容, 已删除")
-        os.remove(EMOJI_DIR_PATH.joinpath(name))
-        return None
-    elif not res.is_japan_anime and bool(get_value_or_default(group_id, "anime_only")):
-        logger.info(f"图片{name}不是二次元图片，不予展示")
-        return None
-    else:
-        return await send_image(name, group_id)
+    global _GEMINI_CLIENT, _MILVUS_VECTOR_CLIENT
+    vec_data = await get_text_embedding(description)
+    search_data_result = await _MILVUS_VECTOR_CLIENT.search_data([vec_data], file_id=True, search_len=50)
+    file_ids = [data.file_id for data in search_data_result if data.file_id is not None]
+    if file_ids:
+        session = get_session()
+        res = await session.scalars(select(ImageSender).where(ImageSender.name.in_(file_ids)))
+        first = res.first()
+        if first:
+            name = first.name
+            logger.info(f"群聊 {group_id} 获取图片id成功，返回结果：{name}")
+            mime_type = get_mime_type(name)
+            parts = [Part.from_uri(file_uri=str(first.file_uri), mime_type=mime_type)]
+            res = await analysis_image(parts, group_id)
+            if res.is_adult or res.is_violence:
+                logger.info(f"图片{name}包含违禁内容, 已删除")
+                os.remove(EMOJI_DIR_PATH.joinpath(name))
+                return None
+            elif not res.is_japan_anime and bool(get_value_or_default(group_id, "anime_only")):
+                logger.info(f"图片{name}不是二次元图片，不予展示")
+                return None
+            else:
+                return await send_image(name, group_id, ext_data=first)
 
 
-async def send_image(file_name: str, group_id: int) -> MessageSegment | None:
+# async def get_file_name_of_image_will_sent(description: str, group_id: int) -> MessageSegment | None:
+#     """根据描述信息获取最匹配的图片文件名
+
+#     Args:
+#         description (str): 描述信息
+#         group_id (int): 群号
+#     """
+#     global _GEMINI_CLIENT
+#     prompt = "根据给定的描述信息，从下面图片中选择一张最符合该描述信息的图片，返回其图片名称"
+#     contents: ContentListUnion = [
+#         Content(
+#             role="user",
+#             parts=[
+#                 Part.from_uri(file_uri=str(local_file.file.uri), mime_type=str(local_file.file.mime_type)),
+#                 Part.from_text(
+#                     text=f"图片名称：{local_file.file_name}",
+#                 ),
+#             ],
+#         )
+#         for local_file in _FILES
+#     ]
+
+#     contents.append(
+#         Content(
+#             role="user",
+#             parts=[
+#                 Part.from_text(
+#                     text=description,
+#                 )
+#             ],
+#         )
+#     )
+
+#     model = get_value_or_default(group_id, "model", "gemini-2.0-flash")
+
+#     resp = await _GEMINI_CLIENT.aio.models.generate_content(
+#         model=model,
+#         contents=contents,
+#         config=GenerateContentConfig(
+#             system_instruction=prompt,
+#             response_mime_type="application/json",
+#             response_schema=ImageName,
+#             safety_settings=SAFETY_SETTINGS,
+#         ),
+#     )
+
+#     name = json.loads(str(resp.text))["name"]
+#     logger.info(f"群聊 {group_id} 获取图片id成功，返回结果：{name}")
+#     parts = [
+#         Part.from_uri(file_uri=str(local_file.file.uri), mime_type=str(local_file.file.mime_type))
+#         for local_file in _FILES
+#         if local_file.file_name == name
+#     ]
+#     res = await analysis_image(parts, group_id)
+#     if res.is_adult or res.is_violence:
+#         logger.info(f"图片{name}包含违禁内容, 已删除")
+#         os.remove(EMOJI_DIR_PATH.joinpath(name))
+#         return None
+#     elif not res.is_japan_anime and bool(get_value_or_default(group_id, "anime_only")):
+#         logger.info(f"图片{name}不是二次元图片，不予展示")
+#         return None
+#     else:
+#         return await send_image(name, group_id)
+
+
+async def send_image(file_name: str, group_id: int, ext_data: Optional[ImageSender] = None) -> MessageSegment | None:
     """根据文件名称发送图片"""
     bot = get_bot()
     logger.debug(f"发送图片{file_name}到群{group_id}")
     async with aopen(EMOJI_DIR_PATH.joinpath(file_name), "rb") as f:
         content = await f.read()
     if isinstance(bot, OB11Bot):
-        session = get_session()
-        async with session.begin():
-            res = await session.execute(select(ImageSender).where(ImageSender.name == file_name))
-            first = res.scalars().first()
-            if first is None:
-                return None
-            if first.key is None:
+        if ext_data is None:
+            session = get_session()
+            async with session.begin():
+                res = await session.execute(select(ImageSender).where(ImageSender.name == file_name))
+                first = res.scalars().first()
+                if first is None:
+                    return None
+                if first.key is None:
+                    return MessageSegment(
+                        "image",
+                        {
+                            "file": f2s(content),
+                            "sub_type": str(1),
+                            "cache": b2s(True),
+                            "proxy": b2s(True),
+                        },
+                    )
+                else:
+                    return MessageSegment(
+                        "mface",
+                        {
+                            "emoji_id": first.emoji_id,
+                            "emoji_package_id": first.emoji_package_id,
+                            "key": first.key,
+                            "summary": first.summary,
+                        },
+                    )
+        else:
+            if ext_data.key is None:
                 return MessageSegment(
                     "image",
                     {
@@ -164,10 +213,10 @@ async def send_image(file_name: str, group_id: int) -> MessageSegment | None:
                 return MessageSegment(
                     "mface",
                     {
-                        "emoji_id": first.emoji_id,
-                        "emoji_package_id": first.emoji_package_id,
-                        "key": first.key,
-                        "summary": first.summary,
+                        "emoji_id": ext_data.emoji_id,
+                        "emoji_package_id": ext_data.emoji_package_id,
+                        "key": ext_data.key,
+                        "summary": ext_data.summary,
                     },
                 )
     else:
@@ -284,7 +333,7 @@ async def add_image(event: GroupMessageEvent):
         NORMAL_IMAGE_DIR_PATH.mkdir(parents=True)
     ms = event.message.include("image")
     for m in ms:
-        url = m.data["url"]        
+        url = m.data["url"]
         file_name = str(m.data.get("file"))
         if (s := m.data["summary"]) is not None and s != "" and ((st := m.data.get("sub_type")) is None or st != 0):
             summary = m.data["summary"]
@@ -306,8 +355,9 @@ async def add_image(event: GroupMessageEvent):
                         mime_type = "image/jpeg"
                     case "png":
                         mime_type = "image/png"
-                file = await _GEMINI_CLIENT.aio.files.upload(file=file_path, config=UploadFileConfig(mime_type=mime_type))
-                _FILES.append(LocalFile(mime_type=mime_type, file_name=file_name, file=file))
+                file = await _GEMINI_CLIENT.aio.files.upload(
+                    file=file_path, config=UploadFileConfig(mime_type=mime_type)
+                )
                 # 插入数据库
                 session = get_session()
                 async with session.begin():
@@ -361,21 +411,19 @@ async def add_image(event: GroupMessageEvent):
                     await f.write(resp.content)
                 logger.info(f"下载图片{file_name}成功")
 
+
 driver = get_driver()
 
-# @driver.on_bot_connect
-# @scheduler.scheduled_job("interval", days=2, id="update_file_cache")
+
+@driver.on_bot_connect
+@scheduler.scheduled_job("interval", days=2, id="update_file_cache")
 async def upload_image() -> Optional[str]:
     """每搁两天重置图片文件缓存"""
-    global _FILES, _GEMINI_CLIENT
-    _FILES = []
+    global _GEMINI_CLIENT
+    _FILES = set()
     logger.debug(f"图片存储目录{EMOJI_DIR_PATH.absolute()}")
 
-    semaphore = asyncio.Semaphore(50)
-
-    def get_mime_type(filename: str) -> Literal["image/jpeg", "image/png"]:
-        ext = filename.lower().split(".")[-1]
-        return "image/png" if ext == "png" else "image/jpeg"
+    semaphore = asyncio.Semaphore(10)
 
     async def process_file(local_file: str):
         async with semaphore:
@@ -387,18 +435,15 @@ async def upload_image() -> Optional[str]:
                 first = res.scalars().first()
                 now = int(time.time())
                 if first is not None:
-                    if first.create_time is None or now - int(first.create_time) > 30 * 24 * 60 * 60:
-                        logger.info(f"图片: {local_file} 创建时间超过30天，跳过")
-                        return
-                    if (
-                        now - int(first.update_time) < 36 * 60 * 60
-                        and first.remote_file_name is not None
-                    ):
+                    # if first.create_time is None or now - int(first.create_time) > 30 * 24 * 60 * 60:
+                        # logger.info(f"图片: {local_file} 创建时间超过30天，跳过")
+                        # return
+                    if now - int(first.update_time) < 36 * 60 * 60 and first.remote_file_name is not None:
                         remote_file_name = f"files/{first.remote_file_name}"
                         try:
                             exsit_file = await _GEMINI_CLIENT.aio.files.get(name=remote_file_name)
                             if exsit_file is not None:
-                                _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=exsit_file))
+                                _FILES.add(local_file)
                                 logger.info(f"图片: {local_file} 文件名: {remote_file_name} 未过期，跳过上传")
                                 need_upload = False
                         except ClientError as e:
@@ -410,7 +455,7 @@ async def upload_image() -> Optional[str]:
                     file = await _GEMINI_CLIENT.aio.files.upload(
                         file=file_path, config=UploadFileConfig(mime_type=mime_type)
                     )
-                    _FILES.append(LocalFile(mime_type=mime_type, file_name=local_file, file=file))
+                    _FILES.add(local_file)
                     update_session = get_session()
                     async with update_session.begin():
                         await update_session.execute(
@@ -478,3 +523,8 @@ async def count_image_handle():
         res = await session.execute(select(ImageSender))
         all = res.scalars().fetchall()
         await count_image.send(str(len(all)))
+
+
+def get_mime_type(filename: str) -> Literal["image/jpeg", "image/png"]:
+    ext = filename.lower().split(".")[-1]
+    return "image/png" if ext == "png" else "image/jpeg"
