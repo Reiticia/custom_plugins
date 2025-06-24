@@ -435,7 +435,7 @@ async def upload_image() -> Optional[str]:
                 first = res.scalars().first()
                 now = int(time.time())                
                 if first is not None:
-                    need_upload_name = f"{first.remote_file_name}"
+                    need_upload_name = first.remote_file_name
                     if now - int(first.update_time) < 36 * 60 * 60 and first.remote_file_name is not None:
                         remote_file_name = f"files/{first.remote_file_name}"
                         try:
@@ -447,13 +447,13 @@ async def upload_image() -> Optional[str]:
                         except ClientError as e:
                             logger.error(f"{e.message}")
 
-            if need_upload_name:
+            if need_upload_name != "":
                 file_path = EMOJI_DIR_PATH / local_file
                 try:
-                    file = await _GEMINI_CLIENT.aio.files.delete(
-                        name=need_upload_name
-                    )
-                    logger.info(f"删除图片{local_file}成功")
+                    # file = await _GEMINI_CLIENT.aio.files.delete(
+                    #     name=need_upload_name
+                    # )
+                    # logger.info(f"删除图片{local_file}成功")
                     file = await _GEMINI_CLIENT.aio.files.upload(
                         file=file_path, config=UploadFileConfig(mime_type=mime_type)
                     )

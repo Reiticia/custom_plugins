@@ -359,7 +359,10 @@ async def store_message_segment_into_milvus(event: GroupMessageEvent) -> list[li
     milvus_client = await get_milvus_vector_client()
     await milvus_client.insert_data(vector_data_list)
     # 插入数据到数据库
-    msg_data_list = [GroupMsg(**({k: v for k, v in data if k != "vec"})) for data in vector_data]
+    msg_data_list = []
+    for data in vector_data:
+        del data["vec"]
+        msg_data_list.append(GroupMsg(**data))
     session = get_session()
     async with session:
         session.add_all(msg_data_list)

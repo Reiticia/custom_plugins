@@ -51,5 +51,5 @@ class GroupMsg(Model):
     index: Mapped[int]
     nick_name: Mapped[str]
     content: Mapped[str]
-    file_id: Mapped[str]
+    file_id: Mapped[str] = mapped_column(nullable=True)
     time: Mapped[int]  # 时间戳
