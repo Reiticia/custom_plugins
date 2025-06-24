@@ -20,8 +20,7 @@ driver = get_driver()
 
 _MILVUS_VECTOR_CLIENT: Optional["MilvusVector"] = None
 
-@driver.on_startup
-async def init_milvus_vector():
+async def init_milvus_vector() -> "MilvusVector":
     """初始化 Milvus 向量数据库客户端"""
     global _MILVUS_VECTOR_CLIENT
     _MILVUS_VECTOR_CLIENT = MilvusVector(
@@ -32,6 +31,16 @@ async def init_milvus_vector():
         plugin_config.search_len,
         plugin_config.self_len,
     )
+    return _MILVUS_VECTOR_CLIENT
+
+
+async def get_milvus_vector_client() -> "MilvusVector":
+    """获取 Milvus 向量数据库客户端实例"""
+    global _MILVUS_VECTOR_CLIENT
+    if _MILVUS_VECTOR_CLIENT is None:
+        return await init_milvus_vector()
+    else:
+        return _MILVUS_VECTOR_CLIENT
 
 
 class VectorData(BaseModel):

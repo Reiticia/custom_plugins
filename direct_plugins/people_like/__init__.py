@@ -51,7 +51,7 @@ import nonebot_plugin_localstore as store
 from .setting import get_value_or_default, get_blacklist
 from .config import Config, plugin_config
 from .image_send import get_file_name_of_image_will_sent_by_description_vec, SAFETY_SETTINGS
-from .vector import _MILVUS_VECTOR_CLIENT, MilvusVector, VectorData, _GEMINI_CLIENT, analysis_image, get_text_embedding
+from .vector import VectorData, _GEMINI_CLIENT, analysis_image, get_text_embedding, get_milvus_vector_client
 from .model import EmojiInfoStorer
 
 __plugin_meta__ = PluginMetadata(
@@ -355,7 +355,8 @@ async def store_message_segment_into_milvus(event: GroupMessageEvent) -> list[li
 
     # 插入数据到 Milvus
     vector_data_list = [VectorData(**data) for data in vector_data]
-    await _MILVUS_VECTOR_CLIENT.insert_data(vector_data_list)
+    milvus_client = await get_milvus_vector_client()
+    await milvus_client.insert_data(vector_data_list)
     logger.debug(f"{type(result)}")
     return result
 
@@ -505,9 +506,11 @@ async def chat_with_gemini(
     """与gemini聊天"""
     global _GEMINI_CLIENT, ALL_IMAGE_FILE_CACHE_DIR
     bot = get_bot()
+    milvus_client = await get_milvus_vector_client()
 
-    query_data = await _MILVUS_VECTOR_CLIENT.query_data(group_id)
-    search_data = await _MILVUS_VECTOR_CLIENT.search_data(vec_data, time_limit=True, group_id=group_id)
+
+    query_data = await milvus_client.query_data(group_id)
+    search_data = await milvus_client.search_data(vec_data, time_limit=True, group_id=group_id)
     combined_list = query_data + search_data
     unique_dict: dict[int | None, VectorData] = {}
     for item in combined_list:
@@ -564,7 +567,7 @@ async def chat_with_gemini(
             context.append(ChatMsg(sender=character, content=parts))
 
     try:
-        query_self_data = await _MILVUS_VECTOR_CLIENT.query_self_data(group_id)
+        query_self_data = await milvus_client.query_self_data(group_id)
         self_has_speak = [data.content for data in query_self_data]
     except Exception as e:
         logger.error(e)
