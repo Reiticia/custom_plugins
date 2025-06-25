@@ -79,8 +79,8 @@ async def get_file_name_of_image_will_sent_by_description_vec(description: str, 
     search_data_result = await milvus_client.search_data([vec_data], file_id=True, search_len=50)
     file_ids = [data.file_id for data in search_data_result if data.file_id is not None]
     if file_ids:
-        session = get_session()
-        res = await session.scalars(select(ImageSender).where(ImageSender.name.in_(file_ids)))
+        async with get_session() as session:
+            res = await session.scalars(select(ImageSender).where(ImageSender.name.in_(file_ids)))
         first = res.first()
         if first:
             name = first.name
@@ -92,77 +92,11 @@ async def get_file_name_of_image_will_sent_by_description_vec(description: str, 
                 logger.info(f"图片{name}包含违禁内容, 已删除")
                 os.remove(EMOJI_DIR_PATH.joinpath(name))
                 return None
-            elif not res.is_japan_anime and bool(get_value_or_default(group_id, "anime_only")):
+            elif not res.is_japan_anime and get_value_or_default(group_id, "anime_only", False):
                 logger.info(f"图片{name}不是二次元图片，不予展示")
                 return None
             else:
                 return await send_image(name, group_id, ext_data=first)
-
-
-# async def get_file_name_of_image_will_sent(description: str, group_id: int) -> MessageSegment | None:
-#     """根据描述信息获取最匹配的图片文件名
-
-#     Args:
-#         description (str): 描述信息
-#         group_id (int): 群号
-#     """
-#     global _GEMINI_CLIENT
-#     prompt = "根据给定的描述信息，从下面图片中选择一张最符合该描述信息的图片，返回其图片名称"
-#     contents: ContentListUnion = [
-#         Content(
-#             role="user",
-#             parts=[
-#                 Part.from_uri(file_uri=str(local_file.file.uri), mime_type=str(local_file.file.mime_type)),
-#                 Part.from_text(
-#                     text=f"图片名称：{local_file.file_name}",
-#                 ),
-#             ],
-#         )
-#         for local_file in _FILES
-#     ]
-
-#     contents.append(
-#         Content(
-#             role="user",
-#             parts=[
-#                 Part.from_text(
-#                     text=description,
-#                 )
-#             ],
-#         )
-#     )
-
-#     model = get_value_or_default(group_id, "model", "gemini-2.0-flash")
-
-#     resp = await _GEMINI_CLIENT.aio.models.generate_content(
-#         model=model,
-#         contents=contents,
-#         config=GenerateContentConfig(
-#             system_instruction=prompt,
-#             response_mime_type="application/json",
-#             response_schema=ImageName,
-#             safety_settings=SAFETY_SETTINGS,
-#         ),
-#     )
-
-#     name = json.loads(str(resp.text))["name"]
-#     logger.info(f"群聊 {group_id} 获取图片id成功，返回结果：{name}")
-#     parts = [
-#         Part.from_uri(file_uri=str(local_file.file.uri), mime_type=str(local_file.file.mime_type))
-#         for local_file in _FILES
-#         if local_file.file_name == name
-#     ]
-#     res = await analysis_image(parts, group_id)
-#     if res.is_adult or res.is_violence:
-#         logger.info(f"图片{name}包含违禁内容, 已删除")
-#         os.remove(EMOJI_DIR_PATH.joinpath(name))
-#         return None
-#     elif not res.is_japan_anime and bool(get_value_or_default(group_id, "anime_only")):
-#         logger.info(f"图片{name}不是二次元图片，不予展示")
-#         return None
-#     else:
-#         return await send_image(name, group_id)
-
 
 async def send_image(file_name: str, group_id: int, ext_data: Optional[ImageSender] = None) -> MessageSegment | None:
     """根据文件名称发送图片"""

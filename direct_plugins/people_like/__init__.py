@@ -361,8 +361,7 @@ async def store_message_segment_into_milvus(event: GroupMessageEvent) -> list[li
     for data in vector_data:
         del data["vec"]
         msg_data_list.append(GroupMsg(**data))
-    session = get_session()
-    async with session:
+    async with get_session() as session:
         session.add_all(msg_data_list)
         await session.commit()
 
@@ -519,13 +518,13 @@ async def chat_with_gemini(
 
     # query_data = await milvus_client.query_data(group_id)
     # search_data = await milvus_client.search_data(vec_data, time_limit=True, group_id=group_id)
-    session = get_session()
-    query_data = list(await session.scalars(
-        select(GroupMsg)
-        .where(GroupMsg.group_id == group_id)
-        .order_by(GroupMsg.time.desc())
-        .limit(plugin_config.query_len)
-    ))
+    async with get_session() as session:
+        query_data = list(await session.scalars(
+            select(GroupMsg)
+            .where(GroupMsg.group_id == group_id)
+            .order_by(GroupMsg.time.desc())
+            .limit(plugin_config.query_len)
+        ))
     combined_list = list(query_data)
     unique_dict: dict[int, GroupMsg] = {}
     for item in combined_list:
