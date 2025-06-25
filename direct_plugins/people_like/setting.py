@@ -1,6 +1,6 @@
 import json
 import builtins
-from nonebot import on_command, get_driver
+from nonebot import logger, on_command, get_driver
 from nonebot.permission import SUPERUSER
 from nonebot.matcher import Matcher
 from nonebot.rule import to_me
@@ -183,6 +183,7 @@ async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
     else:
         # 使用反射转换输入
         property_config = _EXPECT_PROP_NAMES.get(property_name, {})
+        logger.debug(f"{property_name}属性配置{repr(property_config)}")
         property_type = property_config["type"]
         construtor = getattr(builtins, property_type)
         value = construtor(value_str)
