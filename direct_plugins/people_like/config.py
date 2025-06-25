@@ -7,14 +7,11 @@ from nonebot import get_plugin_config
 class MilvusConfig(BaseModel):
     """Milvus 配置"""
     username: str = ""
-    """用户名
-    """
+    """用户名"""
     password: str = ""
-    """密码
-    """
+    """密码"""
     uri: str = "http://localhost:19530"
-    """连接地址
-    """
+    """连接地址"""
 
 
 class Config(BaseModel):
