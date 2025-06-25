@@ -170,7 +170,7 @@ async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
         await matcher.finish()
     value_str = str(resp)
     if value_str.lower() == "reset":
-        value = None
+        value_str = None
     elif value_str.lower() == "cancel":
         await matcher.finish("操作取消")
     # 赋值
