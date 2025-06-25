@@ -159,17 +159,14 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
             (
                 send := (
                     (r := random.random())
-                    < float(get_value_or_default(gid, "reply_probability", str(plugin_config.reply_probability)))
+                    < get_value_or_default(gid, "reply_probability", plugin_config.reply_probability)
                 )
             )
             or (
                 event.is_tome()
                 and (
                     (
-                        r
-                        < float(
-                            get_value_or_default(gid, "at_reply_probability", str(plugin_config.reply_probability * 4))
-                        )
+                        r < get_value_or_default(gid, "at_reply_probability", plugin_config.reply_probability * 4)
                     )
                     or send
                 )
@@ -654,12 +651,12 @@ async def chat_with_gemini(
                     contents.append({"role": "model", "parts": c})
     if len(contents) == 0:
         return None, None
-    top_p = float(p) if (p := get_value_or_default(group_id, "topP")) else None
-    top_k = int(p) if (p := get_value_or_default(group_id, "topK")) else None
-    temperature = float(p) if (p := get_value_or_default(group_id, "temperature")) else 0
-    c_len = i_p if (p := get_value_or_default(group_id, "length", "0")) and (i_p := int(p)) > 0 else None
+    top_p = get_value_or_default(group_id, "topP", None)
+    top_k = get_value_or_default(group_id, "topK", None)
+    temperature = get_value_or_default(group_id, "temperature", 0)
+    c_len = get_value_or_default(group_id, "length", 0)
 
-    enable_search = bool(get_value_or_default(group_id, "search"))
+    enable_search = get_value_or_default(group_id, "search", False)
 
     send_text_message_function = FunctionDeclaration(
         name="send_text_message",

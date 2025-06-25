@@ -1,4 +1,5 @@
 import json
+import builtins
 from nonebot import on_command, get_driver
 from nonebot.permission import SUPERUSER
 from nonebot.matcher import Matcher
@@ -6,7 +7,7 @@ from nonebot.rule import to_me
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent
 from aiofiles import open
 from nonebot_plugin_waiter import prompt, suggest
-from typing import TypedDict
+from typing import Optional, TypeVar, TypedDict, Any
 from .config import plugin_config
 
 driver = get_driver()
@@ -17,7 +18,7 @@ _CONFIG_DIR = store.get_config_dir("people_like")
 
 _PROFILE = _CONFIG_DIR / "people_like_multi_group.json"
 
-PROPERTIES: dict[str, dict[str, str]] = json.loads(
+PROPERTIES: dict[str, dict[str, Any]] = json.loads(
     "{}" if not _PROFILE.exists() else text if (text := _PROFILE.read_text()) is not None else "{}"
 )
 
@@ -167,19 +168,24 @@ async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
     resp = await prompt(prompt_str, timeout=60)
     if not resp:
         await matcher.finish()
-    value = str(resp)
-    if value.lower() == "reset":
+    value_str = str(resp)
+    if value_str.lower() == "reset":
         value = None
-    elif value.lower() == "cancel":
+    elif value_str.lower() == "cancel":
         await matcher.finish("操作取消")
     # 赋值
     g_v = PROPERTIES.get(group_id, {})
-    if value is None:
+    if value_str is None:
         g_v.pop(property_name, None)
         ret: str = f"""群：{group_id}
 键：{property_name}
 已删除"""
     else:
+        # 使用反射转换输入
+        property_config = _EXPECT_PROP_NAMES.get(property_name, {})
+        property_type = property_config["type"]
+        construtor = getattr(builtins, property_type)
+        value = construtor(value_str)
         g_v.update({property_name: value})
         ret: str = f"""群：{group_id}
 键：{property_name}
@@ -190,10 +196,13 @@ async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
     await matcher.finish(ret)
 
 
-def get_value_or_default(group_id: int, key: str, default: str = "") -> str:
+T = TypeVar("T")
+
+def get_value_or_default(group_id: int, key: str, default: T) -> T:
     """获取群组属性"""
     global PROPERTIES
-    return PROPERTIES.get(str(group_id), {}).get(key.upper(), default)
+    value = PROPERTIES.get(str(group_id), {}).get(key.upper(), None)
+    return default if value is None else value
 
 
 async def save_profile(matcher: Matcher):
