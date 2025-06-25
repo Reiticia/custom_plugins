@@ -192,9 +192,9 @@ on_self_msg = on("message_sent", priority=5)
 @on_self_msg.handle()
 async def receive_group_self_msg(raw_event: Event) -> None:
     """处理机器人自己发的消息"""
-    event = convert_to_group_message_event(raw_event)
-
-    await store_message_segment_into_milvus(event)
+    if raw_event.model_dump()["message_type"] == "group":
+        event = convert_to_group_message_event(raw_event)
+        await store_message_segment_into_milvus(event)
 
 
 async def sleep_sometime(size: int):
