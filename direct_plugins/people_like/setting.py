@@ -199,6 +199,7 @@ async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
 
 T = TypeVar("T")
 
+
 def get_value_or_default(group_id: int, key: str, default: T) -> T:
     """获取群组属性"""
     global PROPERTIES

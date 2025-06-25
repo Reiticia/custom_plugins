@@ -514,12 +514,14 @@ async def chat_with_gemini(
     # query_data = await milvus_client.query_data(group_id)
     # search_data = await milvus_client.search_data(vec_data, time_limit=True, group_id=group_id)
     async with get_session() as session:
-        query_data = list(await session.scalars(
-            select(GroupMsg)
-            .where(GroupMsg.group_id == group_id)
-            .order_by(GroupMsg.time.desc())
-            .limit(plugin_config.query_len)
-        ))
+        query_data = list(
+            await session.scalars(
+                select(GroupMsg)
+                .where(GroupMsg.group_id == group_id)
+                .order_by(GroupMsg.time.desc())
+                .limit(plugin_config.query_len)
+            )
+        )
     combined_list = list(query_data)
     unique_dict: dict[int, GroupMsg] = {}
     for item in combined_list:
