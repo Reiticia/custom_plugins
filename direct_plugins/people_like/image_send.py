@@ -422,10 +422,13 @@ async def upload_image() -> Optional[str]:
     global _GEMINI_CLIENT
     _FILES = set()
     logger.debug(f"图片存储目录{EMOJI_DIR_PATH.absolute()}")
+    do_not_re_upload = 0
 
+    async_lock = asyncio.Lock()
     semaphore = asyncio.Semaphore(10)
 
     async def process_file(local_file: str):
+        nonlocal do_not_re_upload
         async with semaphore:
             mime_type = get_mime_type(local_file)
             need_upload_name = ""
@@ -433,7 +436,7 @@ async def upload_image() -> Optional[str]:
             async with search_session.begin():
                 res = await search_session.execute(select(ImageSender).where(ImageSender.name == local_file))
                 first = res.scalars().first()
-                now = int(time.time())                
+                now = int(time.time())
                 if first is not None:
                     need_upload_name = first.remote_file_name
                     if now - int(first.update_time) < 46 * 60 * 60 and first.remote_file_name is not None:
@@ -442,8 +445,10 @@ async def upload_image() -> Optional[str]:
                             exsit_file = await _GEMINI_CLIENT.aio.files.get(name=remote_file_name)
                             if exsit_file is not None:
                                 _FILES.add(local_file)
-                                logger.info(f"图片: {local_file} 文件名: {remote_file_name} 未过期，跳过上传")
+                                # logger.debug(f"图片: {local_file} 文件名: {remote_file_name} 未过期，跳过上传")
                                 need_upload_name = ""
+                                async with async_lock:
+                                    do_not_re_upload += 1
                         except ClientError as e:
                             logger.error(f"{e.message}")
 
@@ -482,7 +487,7 @@ async def upload_image() -> Optional[str]:
             tasks.append(process_file(local_file))
     if tasks:
         await asyncio.gather(*tasks)
-        logger.info(f"图片缓存刷新完成，共有 {len(_FILES)} 个文件")
+        logger.info(f"图片缓存刷新完成，共有 {len(_FILES)} 个文件，其中{do_not_re_upload}个文件未过期，跳过上传")
 
 
 who_send = on_command("谁发的", aliases={"谁发的图片", "图片来源"})
