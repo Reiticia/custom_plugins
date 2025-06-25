@@ -652,8 +652,8 @@ async def chat_with_gemini(
         return None, None
     top_p = get_value_or_default(group_id, "topP", None)
     top_k = get_value_or_default(group_id, "topK", None)
-    temperature = get_value_or_default(group_id, "temperature", 0)
-    c_len = get_value_or_default(group_id, "length", 0)
+    temperature = get_value_or_default(group_id, "temperature", None)
+    c_len = get_value_or_default(group_id, "length", None)
 
     enable_search = get_value_or_default(group_id, "search", False)
 
