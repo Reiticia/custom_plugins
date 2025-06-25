@@ -164,12 +164,7 @@ async def receive_group_msg(event: GroupMessageEvent) -> None:
             )
             or (
                 event.is_tome()
-                and (
-                    (
-                        r < get_value_or_default(gid, "at_reply_probability", plugin_config.reply_probability * 4)
-                    )
-                    or send
-                )
+                and (r < get_value_or_default(gid, "at_reply_probability", plugin_config.reply_probability * 4) or send)
             )
         )
         and not GROUP_SPEAK_DISABLE.get(gid, False)

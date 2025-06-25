@@ -128,12 +128,12 @@ async def get_property(bot: Bot, matcher: Matcher, e: MessageEvent):
     resp = await suggest("请选择要获取的属性名", timeout=60, expect=list(_EXPECT_PROP_NAMES.keys()))
     if not resp:
         await matcher.finish("操作超时，指令中断")
-    property_name = str(resp).upper()
+    property_name = str(resp)
     conf = _EXPECT_PROP_NAMES.get(str(resp))
     if conf is None:
         await matcher.finish("属性名无效，指令中断")
     ret = get_value_or_default(int(group_id), property_name, conf["default"])  # type: ignore
-    await matcher.finish(ret)
+    await matcher.finish(str(ret))
 
 
 @on_command(cmd="sp", permission=SUPERUSER, rule=to_me(), priority=1, block=True).handle()
@@ -154,7 +154,7 @@ async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
     resp = await suggest("请选择要设置的属性名", timeout=60, expect=list(_EXPECT_PROP_NAMES.keys()))
     if not resp:
         await matcher.finish()
-    property_name = str(resp).upper()
+    property_name = str(resp)
     conf = _EXPECT_PROP_NAMES.get(str(resp))
     if conf is None:
         await matcher.finish("属性名无效，指令中断")
@@ -176,7 +176,7 @@ async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
     # 赋值
     g_v = PROPERTIES.get(group_id, {})
     if value_str is None:
-        g_v.pop(property_name, None)
+        g_v.pop(property_name.upper(), None)
         ret: str = f"""群：{group_id}
 键：{property_name}
 已删除"""
@@ -187,7 +187,7 @@ async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
         property_type = property_config["type"]
         construtor = getattr(builtins, property_type)
         value = construtor(value_str)
-        g_v.update({property_name: value})
+        g_v.update({property_name.upper(): value})
         ret: str = f"""群：{group_id}
 键：{property_name}
 值：{value}"""
