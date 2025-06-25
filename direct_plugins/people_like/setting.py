@@ -182,7 +182,7 @@ async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
 已删除"""
     else:
         # 使用反射转换输入
-        property_config = _EXPECT_PROP_NAMES.get(property_name, {})
+        property_config = _EXPECT_PROP_NAMES.get(property_name.lower(), {})
         logger.debug(f"{property_name}属性配置{repr(property_config)}")
         property_type = property_config["type"]
         construtor = getattr(builtins, property_type)
