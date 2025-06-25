@@ -31,7 +31,7 @@ from google.genai.types import (
     FunctionCallingConfig,
     FunctionCallingConfigMode,
     HttpOptions,
-    Content,
+    UrlContext,
 )
 from google.genai.errors import APIError
 
@@ -40,14 +40,15 @@ from common.struct import ExpirableDict
 require("nonebot_plugin_localstore")
 require("nonebot_plugin_waiter")
 require("nonebot_plugin_apscheduler")
+require("nonebot_plugin_orm")
 
 from nonebot_plugin_waiter import Matcher
 from nonebot_plugin_orm import get_session
 
 from nonebot_plugin_apscheduler import scheduler
-
-from sqlalchemy import select, insert
 import nonebot_plugin_localstore as store
+
+from sqlalchemy import select
 from .setting import get_value_or_default, get_blacklist
 from .config import Config, plugin_config
 from .image_send import get_file_name_of_image_will_sent_by_description_vec, SAFETY_SETTINGS
@@ -718,6 +719,7 @@ async def chat_with_gemini(
     tools: ToolListUnion = [Tool(function_declarations=function_declarations)]
 
     if enable_search:
+        tools.append(Tool(url_context=UrlContext()))
         tools.append(Tool(google_search=GoogleSearch()))
 
     model = get_model(group_id=group_id)

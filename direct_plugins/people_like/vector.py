@@ -121,12 +121,9 @@ class MilvusVector:
         if group_id != 0:
             exprs.append(f"group_id == {group_id}")
         await self.async_client.load_collection(collection_name=self.collection_name)
-        # 按时间戳降序排序（获取最新的消息）
-        sort_key = [("time", "descending")]
         results = await self.async_client.query(
             collection_name=self.collection_name,
             filter=" and ".join(exprs),
-            sort_by=sort_key,
             output_fields=[
                 "id",
                 "message_id",
@@ -153,12 +150,9 @@ class MilvusVector:
         if group_id != 0:
             exprs.append(f"group_id == {group_id}")
         await self.async_client.load_collection(collection_name=self.collection_name)
-        # 按时间戳降序排序（获取最新的消息）
-        sort_key = [("time", "descending")]
         results = await self.async_client.query(
             collection_name=self.collection_name,
             filter=" and ".join(exprs),
-            sort_by=sort_key,
             output_fields=[
                 "id",
                 "message_id",
