@@ -436,7 +436,7 @@ async def upload_image() -> Optional[str]:
                 now = int(time.time())                
                 if first is not None:
                     need_upload_name = first.remote_file_name
-                    if now - int(first.update_time) < 36 * 60 * 60 and first.remote_file_name is not None:
+                    if now - int(first.update_time) < 46 * 60 * 60 and first.remote_file_name is not None:
                         remote_file_name = f"files/{first.remote_file_name}"
                         try:
                             exsit_file = await _GEMINI_CLIENT.aio.files.get(name=remote_file_name)
