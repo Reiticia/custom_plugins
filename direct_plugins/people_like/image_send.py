@@ -207,13 +207,7 @@ async def anti(e: MessageEvent):
             resp = await _HTTP_CLIENT.get(im.data["url"])
             byte_content = resp.read()
             file_name = str(im.data["file"])
-            suffix_name = str(file_name).split(".")[-1]
-            mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
-            match suffix_name:
-                case "jpg" | "gif":
-                    mime_type = "image/jpeg"
-                case "png":
-                    mime_type = "image/png"
+            mime_type = get_mime_type(file_name)
             parts.append(Part.from_bytes(data=byte_content, mime_type=mime_type))
         res = await analysis_image(parts)
         if res.is_adult:
@@ -232,13 +226,7 @@ async def anti(e: MessageEvent):
             resp = await _HTTP_CLIENT.get(im.data["url"])
             byte_content = resp.read()
             file_name = str(im.data["file"])
-            suffix_name = str(file_name).split(".")[-1]
-            mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
-            match suffix_name:
-                case "jpg" | "gif":
-                    mime_type = "image/jpeg"
-                case "png":
-                    mime_type = "image/png"
+            mime_type = get_mime_type(file_name)
             parts.append(Part.from_bytes(data=byte_content, mime_type=mime_type))
         res = await analysis_image(parts)
         if res.is_adult:
@@ -282,13 +270,8 @@ async def add_image(event: GroupMessageEvent):
                     await f.write(resp.content)
                 logger.info(f"下载表情包图片{file_name}成功")
                 # 上传图片到gemini
+                mime_type = get_mime_type(file_name)
                 suffix_name = str(file_name).split(".")[-1]
-                mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
-                match suffix_name:
-                    case "jpg" | "gif":
-                        mime_type = "image/jpeg"
-                    case "png":
-                        mime_type = "image/png"
                 file = await _GEMINI_CLIENT.aio.files.upload(
                     file=file_path, config=UploadFileConfig(mime_type=mime_type)
                 )
@@ -312,6 +295,8 @@ async def add_image(event: GroupMessageEvent):
                             emoji_package_id=emoji_package_id,
                             create_time=int(event.time),
                             update_time=int(event.time),
+                            remote_file_name=file.name,
+                            mime_type=mime_type
                         )
                         session.add(image_sender)
                         await session.commit()
@@ -332,6 +317,8 @@ async def add_image(event: GroupMessageEvent):
                                     "key": key,
                                     "emoji_id": emoji_id,
                                     "emoji_package_id": emoji_package_id,
+                                    "mime_type": mime_type,
+                                    "remote_file_name": file.name,                                    
                                 }
                             )
                         )
