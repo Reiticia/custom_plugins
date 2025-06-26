@@ -379,7 +379,7 @@ async def upload_image() -> Optional[str]:
                             exsit_file = await _GEMINI_CLIENT.aio.files.get(name=remote_file_name)
                             if exsit_file is not None:
                                 _FILES.add(local_file)
-                                # logger.debug(f"图片: {local_file} 文件名: {remote_file_name} 未过期，跳过上传")
+                                logger.debug(f"图片: {local_file} 文件名: {remote_file_name} 未过期，跳过上传")
                                 need_upload_name = ""
                                 async with async_lock:
                                     do_not_re_upload += 1
@@ -410,7 +410,7 @@ async def upload_image() -> Optional[str]:
                                 }
                             )
                         )
-                        logger.info(f"更新图片{local_file}成功")
+                        logger.debug(f"更新图片{local_file}成功")
                 except RemoteProtocolError as e:
                     logger.error(f"文件{file_path}更新失败{repr(e)}")
 

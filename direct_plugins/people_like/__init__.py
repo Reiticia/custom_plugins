@@ -584,7 +584,6 @@ async def chat_with_gemini(
         logger.error(e)
         self_has_speak = []
 
-    logger.info(self_has_speak)
     do_not_send_words = Path(__file__).parent / "do_not_send.txt"
     words = [s.strip() for s in do_not_send_words.read_text(encoding="utf-8").splitlines()]
     # 将我是xxx过滤掉
