@@ -708,11 +708,13 @@ async def chat_with_gemini(
     if is_admin:
         function_declarations.append(mute_sb_function)
 
-    tools: ToolListUnion = [Tool(function_declarations=function_declarations)]
+    tools: ToolListUnion = []
 
     if enable_search:
         tools.append(Tool(url_context=UrlContext()))
         tools.append(Tool(google_search=GoogleSearch()))
+    else:
+        tools.append(Tool(function_declarations=function_declarations))
 
     model = get_model(group_id=group_id)
 
@@ -730,7 +732,7 @@ async def chat_with_gemini(
                 temperature=temperature,
                 tool_config=ToolConfig(
                     function_calling_config=FunctionCallingConfig(mode=FunctionCallingConfigMode.ANY)
-                ),
+                ) if not enable_search else None,
                 safety_settings=SAFETY_SETTINGS,
             ),
         )
@@ -751,7 +753,7 @@ async def chat_with_gemini(
                 temperature=temperature,
                 tool_config=ToolConfig(
                     function_calling_config=FunctionCallingConfig(mode=FunctionCallingConfigMode.ANY)
-                ),
+                ) if not enable_search else None,
                 safety_settings=SAFETY_SETTINGS,
             ),
         )
@@ -817,6 +819,41 @@ async def chat_with_gemini(
                 logger.info(f"群{group_id}调用函数{fc.name}，参数{user_id}，{minute}分钟")
                 await mute_sb(group_id, user_id, minute)
 
+        if isinstance(part, str) and enable_search:   # type: ignore
+            logger.debug(f"群{group_id}发送消息{part}")
+            # 处理文本中包含 @123 的情况，转换成 TEXT+AT+TEXT 串
+            content = str(part)
+            message = Message()
+            parts = re.split(r"(@\d+|\[[^\<\>]+\<\d+\>\])", content)
+            for part in parts:
+                if not part:  # 跳过空字符串
+                    continue
+                if re.fullmatch(r"@\d+", part):
+                    user_id = int(part[1:])
+                    message.append(MessageSegment.at(user_id))
+                    # AT之后通常需要一个空格，除非它是消息的末尾或者后面紧跟着非文本内容
+                    # 这里暂时不自动加空格，依赖于模型返回的文本本身是否包含空格
+                elif re.fullmatch(r"\[[^\<\>]+\<\d+\>\]", part):
+                    pass
+                else:
+                    message.append(MessageSegment.text(part))
+
+                if len(message) > 0:
+                    plain_text = extract_plain_text_from_message(message)
+
+                    if is_debug_mode:
+                        print(f"即将向群组 {group_id} 发送消息")
+                        print(plain_text)
+                        print("被禁止出现在句子中的词汇或短语")
+                        print(words)
+                    if all(ignore not in plain_text for ignore in words) and not GROUP_SPEAK_DISABLE.get(
+                        group_id, False
+                    ):
+                        # 先睡，睡完再发
+                        await sleep_sometime(len(plain_text))
+                        if not GROUP_SPEAK_DISABLE.get(group_id, False):
+                            logger.info(f"群{group_id}回复消息：{message.extract_plain_text()}")
+                            await on_msg.send(message)
 
 def extract_plain_text_from_message(msg: Message) -> str:
     res = ""
