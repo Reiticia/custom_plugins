@@ -85,8 +85,7 @@ async def get_file_name_of_image_will_sent_by_description_vec(description: str, 
         if first:
             name = first.name
             logger.info(f"群聊 {group_id} 获取图片id成功，返回结果：{name}")
-            mime_type = get_mime_type(name)
-            parts = [Part.from_uri(file_uri=str(first.file_uri), mime_type=mime_type)]
+            parts = [Part.from_uri(file_uri=str(first.file_uri), mime_type=first.mime_type)]
             res = await analysis_image(parts, group_id)
             if res.is_adult or res.is_violence:
                 logger.info(f"图片{name}包含违禁内容, 已删除")
@@ -97,6 +96,7 @@ async def get_file_name_of_image_will_sent_by_description_vec(description: str, 
                 return None
             else:
                 return await send_image(name, group_id, ext_data=first)
+
 
 async def send_image(file_name: str, group_id: int, ext_data: Optional[ImageSender] = None) -> MessageSegment | None:
     """根据文件名称发送图片"""
@@ -373,7 +373,11 @@ async def upload_image() -> Optional[str]:
                 now = int(time.time())
                 if first is not None:
                     need_upload_name = first.remote_file_name
-                    if now - int(first.update_time) < 46 * 60 * 60 and first.remote_file_name is not None:
+                    if (
+                        now - int(first.update_time) < 46 * 60 * 60
+                        and first.remote_file_name is not None
+                        and first.mime_type is not None
+                    ):
                         remote_file_name = f"files/{first.remote_file_name}"
                         try:
                             exsit_file = await _GEMINI_CLIENT.aio.files.get(name=remote_file_name)
@@ -389,13 +393,7 @@ async def upload_image() -> Optional[str]:
             if need_upload_name != "":
                 file_path = EMOJI_DIR_PATH / local_file
                 try:
-                    # file = await _GEMINI_CLIENT.aio.files.delete(
-                    #     name=need_upload_name
-                    # )
-                    # logger.info(f"删除图片{local_file}成功")
-                    file = await _GEMINI_CLIENT.aio.files.upload(
-                        file=file_path, config=UploadFileConfig(mime_type=mime_type)
-                    )
+                    file = await _GEMINI_CLIENT.aio.files.upload(file=file_path, config=UploadFileConfig(mime_type=mime_type))
                     _FILES.add(local_file)
                     update_session = get_session()
                     async with update_session.begin():
@@ -407,6 +405,7 @@ async def upload_image() -> Optional[str]:
                                     "update_time": int(time.time()),
                                     "file_uri": str(file.uri),
                                     "remote_file_name": str(file.name),
+                                    "mime_type": file.mime_type,
                                 }
                             )
                         )
