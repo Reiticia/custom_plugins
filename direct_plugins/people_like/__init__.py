@@ -811,7 +811,7 @@ async def chat_with_gemini(
                 # will_send_img = await get_file_name_of_image_will_sent(str(description), group_id)
                 will_send_img = await get_file_name_of_image_will_sent_by_description_vec(str(description), group_id)
                 if will_send_img:
-                    logger.debug(f"群{group_id}回复图片：{will_send_img}")
+                    logger.trace(f"群{group_id}回复图片：{will_send_img}")
                     await on_msg.send(will_send_img)
             if fc.name == "mute_sb" and fc.args:
                 user_id = int(str(fc.args.get("user_id")))
