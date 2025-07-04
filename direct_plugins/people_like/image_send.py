@@ -77,7 +77,7 @@ async def get_file_name_of_image_will_sent_by_description_vec(description: str, 
     global _GEMINI_CLIENT
     milvus_client = await get_milvus_vector_client()
     vec_data = await get_text_embedding(description)
-    search_data_result = await milvus_client.search_data([vec_data], file_id=True, search_len=50)
+    search_data_result = await milvus_client.search_data([vec_data], file_id=True, search_len=100)
     file_ids = [data.file_id for data in search_data_result if data.file_id is not None]
     logger.debug(f"群聊 {group_id} 获取图片id，返回结果：{file_ids}")
     if file_ids:
