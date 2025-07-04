@@ -81,7 +81,7 @@ async def get_file_name_of_image_will_sent_by_description_vec(description: str, 
     logger.debug(f"群聊 {group_id} 获取图片id，返回结果：{file_ids}")
     if file_ids:
         async with get_session() as session:
-            res = await session.scalars(select(ImageSender).where(ImageSender.name.in_(file_ids)))
+            res = await session.scalars(select(ImageSender).where(ImageSender.name.in_(file_ids)).order_by(ImageSender.id.desc()))
         first = res.first()
         if first:
             name = first.name
