@@ -1,3 +1,4 @@
+import random
 import time
 from datetime import datetime
 from nonebot import get_bot, logger, on_command, on_message, get_driver
@@ -81,12 +82,13 @@ async def get_file_name_of_image_will_sent_by_description_vec(description: str, 
     logger.debug(f"群聊 {group_id} 获取图片id，返回结果：{file_ids}")
     if file_ids:
         async with get_session() as session:
-            res = await session.scalars(select(ImageSender).where(ImageSender.name.in_(file_ids)).order_by(ImageSender.id.desc()))
-        first = res.first()
-        if first:
-            name = first.name
+            res = await session.scalars(select(ImageSender).where(ImageSender.name.in_(file_ids)))
+        res = list(res)
+        random_image = random.choice(res)
+        if random_image:
+            name = random_image.name
             logger.info(f"群聊 {group_id} 获取图片id成功，返回结果：{name}")
-            parts = [Part.from_uri(file_uri=str(first.file_uri), mime_type=first.mime_type)]
+            parts = [Part.from_uri(file_uri=str(random_image.file_uri), mime_type=random_image.mime_type)]
             res = await analysis_image(parts, group_id)
             if res.is_adult or res.is_violence:
                 logger.info(f"图片{name}包含违禁内容, 已删除")
@@ -96,7 +98,7 @@ async def get_file_name_of_image_will_sent_by_description_vec(description: str, 
                 logger.info(f"图片{name}不是二次元图片，不予展示")
                 return None
             else:
-                return await send_image(name, group_id, ext_data=first)
+                return await send_image(name, group_id, ext_data=random_image)
 
 
 async def send_image(file_name: str, group_id: int, ext_data: Optional[ImageSender] = None) -> MessageSegment | None:
