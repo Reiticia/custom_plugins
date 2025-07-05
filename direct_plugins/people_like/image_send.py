@@ -80,11 +80,13 @@ async def get_file_name_of_image_will_sent_by_description_vec(description: str, 
     # 先查数据库里所有的动画表情
     milvus_client = await get_milvus_vector_client()
     vec_data = await get_text_embedding(description)
-    search_data_result = await milvus_client.search_data([vec_data], file_ids=list(_IMAGE_DICT.keys()), search_len=10)
+    search_data_result = await milvus_client.search_data([vec_data], file_ids=list(_IMAGE_DICT.keys()), search_len=20)
     file_ids = [data.file_id for data in search_data_result if data.file_id is not None]
+    if len(set(file_ids)) < 15:
+        return
     logger.debug(f"群聊 {group_id} 获取图片id，返回结果：{file_ids}")
     if file_ids:
-        random_image_name = random.choice(file_ids)
+        random_image_name = random.choice(list(set(file_ids)))
         random_image = _IMAGE_DICT.get(random_image_name)
         if random_image:
             name = random_image.name
