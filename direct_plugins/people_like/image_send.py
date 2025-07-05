@@ -75,16 +75,23 @@ async def get_file_name_of_image_will_sent_by_description_vec(description: str, 
         group_id (int): 群号
     """
     global _GEMINI_CLIENT
+    # 先查数据库里所有的动画表情
+    async with get_session() as session:
+        res = await session.scalars(select(ImageSender))
+    res = list(res)
+    image_ids = [i.name for i in res]
+    image_dict = {i.name:i for i in res}
     milvus_client = await get_milvus_vector_client()
     vec_data = await get_text_embedding(description)
-    search_data_result = await milvus_client.search_data([vec_data], file_id=True, search_len=100)
+    search_data_result = await milvus_client.search_data([vec_data], file_ids=image_ids, search_len=100)
     file_ids = [data.file_id for data in search_data_result if data.file_id is not None]
     logger.debug(f"群聊 {group_id} 获取图片id，返回结果：{file_ids}")
     if file_ids:
-        async with get_session() as session:
-            res = await session.scalars(select(ImageSender).where(ImageSender.name.in_(file_ids)))
-        res = list(res)
-        random_image = random.choice(res)
+        # async with get_session() as session:
+            # res = await session.scalars(select(ImageSender).where(ImageSender.name.in_(file_ids)))
+        # res = list(res)
+        random_image_name = random.choice(file_ids)
+        random_image = image_dict.get(random_image_name)
         if random_image:
             name = random_image.name
             logger.info(f"群聊 {group_id} 获取图片id成功，返回结果：{name}")
