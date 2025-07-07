@@ -45,6 +45,9 @@ EMOJI_DIR_PATH = store.get_data_dir("people_like") / "image"
 NORMAL_IMAGE_DIR_PATH = store.get_data_dir("people_like") / "normal"
 
 
+_IMAGE_DICT: dict[str, ImageSender] = {}
+
+
 class LocalFile(BaseModel):
     mime_type: Literal["image/jpeg", "image/png"]
     file_name: str
@@ -67,7 +70,6 @@ class ImageName(BaseModel):
     """图片名称
     """
 
-
 async def get_file_name_of_image_will_sent_by_description_vec(description: str, group_id: int) -> MessageSegment | None:
     """根据描述信息的向量值获取最匹配的图片文件名
 
@@ -75,7 +77,8 @@ async def get_file_name_of_image_will_sent_by_description_vec(description: str, 
         description (str): 描述信息
         group_id (int): 群号
     """
-    global _GEMINI_CLIENT
+    global _GEMINI_CLIENT, _IMAGE_DICT
+    # 先查数据库里所有的动画表情
     milvus_client = await get_milvus_vector_client()
     vec_data = await get_text_embedding(description)
     search_data_result: list[VectorDataImage] = await milvus_client.search_image_data([vec_data], file_id=True, search_len=10)
@@ -396,8 +399,8 @@ async def add_image(event: GroupMessageEvent):
 driver = get_driver()
 
 
-@driver.on_bot_connect
-@scheduler.scheduled_job("interval", days=2, id="update_file_cache")
+# @driver.on_bot_connect
+# @scheduler.scheduled_job("interval", days=2, id="update_file_cache")
 async def upload_image() -> Optional[str]:
     """每搁两天重置图片文件缓存"""
     global _GEMINI_CLIENT
@@ -468,6 +471,18 @@ async def upload_image() -> Optional[str]:
     if tasks:
         await asyncio.gather(*tasks)
         logger.info(f"图片缓存刷新完成，共有 {len(_FILES)} 个文件，其中{do_not_re_upload}个文件未过期，跳过上传")
+
+
+@driver.on_bot_connect
+@scheduler.scheduled_job("interval", minutes=10, id="update_image_dict_cache")
+async def refresh_image_cache():
+    global _IMAGE_DICT
+    # 查数据库里所有的动画表情
+    async with get_session() as session:
+        res = await session.scalars(select(ImageSender))
+    res = list(res)
+    _IMAGE_DICT = {i.name:i for i in res}
+
 
 
 who_send = on_command("谁发的", aliases={"谁发的图片", "图片来源"})

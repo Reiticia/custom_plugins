@@ -260,10 +260,10 @@ class MilvusVector:
     async def search_data(
         self,
         query_vector: list[list[float]],
-        file_id: str | bool = False,
+        file_ids: list[str] | bool = False,
         time_limit: int | bool = False,
         search_len: int = 0,
-        group_id: int = 0,
+        group_id: int = 0
     ) -> list[VectorData]:
         today_zero_time = int(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
         exprs: list[str] = []
@@ -274,11 +274,11 @@ class MilvusVector:
                 exprs.append(f"time >= {time_limit}")
         if group_id != 0:
             exprs.append(f"group_id == {group_id}")
-        if file_id:
-            if isinstance(file_id, bool) and file_id:
+        if file_ids:
+            if isinstance(file_ids, bool) and file_ids:
                 exprs.append("file_id != ''")
-            elif isinstance(file_id, str):
-                exprs.append(f"file_id == '{file_id}'")
+            elif isinstance(file_ids, list) and file_ids:
+                exprs.append(f"file_id in {repr(file_ids)}")
         await self.async_client.load_collection(collection_name=self.collection_name)
         results = await self.async_client.search(
             collection_name=self.collection_name,
