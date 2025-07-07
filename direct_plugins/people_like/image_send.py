@@ -354,10 +354,10 @@ async def add_image(event: GroupMessageEvent):
                             summary=summary,
                             mime_type=mime_type,
                             file_size=file_size,
-                            key=key,
-                            emoji_id=emoji_id,
-                            emoji_package_id=emoji_package_id,
-                            vec=vec,  # 假设file.embedding是向量数据
+                            key=str(key),
+                            emoji_id=str(emoji_id),
+                            emoji_package_id=str(emoji_package_id),
+                            vec=vec,
                         )
 
                         milvus_client = await get_milvus_vector_client()
@@ -530,3 +530,63 @@ async def count_image_handle():
 def get_mime_type(filename: str) -> Literal["image/jpeg", "image/png"]:
     ext = filename.lower().split(".")[-1]
     return "image/png" if ext == "png" else "image/jpeg"
+
+
+
+@driver.on_bot_connect
+async def migrate_imagesender_to_milvus():
+    session = get_session()
+    res = await session.scalars(select(ImageSender))
+    res = list(res)
+    logger.debug(f"共需要迁移{len(res)}条数据")
+    milvus_client = await get_milvus_vector_client()
+    skip_count = 0
+    error_count = 0
+    for i in res:
+        name = i.name
+        summary = i.summary
+        mime_type = i.mime_type
+        file_size = i.file_size
+        key = i.key
+        emoji_id = i.emoji_id
+        emoji_package_id = i.emoji_package_id
+
+        
+        res = await milvus_client.query_image_data(name)
+        if len(res) > 0:
+            skip_count += 1
+            logger.debug(f"图片{name}已存在，不进行数据迁移")
+            continue
+
+        try:
+            async with aopen(EMOJI_DIR_PATH.joinpath(name), "rb") as f:
+                content = await f.read()
+            parts = []
+            parts.append(Part.from_text(text="分析一下这张图片描述的内容，用中文描述它"))
+            parts.append(Part.from_bytes(data=content, mime_type=mime_type))
+            description = await analysis_image_str(parts=parts)
+            vec = await get_text_embedding(description)
+            vec_image_data = VectorDataImage(
+                description=description,
+                name=name,
+                summary=summary,
+                mime_type=mime_type,
+                file_size=file_size,
+                key=key,
+                emoji_id=emoji_id,
+                emoji_package_id=emoji_package_id,
+                vec=vec
+            )
+
+            await milvus_client.insert_image_data([vec_image_data])
+            logger.info(f"数据{name}迁移成功")
+        except Exception as e:
+            error_count += 1
+            logger.error(f"数据{name}迁移失败{repr(e)}")
+    
+    else:
+        logger.info(f"有{skip_count}条数据跳过迁移, {error_count}条数据迁移失败，{len(res)-skip_count-error_count}条数据迁移成功")
+
+
+        
+

@@ -134,14 +134,14 @@ class MilvusVector:
             schema.add_field("id", DataType.INT64, is_primary=True)
             schema.add_field("description", DataType.VARCHAR, max_length=8192)
             schema.add_field("name", DataType.VARCHAR, max_length=1024)
-            schema.add_field("summary", DataType.VARCHAR, max_length=1024)
+            schema.add_field("summary", DataType.VARCHAR, max_length=1024, nullable=True)
             schema.add_field("mime_type", DataType.VARCHAR, max_length=255)
-            schema.add_field("file_size", DataType.INT64)  # 文件大小
-            schema.add_field("key", DataType.VARCHAR, max_length=1024)
-            schema.add_field("emoji_id", DataType.VARCHAR, max_length=255)
-            schema.add_field("emoji_package_id", DataType.VARCHAR, max_length=255)
+            schema.add_field("file_size", DataType.INT64, nullable=True)  # 文件大小
+            schema.add_field("key", DataType.VARCHAR, max_length=1024, nullable=True)
+            schema.add_field("emoji_id", DataType.VARCHAR, max_length=255, nullable=True)
+            schema.add_field("emoji_package_id", DataType.VARCHAR, max_length=255, nullable=True)
             schema.add_field("vec", DataType.FLOAT_VECTOR, dim=768)  # 向量维度需自定义
-            schema.add_field("extra", DataType.JSON)
+            schema.add_field("extra", DataType.JSON, nullable=True)
 
             # 创建索引参数（向量字段必建索引）
             index_params = self.client.prepare_index_params()
@@ -157,7 +157,6 @@ class MilvusVector:
                 collection_name=self.collection_name_image, schema=schema, index_params=index_params
             )
             logger.info(f"Collection '{self.collection_name_image}' created.")
-
         else:
             logger.info(f"Collection '{self.collection_name_image}' already exists.")
 
@@ -235,7 +234,7 @@ class MilvusVector:
         return [VectorData(**item) for item in results]
 
     async def query_image_data(self, file_id: str) -> list[VectorDataImage]:
-        expr = f"file_id == '{file_id}'"
+        expr = f"name == '{file_id}'"
         await self.async_client.load_collection(collection_name=self.collection_name_image)
         results = await self.async_client.query(
             collection_name=self.collection_name_image,
@@ -327,9 +326,9 @@ class MilvusVector:
         exprs: list[str] = []
         if file_id:
             if isinstance(file_id, bool) and file_id:
-                exprs.append("file_id != ''")
+                exprs.append("name != ''")
             elif isinstance(file_id, str):
-                exprs.append(f"file_id == '{file_id}'")
+                exprs.append(f"name == '{file_id}'")
         await self.async_client.load_collection(collection_name=self.collection_name_image)
         results = await self.async_client.search(
             collection_name=self.collection_name_image,

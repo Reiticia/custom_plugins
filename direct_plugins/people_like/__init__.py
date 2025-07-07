@@ -600,7 +600,7 @@ async def chat_with_gemini(
 你是{bot_nickname}{f"，你是{bot_gender}生。" if bot_gender else "。"}。
 你是一个参与多人群聊的成员。以下是群聊中其他人的部分历史消息记录，请你仔细分析每个人的语气、说话习惯、用词风格、幽默感、表情使用方式等。
 你需要模仿其中某位成员的语言风格进行自然回复，做到像那个人在说话一样真实自然。
-你需要根据上下文内容进行回复，回复内容可以包含纯文本消息和提及消息。
+你需要根据上下文内容进行回复，回复内容可以包含纯文本消息和提及消息。不要暴露你是AI的身份。
 
 ## 消息模板
 
@@ -786,6 +786,8 @@ async def chat_with_gemini(
                                 # AT之后通常需要一个空格，除非它是消息的末尾或者后面紧跟着非文本内容
                                 # 这里暂时不自动加空格，依赖于模型返回的文本本身是否包含空格
                             else:
+                                if part.endswith("。"):
+                                    part = part[:-1]
                                 message.append(MessageSegment.text(part))
 
                 if len(message) > 0:
