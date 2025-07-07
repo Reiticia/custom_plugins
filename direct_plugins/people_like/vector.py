@@ -58,6 +58,18 @@ class VectorData(BaseModel):
     vec: Optional[list[float]]  # 向量数据，假设为浮点数列表
     time: Optional[int]  # 时间戳
 
+class VectorDataImage(BaseModel):
+    id: Optional[int] = None  # 自增主键
+    description: Optional[str]
+    name: Optional[str]
+    summary: Optional[str]
+    mime_type: Optional[str]
+    file_size: Optional[int]
+    key: Optional[str]
+    emoji_id: Optional[str]
+    emoji_package_id: Optional[str]
+    vec: Optional[list[float]]  # 向量数据，假设为浮点数列表
+    extra: Optional[dict] = None  # 可选的额外信息
 
 class MilvusVector:
     def __init__(
@@ -67,6 +79,9 @@ class MilvusVector:
         self.search_len = search_len
         self.self_len = self_len
         self.collection_name = "people_like"
+
+        self.collection_name_image = "people_like_image"
+
         self.client = MilvusClient(uri=uri, user=username, password=password)
         self.async_client = AsyncMilvusClient(uri=uri, user=username, password=password)
         # 创建集合
@@ -91,6 +106,7 @@ class MilvusVector:
             schema.add_field("file_id", DataType.VARCHAR, max_length=1024)
             schema.add_field("vec", DataType.FLOAT_VECTOR, dim=768)  # 向量维度需自定义
             schema.add_field("time", DataType.INT64)
+            schema.add_field("extra", DataType.JSON)
 
             # 创建索引参数（向量字段必建索引）
             index_params = self.client.prepare_index_params()
@@ -109,11 +125,58 @@ class MilvusVector:
         else:
             logger.info(f"Collection '{self.collection_name}' already exists.")
 
+        # 创建图片集合
+        if not self.client.has_collection(self.collection_name_image):
+            schema = self.client.create_schema(
+                auto_id=True,  # 启用自增主键[3,4](@ref)
+                enable_dynamic_field=False,
+            )
+            schema.add_field("id", DataType.INT64, is_primary=True)
+            schema.add_field("description", DataType.VARCHAR, max_length=8192)
+            schema.add_field("name", DataType.VARCHAR, max_length=1024)
+            schema.add_field("summary", DataType.VARCHAR, max_length=1024)
+            schema.add_field("mime_type", DataType.VARCHAR, max_length=255)
+            schema.add_field("file_size", DataType.INT64)  # 文件大小
+            schema.add_field("key", DataType.VARCHAR, max_length=1024)
+            schema.add_field("emoji_id", DataType.VARCHAR, max_length=255)
+            schema.add_field("emoji_package_id", DataType.VARCHAR, max_length=255)
+            schema.add_field("vec", DataType.FLOAT_VECTOR, dim=768)  # 向量维度需自定义
+            schema.add_field("extra", DataType.JSON)
+
+            # 创建索引参数（向量字段必建索引）
+            index_params = self.client.prepare_index_params()
+            index_params.add_index(
+                field_name="vec",
+                index_type="IVF_FLAT",  # 中等规模数据集推荐[3](@ref)
+                metric_type="COSINE",  # 余弦相似度
+                params={"nlist": 128},  # 聚类中心数
+            )
+
+            # 创建集合
+            self.client.create_collection(
+                collection_name=self.collection_name_image, schema=schema, index_params=index_params
+            )
+            logger.info(f"Collection '{self.collection_name_image}' created.")
+
+        else:
+            logger.info(f"Collection '{self.collection_name_image}' already exists.")
+
+
+
     async def insert_data(self, data: list[VectorData]):
+        """插入数据到 Milvus 向量数据库 collection_name"""
         data_dict = [item.model_dump() for item in data]
         for d in data_dict:
             d.pop("id", None)
         res = await self.async_client.insert(collection_name=self.collection_name, data=data_dict)
+        return res["insert_count"]
+    
+    async def insert_image_data(self, data: list[VectorDataImage]):
+        """插入数据到 Milvus 向量数据库 collection_name_image"""
+        data_dict = [item.model_dump() for item in data]
+        for d in data_dict:
+            d.pop("id", None)
+        res = await self.async_client.insert(collection_name=self.collection_name_image, data=data_dict)
         return res["insert_count"]
 
     async def query_data(self, group_id: int = 0) -> list[VectorData]:
@@ -170,6 +233,29 @@ class MilvusVector:
             limit=self.self_len,  # 限制返回数量
         )
         return [VectorData(**item) for item in results]
+
+    async def query_image_data(self, file_id: str) -> list[VectorDataImage]:
+        expr = f"file_id == '{file_id}'"
+        await self.async_client.load_collection(collection_name=self.collection_name_image)
+        results = await self.async_client.query(
+            collection_name=self.collection_name_image,
+            filter=expr,
+            output_fields=[
+                "id",
+                "description",
+                "name",
+                "summary",
+                "mime_type",
+                "file_size",
+                "key",
+                "emoji_id",
+                "emoji_package_id",
+                "vec",
+                "extra",
+            ],
+            limit=self.query_len,  # 限制返回数量
+        )
+        return [VectorDataImage(**item) for item in results]
 
     async def search_data(
         self,
@@ -231,6 +317,56 @@ class MilvusVector:
                 entity = item.get("entity", item)
                 vector_data_list.append(VectorData(**entity))
         return vector_data_list
+    
+    async def search_image_data(
+        self,
+        query_vector: list[list[float]],
+        file_id: str | bool = False,
+        search_len: int = 0,
+    ) -> list[VectorDataImage]:
+        exprs: list[str] = []
+        if file_id:
+            if isinstance(file_id, bool) and file_id:
+                exprs.append("file_id != ''")
+            elif isinstance(file_id, str):
+                exprs.append(f"file_id == '{file_id}'")
+        await self.async_client.load_collection(collection_name=self.collection_name_image)
+        results = await self.async_client.search(
+            collection_name=self.collection_name_image,
+            data=query_vector,
+            filter=" and ".join(exprs),
+            search_params={
+                "metric_type": "COSINE",
+                "params": {
+                    "nprobe": 128,  # 搜索空间大小（精度-性能平衡点）
+                    "radius": 0.7,  # 最小相似度阈值（可选）
+                },
+            },
+            output_fields=[
+                "id",
+                "description",
+                "name",
+                "summary",
+                "mime_type",
+                "file_size",
+                "key",
+                "emoji_id",
+                "emoji_package_id",
+                "vec",
+                "extra",
+            ],
+            limit=self.search_len if search_len == 0 else search_len,  # 限制返回数量
+            consistency_level="Strong",  # 强一致性
+        )
+        # 适配 Milvus 返回结构
+        vector_data_image_list = []
+        if results and len(results) > 0:
+            for item in results[0]:
+                # 如果是 entity 结构
+                entity = item.get("entity", item)
+                vector_data_image_list.append(VectorDataImage(**entity))
+        return vector_data_image_list
+
 
 
 async def get_text_embedding(text: str) -> list[float]:

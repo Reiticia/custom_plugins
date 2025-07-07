@@ -13,6 +13,7 @@ from aiofiles import open as aopen
 from nonebot_plugin_orm import get_session
 from sqlalchemy import select, update
 from .model import ImageSender
+from .vector import analysis_image as analysis_image_str
 
 import os
 import asyncio
@@ -33,7 +34,7 @@ from google.genai.types import (
 from google.genai.errors import ClientError
 
 from .setting import get_value_or_default
-from .vector import _GEMINI_CLIENT, get_text_embedding, get_milvus_vector_client
+from .vector import _GEMINI_CLIENT, VectorDataImage, get_text_embedding, get_milvus_vector_client
 from pydantic import BaseModel
 import json
 from httpx import RemoteProtocolError
@@ -77,38 +78,92 @@ async def get_file_name_of_image_will_sent_by_description_vec(description: str, 
     global _GEMINI_CLIENT
     milvus_client = await get_milvus_vector_client()
     vec_data = await get_text_embedding(description)
-    search_data_result = await milvus_client.search_data([vec_data], file_id=True, search_len=100)
-    file_ids = [data.file_id for data in search_data_result if data.file_id is not None]
+    search_data_result: list[VectorDataImage] = await milvus_client.search_image_data([vec_data], file_id=True, search_len=10)
+    file_ids = [item.name for item in search_data_result if item.name is not None]
     logger.debug(f"群聊 {group_id} 获取图片id，返回结果：{file_ids}")
-    if file_ids:
-        async with get_session() as session:
-            res = await session.scalars(select(ImageSender).where(ImageSender.name.in_(file_ids)))
-        res = list(res)
-        random_image = random.choice(res)
+    if search_data_result:
+        random_image = random.choice(search_data_result)
         if random_image:
             name = random_image.name
+            # logger.info(f"群聊 {group_id} 获取图片id成功，返回结果：{name}")
+            # parts = [Part.from_uri(file_uri=str(random_image.file_uri), mime_type=random_image.mime_type)]
+            # res = await analysis_image(parts, group_id)
+            # if res.is_adult or res.is_violence:
+            #     logger.info(f"图片{name}包含违禁内容, 已删除")
+            #     os.remove(EMOJI_DIR_PATH.joinpath(name))
+            #     return None
+            # elif not res.is_japan_anime and get_value_or_default(group_id, "anime_only", False):
+            #     logger.info(f"图片{name}不是二次元图片，不予展示")
+            #     return None
+            # else:
+            #     return await send_image(name, group_id, ext_data=random_image)
             logger.info(f"群聊 {group_id} 获取图片id成功，返回结果：{name}")
-            parts = [Part.from_uri(file_uri=str(random_image.file_uri), mime_type=random_image.mime_type)]
-            res = await analysis_image(parts, group_id)
-            if res.is_adult or res.is_violence:
-                logger.info(f"图片{name}包含违禁内容, 已删除")
-                os.remove(EMOJI_DIR_PATH.joinpath(name))
-                return None
-            elif not res.is_japan_anime and get_value_or_default(group_id, "anime_only", False):
-                logger.info(f"图片{name}不是二次元图片，不予展示")
-                return None
-            else:
-                return await send_image(name, group_id, ext_data=random_image)
+            # 读取图片二进制
+            async with aopen(EMOJI_DIR_PATH.joinpath(str(name)), "rb") as f:
+                content = await f.read()
+                parts = [Part.from_bytes(data=content, mime_type=str(random_image.mime_type))]
+                res = await analysis_image(parts, group_id)
+                if res.is_adult or res.is_violence:
+                    logger.info(f"图片{name}包含违禁内容, 已删除")
+                    os.remove(EMOJI_DIR_PATH.joinpath(str(name)))
+                    return None
+                elif not res.is_japan_anime and get_value_or_default(group_id, "anime_only", False):
+                    logger.info(f"图片{name}不是二次元图片，不予展示")
+                    return None
+                else:
+                    return await send_image(str(name), group_id, ext_data_vec=random_image)
 
 
-async def send_image(file_name: str, group_id: int, ext_data: Optional[ImageSender] = None) -> MessageSegment | None:
+async def send_image(file_name: str, group_id: int, ext_data: Optional[ImageSender] = None, ext_data_vec: Optional[VectorDataImage] = None) -> MessageSegment | None:
     """根据文件名称发送图片"""
     bot = get_bot()
     logger.debug(f"发送图片{file_name}到群{group_id}")
     async with aopen(EMOJI_DIR_PATH.joinpath(file_name), "rb") as f:
         content = await f.read()
     if isinstance(bot, OB11Bot):
-        if ext_data is None:
+        if ext_data is not None:
+            if ext_data.key is None:
+                return MessageSegment(
+                    "image",
+                    {
+                        "file": f2s(content),
+                        "sub_type": str(1),
+                        "cache": b2s(True),
+                        "proxy": b2s(True),
+                    },
+                )
+            else:
+                return MessageSegment(
+                    "mface",
+                    {
+                        "emoji_id": ext_data.emoji_id,
+                        "emoji_package_id": ext_data.emoji_package_id,
+                        "key": ext_data.key,
+                        "summary": ext_data.summary,
+                    },
+                )
+        elif ext_data_vec is not None:
+            if ext_data_vec.key is None:
+                return MessageSegment(
+                    "image",
+                    {
+                        "file": f2s(content),
+                        "sub_type": str(1),
+                        "cache": b2s(True),
+                        "proxy": b2s(True),
+                    },
+                )
+            else:
+                return MessageSegment(
+                    "mface",
+                    {
+                        "emoji_id": ext_data_vec.emoji_id,
+                        "emoji_package_id": ext_data_vec.emoji_package_id,
+                        "key": ext_data_vec.key,
+                        "summary": ext_data_vec.summary,
+                    },
+                )
+        else:
             session = get_session()
             async with session.begin():
                 res = await session.execute(select(ImageSender).where(ImageSender.name == file_name))
@@ -135,27 +190,6 @@ async def send_image(file_name: str, group_id: int, ext_data: Optional[ImageSend
                             "summary": first.summary,
                         },
                     )
-        else:
-            if ext_data.key is None:
-                return MessageSegment(
-                    "image",
-                    {
-                        "file": f2s(content),
-                        "sub_type": str(1),
-                        "cache": b2s(True),
-                        "proxy": b2s(True),
-                    },
-                )
-            else:
-                return MessageSegment(
-                    "mface",
-                    {
-                        "emoji_id": ext_data.emoji_id,
-                        "emoji_package_id": ext_data.emoji_package_id,
-                        "key": ext_data.key,
-                        "summary": ext_data.summary,
-                    },
-                )
     else:
         return None
 
@@ -304,6 +338,29 @@ async def add_image(event: GroupMessageEvent):
                         session.add(image_sender)
                         await session.commit()
                         logger.info(f"新增表情包图片{file_name}成功")
+
+                        parts = []
+                        parts.append(Part.from_text(text="分析一下这张图片描述的内容，用中文描述它"))
+                        parts.append(Part.from_bytes(data=resp.content, mime_type=mime_type))
+                        content = await analysis_image_str(parts=parts)
+                        vec = await get_text_embedding(content)
+
+                        image_vec_data = VectorDataImage(
+                            description=content,
+                            name=file_name,
+                            summary=summary,
+                            mime_type=mime_type,
+                            file_size=file_size,
+                            key=key,
+                            emoji_id=emoji_id,
+                            emoji_package_id=emoji_package_id,
+                            vec=vec,  # 假设file.embedding是向量数据
+                        )
+
+                        milvus_client = await get_milvus_vector_client()
+                        await milvus_client.insert_image_data([image_vec_data])
+                        logger.info(f"插入图片向量数据到Milvus成功，图片名称：{file_name}")
+
                     else:  # 如果原来存在，则更新
                         await session.execute(
                             update(ImageSender)
