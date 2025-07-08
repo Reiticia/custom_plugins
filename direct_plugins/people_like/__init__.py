@@ -771,6 +771,20 @@ async def chat_with_gemini(
                 for returnMsg in returnMsgs:
                     if returnMsg.msg_type == ReturnMsgEnum.AT:
                         if not returnMsg.content.isdigit():
+                            content = returnMsg.content
+                            parts = re.split(r"(@\d+)", content)
+                            for part in parts:
+                                if not part:  # 跳过空字符串
+                                    continue
+                                if re.fullmatch(r"@\d+", part):
+                                    user_id = int(part[1:])
+                                    message.append(MessageSegment.at(user_id))
+                                    # AT之后通常需要一个空格，除非它是消息的末尾或者后面紧跟着非文本内容
+                                    # 这里暂时不自动加空格，依赖于模型返回的文本本身是否包含空格
+                                else:
+                                    if part.endswith("。"):
+                                        part = part[:-1]
+                                    message.append(MessageSegment.text(part))
                             continue
                         message.append(MessageSegment.at(int(returnMsg.content)))
                         message.append(MessageSegment.text(" "))
