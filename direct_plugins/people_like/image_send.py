@@ -11,7 +11,7 @@ import nonebot_plugin_localstore as store  # noqa: E402
 from httpx import AsyncClient
 from aiofiles import open as aopen
 from nonebot_plugin_orm import get_session
-from sqlalchemy import exists, select, update
+from sqlalchemy import delete, select, update
 from .model import ImageSender
 from .vector import analysis_image as analysis_image_str
 
@@ -535,8 +535,8 @@ def get_mime_type(filename: str) -> Literal["image/jpeg", "image/png"]:
 
 @driver.on_bot_connect
 async def migrate_imagesender_to_milvus():
-    session = get_session()
-    res = await session.scalars(select(ImageSender))
+    select_session = get_session()
+    res = await select_session.scalars(select(ImageSender))
     res = list(res)
     
     logger.debug(f"共需要迁移{len(res)}条数据")
@@ -544,6 +544,7 @@ async def migrate_imagesender_to_milvus():
     skip_count = 0
     success_count = 0
     error_count = 0
+    fail_files = []
     for i in res:
         name = i.name
         summary = i.summary
@@ -584,8 +585,23 @@ async def migrate_imagesender_to_milvus():
             success_count += 1
             logger.info(f"数据{name}迁移成功")
         except Exception as e:
+            fail_files.append(name)
             error_count += 1
             logger.error(f"数据{name}迁移失败{repr(e)}")
 
     else:
+        # 删除失败的文件以及本地文件
+        if fail_files:
+            for file_name in fail_files:
+                file_path = EMOJI_DIR_PATH.joinpath(file_name)
+                if file_path.exists():
+                    os.remove(file_path)
+                    logger.info(f"删除失败的文件{file_name}成功")
+                else:
+                    logger.warning(f"文件{file_name}不存在，无法删除")
+            
+        delete_session = get_session()
+        async with delete_session.begin():
+            count = await delete_session.execute(delete(ImageSender).where(ImageSender.name.in_(fail_files)))
+            logger.info(f"删除数据库中{count.rowcount}条迁移失败的数据")
         logger.info(f"{skip_count}条数据跳过迁移，{error_count}条数据迁移失败，{success_count}条数据迁移成功")
