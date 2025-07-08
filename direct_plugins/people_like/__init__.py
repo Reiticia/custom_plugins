@@ -107,11 +107,12 @@ on_msg: type[Matcher] = on_message()
 
 
 @on_msg.handle()
-async def receive_group_msg(event: GroupMessageEvent) -> None:
+async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
     global GROUP_SPEAK_DISABLE
     # 群组id
     gid = event.group_id
-    nickname = await get_bot_nickname_of_group(gid)
+    # nickname = await get_bot_nickname_of_group(gid)
+    nickname = list(bot.config.nickname)[0]
     # 黑名单内，不检查
     if str(gid) in get_blacklist():
         logger.warning(f"群{gid}消息黑名单内，不处理")

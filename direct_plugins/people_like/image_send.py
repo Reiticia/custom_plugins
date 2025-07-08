@@ -11,7 +11,7 @@ import nonebot_plugin_localstore as store  # noqa: E402
 from httpx import AsyncClient
 from aiofiles import open as aopen
 from nonebot_plugin_orm import get_session
-from sqlalchemy import select, update
+from sqlalchemy import exists, select, update
 from .model import ImageSender
 from .vector import analysis_image as analysis_image_str
 
@@ -538,9 +538,11 @@ async def migrate_imagesender_to_milvus():
     session = get_session()
     res = await session.scalars(select(ImageSender))
     res = list(res)
+    
     logger.debug(f"共需要迁移{len(res)}条数据")
     milvus_client = await get_milvus_vector_client()
     skip_count = 0
+    success_count = 0
     error_count = 0
     for i in res:
         name = i.name
@@ -551,7 +553,7 @@ async def migrate_imagesender_to_milvus():
         emoji_id = i.emoji_id
         emoji_package_id = i.emoji_package_id
 
-        
+
         res = await milvus_client.query_image_data(name)
         if len(res) > 0:
             skip_count += 1
@@ -579,14 +581,11 @@ async def migrate_imagesender_to_milvus():
             )
 
             await milvus_client.insert_image_data([vec_image_data])
+            success_count += 1
             logger.info(f"数据{name}迁移成功")
         except Exception as e:
             error_count += 1
             logger.error(f"数据{name}迁移失败{repr(e)}")
-    
+
     else:
-        logger.info(f"有{skip_count}条数据跳过迁移, {error_count}条数据迁移失败，{len(res)-skip_count-error_count}条数据迁移成功")
-
-
-        
-
+        logger.info(f"{skip_count}条数据跳过迁移，{error_count}条数据迁移失败，{success_count}条数据迁移成功")

@@ -233,8 +233,11 @@ class MilvusVector:
         )
         return [VectorData(**item) for item in results]
 
-    async def query_image_data(self, file_id: str) -> list[VectorDataImage]:
-        expr = f"name == '{file_id}'"
+    async def query_image_data(self, file_id: str|list[str]) -> list[VectorDataImage]:
+        if isinstance(file_id, list):
+            expr = f"name in {repr(file_id)}"
+        else:
+            expr = f"name == '{file_id}'"
         await self.async_client.load_collection(collection_name=self.collection_name_image)
         results = await self.async_client.query(
             collection_name=self.collection_name_image,
