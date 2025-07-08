@@ -148,3 +148,4 @@ template/
 /cache
 /data
 /config
+!/emoji.py
