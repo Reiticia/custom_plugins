@@ -85,36 +85,31 @@ async def get_file_name_of_image_will_sent_by_description_vec(description: str, 
     file_ids = [item.name for item in search_data_result if item.name is not None]
     logger.debug(f"群聊 {group_id} 获取图片id，返回结果：{file_ids}")
     if search_data_result:
-        random_image = random.choice(search_data_result)
-        if random_image:
-            name = random_image.name
-            # logger.info(f"群聊 {group_id} 获取图片id成功，返回结果：{name}")
-            # parts = [Part.from_uri(file_uri=str(random_image.file_uri), mime_type=random_image.mime_type)]
-            # res = await analysis_image(parts, group_id)
-            # if res.is_adult or res.is_violence:
-            #     logger.info(f"图片{name}包含违禁内容, 已删除")
-            #     os.remove(EMOJI_DIR_PATH.joinpath(name))
-            #     return None
-            # elif not res.is_japan_anime and get_value_or_default(group_id, "anime_only", False):
-            #     logger.info(f"图片{name}不是二次元图片，不予展示")
-            #     return None
-            # else:
-            #     return await send_image(name, group_id, ext_data=random_image)
-            logger.info(f"群聊 {group_id} 获取图片id成功，返回结果：{name}")
-            # 读取图片二进制
-            async with aopen(EMOJI_DIR_PATH.joinpath(str(name)), "rb") as f:
-                content = await f.read()
-                parts = [Part.from_bytes(data=content, mime_type=str(random_image.mime_type))]
-                res = await analysis_image_trait(parts, group_id)
-                if res.is_adult or res.is_violence:
-                    logger.info(f"图片{name}包含违禁内容, 已删除")
-                    os.remove(EMOJI_DIR_PATH.joinpath(str(name)))
-                    return None
-                elif not res.is_japan_anime and get_value_or_default(group_id, "anime_only", False):
-                    logger.info(f"图片{name}不是二次元图片，不予展示")
-                    return None
-                else:
-                    return await send_image(str(name), group_id, ext_data_vec=random_image)
+        for _ in range(len(file_ids)):
+            random_image = random.choice(search_data_result)
+            if random_image:
+                name = random_image.name
+                logger.info(f"群聊 {group_id} 获取图片id成功，返回结果：{name}")
+                try:
+                    # 读取图片二进制
+                    async with aopen(EMOJI_DIR_PATH.joinpath(str(name)), "rb") as f:
+                        content = await f.read()
+                        parts = [Part.from_bytes(data=content, mime_type=str(random_image.mime_type))]
+                        res = await analysis_image_trait(parts, group_id)
+                        if res.is_adult or res.is_violence:
+                            logger.info(f"图片{name}包含违禁内容, 已删除")
+                            os.remove(EMOJI_DIR_PATH.joinpath(str(name)))
+                            return None
+                        elif not res.is_japan_anime and get_value_or_default(group_id, "anime_only", False):
+                            logger.info(f"图片{name}不是二次元图片，不予展示")
+                            return None
+                        else:
+                            return await send_image(str(name), group_id, ext_data_vec=random_image)
+                    break
+                except Exception as e:
+                    search_data_result.remove(random_image)
+                    logger.info(f"群聊 {group_id} 发送图片{name}失败，重新选取图片，失败原因: {repr(e)}")
+
 
 
 async def send_image(file_name: str, group_id: int, ext_data: Optional[ImageSender] = None, ext_data_vec: Optional[VectorDataImage] = None) -> MessageSegment | None:

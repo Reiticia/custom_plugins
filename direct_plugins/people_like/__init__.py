@@ -910,7 +910,7 @@ async def mute_sb(group_id: int, user_id: int, minute: int):
             await get_bot().call_api("set_group_ban", group_id=group_id, user_id=user_id, duration=minute * 60)
 
 
-ALL_MODEL = ["gemini-2.5-flash", "gemini-2.5-flash-lite-preview-06-17", "gemini-2.0-flash", "gemini-2.0-flash-lite"]
+ALL_MODEL = ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite-preview-06-17", "gemini-2.0-flash", "gemini-2.0-flash-lite"]
 CURRENT_MODEL_INDEX = 0
 DAILY_FAIL_COUNT: list[int] = [0] * len(ALL_MODEL)
 
@@ -919,7 +919,7 @@ DAILY_FAIL_COUNT: list[int] = [0] * len(ALL_MODEL)
 def reset_model_index_minute():
     global CURRENT_MODEL_INDEX, DAILY_FAIL_COUNT
     pre_model = ALL_MODEL[CURRENT_MODEL_INDEX]
-    for i in range(0, 4):
+    for i in range(0, len(ALL_MODEL)):
         CURRENT_MODEL_INDEX = i
         if DAILY_FAIL_COUNT[CURRENT_MODEL_INDEX] >= 3:
             logger.info(f"模型{ALL_MODEL[CURRENT_MODEL_INDEX]}已在今日内禁用")
@@ -941,7 +941,7 @@ def reset_model_index_day():
 def change_model():
     global CURRENT_MODEL_INDEX, DAILY_FAIL_COUNT
     DAILY_FAIL_COUNT[CURRENT_MODEL_INDEX] += 1
-    for i in range(CURRENT_MODEL_INDEX, 4):
+    for i in range(CURRENT_MODEL_INDEX, len(ALL_MODEL)):
         CURRENT_MODEL_INDEX = i
         if DAILY_FAIL_COUNT[CURRENT_MODEL_INDEX] >= 3:
             logger.info(f"模型{ALL_MODEL[CURRENT_MODEL_INDEX]}已在今日内禁用")
