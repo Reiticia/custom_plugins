@@ -13,7 +13,7 @@ from aiofiles import open as aopen
 from nonebot_plugin_orm import get_session
 from sqlalchemy import delete, select, update
 from .model import ImageSender
-from .vector import analysis_image as analysis_image_str
+from .vector import analysis_image_to_str_description
 
 import os
 import asyncio
@@ -105,7 +105,7 @@ async def get_file_name_of_image_will_sent_by_description_vec(description: str, 
             async with aopen(EMOJI_DIR_PATH.joinpath(str(name)), "rb") as f:
                 content = await f.read()
                 parts = [Part.from_bytes(data=content, mime_type=str(random_image.mime_type))]
-                res = await analysis_image(parts, group_id)
+                res = await analysis_image_trait(parts, group_id)
                 if res.is_adult or res.is_violence:
                     logger.info(f"图片{name}包含违禁内容, 已删除")
                     os.remove(EMOJI_DIR_PATH.joinpath(str(name)))
@@ -208,7 +208,7 @@ class AnalysisResult(BaseModel):
     """是否为日本卡通动漫角色"""
 
 
-async def analysis_image(file_part: list[Part], group_id: int = 0) -> AnalysisResult:
+async def analysis_image_trait(file_part: list[Part], group_id: int = 0) -> AnalysisResult:
     """分析图片是否包含违禁内容"""
 
     model = get_value_or_default(group_id, "model", "gemini-2.0-flash")
@@ -249,7 +249,7 @@ async def anti(e: MessageEvent):
             file_name = str(im.data["file"])
             mime_type = get_mime_type(file_name)
             parts.append(Part.from_bytes(data=byte_content, mime_type=mime_type))
-        res = await analysis_image(parts)
+        res = await analysis_image_trait(parts)
         if res.is_adult:
             await anti_image.send("图片包含色情内容")
         if res.is_violence:
@@ -268,7 +268,7 @@ async def anti(e: MessageEvent):
             file_name = str(im.data["file"])
             mime_type = get_mime_type(file_name)
             parts.append(Part.from_bytes(data=byte_content, mime_type=mime_type))
-        res = await analysis_image(parts)
+        res = await analysis_image_trait(parts)
         if res.is_adult:
             await anti_image.send("图片包含色情内容")
         if res.is_violence:
@@ -345,7 +345,7 @@ async def add_image(event: GroupMessageEvent):
                         parts = []
                         parts.append(Part.from_text(text="分析一下这张图片描述的内容，用中文描述它"))
                         parts.append(Part.from_bytes(data=resp.content, mime_type=mime_type))
-                        content = await analysis_image_str(parts=parts)
+                        content = await analysis_image_to_str_description(parts=parts)
                         vec = await get_text_embedding(content)
 
                         image_vec_data = VectorDataImage(
@@ -567,7 +567,7 @@ async def migrate_imagesender_to_milvus():
             parts = []
             parts.append(Part.from_text(text="分析一下这张图片描述的内容，用中文描述它"))
             parts.append(Part.from_bytes(data=content, mime_type=mime_type))
-            description = await analysis_image_str(parts=parts)
+            description = await analysis_image_to_str_description(parts=parts)
             vec = await get_text_embedding(description)
             vec_image_data = VectorDataImage(
                 description=description,

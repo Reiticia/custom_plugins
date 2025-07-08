@@ -52,7 +52,7 @@ from sqlalchemy import select
 from .setting import get_value_or_default, get_blacklist
 from .config import Config, plugin_config
 from .image_send import get_file_name_of_image_will_sent_by_description_vec, SAFETY_SETTINGS
-from .vector import VectorData, _GEMINI_CLIENT, analysis_image, get_text_embedding, get_milvus_vector_client
+from .vector import VectorData, _GEMINI_CLIENT, analysis_image_to_str_description, get_text_embedding, get_milvus_vector_client
 from .model import EmojiInfoStorer, GroupMsg
 
 __plugin_meta__ = PluginMetadata(
@@ -323,7 +323,7 @@ async def store_message_segment_into_milvus(event: GroupMessageEvent) -> list[li
             parts = []
             parts.append(Part.from_text(text="分析一下这张图片描述的内容，用中文描述它"))
             parts.append(part)
-            content = await analysis_image(parts=parts)
+            content = await analysis_image_to_str_description(parts=parts)
             logger.debug(f"anaylysis iamge {file_id}")
             logger.debug(content)
             if content:

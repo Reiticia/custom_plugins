@@ -385,7 +385,7 @@ async def get_text_embedding(text: str) -> list[float]:
     return value if value else [0.0] * 768  # 假设向量维度为768，如果没有返回值则返回全0向量
 
 
-async def analysis_image(parts: list[Part]) -> str:
+async def analysis_image_to_str_description(parts: list[Part]) -> str:
     """分析图片，返回图片分析内容"""
     global _GEMINI_CLIENT
     response = await _GEMINI_CLIENT.aio.models.generate_content(
