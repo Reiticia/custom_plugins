@@ -1,4 +1,5 @@
 from typing import Optional
+import typing_extensions
 from pydantic import BaseModel
 from pymilvus import DataType, AsyncMilvusClient, MilvusClient
 from datetime import datetime
@@ -160,8 +161,6 @@ class MilvusVector:
         else:
             logger.info(f"Collection '{self.collection_name_image}' already exists.")
 
-
-
     async def insert_data(self, data: list[VectorData]):
         """插入数据到 Milvus 向量数据库 collection_name"""
         data_dict = [item.model_dump() for item in data]
@@ -178,6 +177,7 @@ class MilvusVector:
         res = await self.async_client.insert(collection_name=self.collection_name_image, data=data_dict)
         return res["insert_count"]
 
+    @typing_extensions.deprecated('This method is not used.')
     async def query_data(self, group_id: int = 0) -> list[VectorData]:
         exprs = []
         if group_id != 0:
@@ -259,6 +259,7 @@ class MilvusVector:
         )
         return [VectorDataImage(**item) for item in results]
 
+    @typing_extensions.deprecated('This method is not used.')
     async def search_data(
         self,
         query_vector: list[list[float]],
