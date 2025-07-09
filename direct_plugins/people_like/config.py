@@ -29,6 +29,8 @@ class Config(BaseModel):
     """是否开启图片分析"""
     gemini_key: Optional[str]
     """Gemini API Key"""
+    gemini_base_url: Optional[str] = None
+    """Gemini API Base URL"""
     gemini_model: str = "gemini-2.0-flash"
     """Gemini 模型"""
     query_len: int = 20

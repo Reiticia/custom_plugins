@@ -14,7 +14,12 @@ from .config import plugin_config
 
 _GEMINI_CLIENT = genai.Client(
     api_key=plugin_config.gemini_key,
-    http_options={"api_version": "v1alpha", "timeout": 120_000, "headers": {"transport": "rest"}},
+    http_options={
+        "base_url": plugin_config.gemini_base_url,
+        "api_version": "v1alpha",
+        "timeout": 120_000,
+        "headers": {"transport": "rest"},
+    },
 )
 
 driver = get_driver()
@@ -59,6 +64,7 @@ class VectorData(BaseModel):
     vec: Optional[list[float]]  # 向量数据，假设为浮点数列表
     time: Optional[int]  # 时间戳
 
+
 class VectorDataImage(BaseModel):
     id: Optional[int] = None  # 自增主键
     description: Optional[str]
@@ -71,6 +77,7 @@ class VectorDataImage(BaseModel):
     emoji_package_id: Optional[str]
     vec: Optional[list[float]]  # 向量数据，假设为浮点数列表
     extra: Optional[dict] = None  # 可选的额外信息
+
 
 class MilvusVector:
     def __init__(
@@ -168,7 +175,7 @@ class MilvusVector:
             d.pop("id", None)
         res = await self.async_client.insert(collection_name=self.collection_name, data=data_dict)
         return res["insert_count"]
-    
+
     async def insert_image_data(self, data: list[VectorDataImage]):
         """插入数据到 Milvus 向量数据库 collection_name_image"""
         data_dict = [item.model_dump() for item in data]
@@ -177,7 +184,7 @@ class MilvusVector:
         res = await self.async_client.insert(collection_name=self.collection_name_image, data=data_dict)
         return res["insert_count"]
 
-    @typing_extensions.deprecated('This method is not used.')
+    @typing_extensions.deprecated("This method is not used.")
     async def query_data(self, group_id: int = 0) -> list[VectorData]:
         exprs = []
         if group_id != 0:
@@ -233,7 +240,7 @@ class MilvusVector:
         )
         return [VectorData(**item) for item in results]
 
-    async def query_image_data(self, file_id: str|list[str]) -> list[VectorDataImage]:
+    async def query_image_data(self, file_id: str | list[str]) -> list[VectorDataImage]:
         if isinstance(file_id, list):
             expr = f"name in {repr(file_id)}"
         else:
@@ -259,14 +266,14 @@ class MilvusVector:
         )
         return [VectorDataImage(**item) for item in results]
 
-    @typing_extensions.deprecated('This method is not used.')
+    @typing_extensions.deprecated("This method is not used.")
     async def search_data(
         self,
         query_vector: list[list[float]],
         file_ids: list[str] | bool = False,
         time_limit: int | bool = False,
         search_len: int = 0,
-        group_id: int = 0
+        group_id: int = 0,
     ) -> list[VectorData]:
         today_zero_time = int(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
         exprs: list[str] = []
@@ -320,7 +327,7 @@ class MilvusVector:
                 entity = item.get("entity", item)
                 vector_data_list.append(VectorData(**entity))
         return vector_data_list
-    
+
     async def search_image_data(
         self,
         query_vector: list[list[float]],
@@ -369,7 +376,6 @@ class MilvusVector:
                 entity = item.get("entity", item)
                 vector_data_image_list.append(VectorDataImage(**entity))
         return vector_data_image_list
-
 
 
 async def get_text_embedding(text: str) -> list[float]:
