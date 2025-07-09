@@ -37,11 +37,6 @@ class ImageSender(Model):
     update_time: Mapped[int]
     """更新时间"""
 
-class EmojiInfoStorer(Model):
-    """记录face表情id对应raw字段"""
-    id: Mapped[int] = mapped_column(primary_key=True)
-    raw: Mapped[str]
-
 class GroupMsg(Model):
     """记录消息数据结构"""
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)  # 自增主键

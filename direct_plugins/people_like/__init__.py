@@ -51,7 +51,7 @@ from .setting import get_value_or_default, get_blacklist
 from .config import Config, plugin_config
 from .image_send import get_file_name_of_image_will_sent_by_description_vec, SAFETY_SETTINGS
 from .vector import VectorData, _GEMINI_CLIENT, analysis_image_to_str_description, get_text_embedding, get_milvus_vector_client
-from .model import EmojiInfoStorer, GroupMsg
+from .model import GroupMsg
 from .task import get_model, change_model
 
 __plugin_meta__ = PluginMetadata(
