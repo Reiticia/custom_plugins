@@ -10,14 +10,13 @@ from enum import Enum
 from pathlib import Path
 from asyncio import sleep
 from typing import Any, Literal, Optional
-from nonebot.permission import SUPERUSER
 from pydantic import BaseModel
-from nonebot import get_bot, logger, on_command, on_keyword, on_message, require, get_driver, on
+from nonebot import get_bot, logger, on_keyword, on_message, require, get_driver, on
 
 from nonebot.rule import to_me
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters import Event
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Message, MessageEvent, MessageSegment
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Message, MessageSegment
 from google.genai.types import (
     Part,
     Tool,
@@ -54,6 +53,7 @@ from .config import Config, plugin_config
 from .image_send import get_file_name_of_image_will_sent_by_description_vec, SAFETY_SETTINGS
 from .vector import VectorData, _GEMINI_CLIENT, analysis_image_to_str_description, get_text_embedding, get_milvus_vector_client
 from .model import EmojiInfoStorer, GroupMsg
+from .task import get_model, change_model
 
 __plugin_meta__ = PluginMetadata(
     name="people-like",
@@ -908,57 +908,3 @@ async def mute_sb(group_id: int, user_id: int, minute: int):
         if int(time.time()) >= GROUP_BAN_DICT[group_id][user_id]:
             GROUP_BAN_DICT[group_id][user_id] = int(time.time()) + minute * 60
             await get_bot().call_api("set_group_ban", group_id=group_id, user_id=user_id, duration=minute * 60)
-
-
-ALL_MODEL = ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite-preview-06-17", "gemini-2.0-flash", "gemini-2.0-flash-lite"]
-CURRENT_MODEL_INDEX = 0
-DAILY_FAIL_COUNT: list[int] = [0] * len(ALL_MODEL)
-
-
-@scheduler.scheduled_job("interval", minutes=1, id="reset_model_index_minute")
-def reset_model_index_minute():
-    global CURRENT_MODEL_INDEX, DAILY_FAIL_COUNT
-    pre_model = ALL_MODEL[CURRENT_MODEL_INDEX]
-    for i in range(0, len(ALL_MODEL)):
-        CURRENT_MODEL_INDEX = i
-        if DAILY_FAIL_COUNT[CURRENT_MODEL_INDEX] >= 3:
-            logger.info(f"模型{ALL_MODEL[CURRENT_MODEL_INDEX]}已在今日内禁用")
-        else:
-            if pre_model != ALL_MODEL[CURRENT_MODEL_INDEX]:
-                logger.info(f"模型{pre_model}已禁用，切换到模型{ALL_MODEL[CURRENT_MODEL_INDEX]}")
-            break
-    else:
-        DAILY_FAIL_COUNT = [0] * len(ALL_MODEL)
-
-
-@scheduler.scheduled_job("interval", days=1, id="reset_model_index_day")
-def reset_model_index_day():
-    global CURRENT_MODEL_INDEX, DAILY_FAIL_COUNT
-    CURRENT_MODEL_INDEX = 0
-    DAILY_FAIL_COUNT = [0] * len(ALL_MODEL)
-
-
-def change_model():
-    global CURRENT_MODEL_INDEX, DAILY_FAIL_COUNT
-    DAILY_FAIL_COUNT[CURRENT_MODEL_INDEX] += 1
-    for i in range(CURRENT_MODEL_INDEX, len(ALL_MODEL)):
-        CURRENT_MODEL_INDEX = i
-        if DAILY_FAIL_COUNT[CURRENT_MODEL_INDEX] >= 3:
-            logger.info(f"模型{ALL_MODEL[CURRENT_MODEL_INDEX]}已在今日内禁用")
-        else:
-            logger.info(f"已启用模型{ALL_MODEL[CURRENT_MODEL_INDEX]}")
-            break
-    else:
-        DAILY_FAIL_COUNT = [0] * len(ALL_MODEL)
-
-
-def get_model(group_id: int) -> str:
-    default_model = ALL_MODEL[CURRENT_MODEL_INDEX]
-    return get_value_or_default(group_id, "model", default_model)
-
-
-@on_command("当前模型", permission=SUPERUSER, rule=to_me(), priority=1, block=True).handle()
-async def current_model(bot: Bot, matcher: Matcher, e: MessageEvent):
-    model = ALL_MODEL[CURRENT_MODEL_INDEX]
-    logger.info(f"当前模型{model}")
-    await matcher.finish(model)
