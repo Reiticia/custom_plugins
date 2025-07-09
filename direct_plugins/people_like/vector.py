@@ -210,6 +210,28 @@ class MilvusVector:
             limit=self.query_len,  # 限制返回数量
         )
         return [VectorData(**item) for item in results]
+    
+    async def query_all_data(self) -> list[VectorData]:
+        """查询所有数据"""
+        await self.async_client.load_collection(collection_name=self.collection_name)
+        results = await self.async_client.query(
+            collection_name=self.collection_name,
+            output_fields=[
+                "id",
+                "message_id",
+                "group_id",
+                "user_id",
+                "self_msg",
+                "to_me",
+                "index",
+                "nick_name",
+                "content",
+                "file_id",
+                "vec",
+                "time",
+            ]
+        )
+        return [VectorData(**item) for item in results]
 
     async def query_self_data(self, group_id: int = 0) -> list[VectorData]:
         today_zero_time = int(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
