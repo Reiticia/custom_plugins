@@ -790,7 +790,7 @@ async def chat_with_gemini(
         except Exception as e:
             logger.error(f"exception occur {repr(e)}")
             if isinstance(e, APIError):
-                if e.code == 429:
+                if e.code in [429, 503]:
                     change_model()
 
     # 如果有函数调用，则传递函数调用的参数，进行图片发送
