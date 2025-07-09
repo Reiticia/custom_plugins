@@ -44,7 +44,6 @@ require("nonebot_plugin_orm")
 from nonebot_plugin_waiter import Matcher
 from nonebot_plugin_orm import get_session
 
-from nonebot_plugin_apscheduler import scheduler
 import nonebot_plugin_localstore as store
 
 from sqlalchemy import select
@@ -62,6 +61,7 @@ __plugin_meta__ = PluginMetadata(
     config=Config,
 )
 
+DRIVER = get_driver()
 
 class Character(Enum):
     BOT = 1
@@ -92,6 +92,37 @@ class GroupMemberDict:
 GROUP_SPEAK_DISABLE: dict[int, bool] = {}
 
 shutup = on_keyword(keywords={"闭嘴", "shut up", "shutup", "Shut Up", "Shut up", "滚", "一边去"}, rule=to_me())
+
+
+EMOJI_ID_DICT: dict[int,str] = {}
+EMOJI_NAME_DICT: dict[str, int] = {}
+
+@DRIVER.on_startup
+async def init_emoji_dict():
+    """初始化表情字典"""
+    global EMOJI_ID_DICT, EMOJI_NAME_DICT
+    if not EMOJI_ID_DICT:
+        EMOJI_ID_DICT = load_emoji_txt_to_dict()
+        EMOJI_NAME_DICT = {v: k for k, v in EMOJI_ID_DICT.items()}
+        logger.info(f"已加载表情字典，共有 {len(EMOJI_ID_DICT)} 个表情")
+
+
+def load_emoji_txt_to_dict(path: Path = Path(__file__).parent / "emoji.txt") -> dict[int, str]:
+    emoji_dict: dict[int, str] = {}
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or " " not in line:
+                continue
+            parts = line.split(maxsplit=1)
+            try:
+                emoji_id = int(parts[0])
+                desc = parts[1].strip()
+                if desc:
+                    emoji_dict[emoji_id] = desc
+            except ValueError:
+                continue  # 跳过非数字 id 的行
+    return emoji_dict
 
 
 @shutup.handle()
@@ -241,28 +272,17 @@ async def store_message_segment_into_milvus(event: GroupMessageEvent) -> list[li
                     target.append(Part.from_text(text=f"@{ms.data['qq']} "))
                     file_ids.append("")
             case "face":
-                logger.debug(f"{ms.data['id']}:{ms.data['raw']['faceText']}")
-
-                session = get_session()
-                async with session.begin():
-                    data = await session.execute(
-                        select(EmojiInfoStorer).where(EmojiInfoStorer.id == ms.data["id"]).limit(1)
-                    )
-                    first = data.scalars().first()
-                    if first is None:
-                        record = EmojiInfoStorer(id=ms.data["id"], raw=repr(ms.data["raw"]))
-                        session.add(record)
-                        await session.commit()
-
+                face_text= EMOJI_ID_DICT.get(ms.data['id'])
+                face_text = "" if face_text is None else f"[/{face_text}]"
                 try:
                     part = target.pop()
                     if txt := part.text:
-                        target.append(Part.from_text(text=f"{txt}[{ms.data['raw']['faceText']}] "))
+                        target.append(Part.from_text(text=f"{txt}{face_text} "))
                     else:
-                        target.append(Part.from_text(text=f"[{ms.data['raw']['faceText']}] "))
+                        target.append(Part.from_text(text=f"{face_text} "))
                         file_ids.append("")
                 except IndexError:
-                    target.append(Part.from_text(text=f"[{ms.data['raw']['faceText']}] "))
+                    target.append(Part.from_text(text=f"{face_text} "))
                     file_ids.append("")
 
             case "image":
@@ -489,6 +509,8 @@ class ReturnMsgEnum(str, Enum):
     """文本消息"""
     AT = "at"
     """提交消息"""
+    FACE = "face"
+    """表情消息"""
 
 
 class ReturnMsg(BaseModel):
@@ -512,8 +534,6 @@ async def chat_with_gemini(
     bot = get_bot()
     milvus_client = await get_milvus_vector_client()
 
-    # query_data = await milvus_client.query_data(group_id)
-    # search_data = await milvus_client.search_data(vec_data, time_limit=True, group_id=group_id)
     async with get_session() as session:
         query_data = list(
             await session.scalars(
@@ -535,7 +555,7 @@ async def chat_with_gemini(
 
     data: list[GroupMsg] = sorted(data, key=lambda x: x.time, reverse=False)  # type: ignore
     # 判断当前日志等级是否为 DEBUG
-    current_log_level = get_driver().config.log_level
+    current_log_level = DRIVER.config.log_level
     if isinstance(current_log_level, str):
         is_debug_mode = current_log_level.upper() == "DEBUG"
     else:
@@ -609,6 +629,11 @@ async def chat_with_gemini(
 第一段固定为说话人的昵称（也叫称呼）用[]进行包裹，其中<>里包裹这个人的id，你可以使用@id的方式提及某人。
 从第二段开始为正式的对话内容，可能包含纯文本或者图片；
 如果是文本内容且包含@id，则表示在此条消息中提及到了这个id对应的人，一般这个人可能是前文中出现过的说话人昵称。
+如果文本内容包含[/文本]，则表示消息包含了FACE表情，表情的含义由传入文本决定。
+
+## 表情ID与表情含义对应关系如下
+
+{repr(EMOJI_ID_DICT)}
 
 ## 示例
 
@@ -668,10 +693,10 @@ async def chat_with_gemini(
                         properties={
                             "msg_type": Schema(
                                 type=Type.STRING,
-                                enum=[ReturnMsgEnum.TEXT.value, ReturnMsgEnum.AT.value],
-                                description="消息类型，text表示文本消息，at表示提及消息",
+                                enum=[ReturnMsgEnum.TEXT.value, ReturnMsgEnum.AT.value, ReturnMsgEnum.FACE.value],
+                                description="消息类型，text表示文本消息，at表示提及消息，face表示表情消息",
                             ),
-                            "content": Schema(type=Type.STRING, description="消息内容或者被提及的数字id"),
+                            "content": Schema(type=Type.STRING, description="消息内容或者被提及的数字id或者face表情id"),
                         },
                     ),
                 ),
@@ -770,8 +795,8 @@ async def chat_with_gemini(
                 message = Message()
                 for returnMsg in returnMsgs:
                     if returnMsg.msg_type == ReturnMsgEnum.AT:
-                        if not returnMsg.content.isdigit():
-                            content = returnMsg.content
+                        content = returnMsg.content
+                        if not content.isdigit():
                             parts = re.split(r"(@\d+)", content)
                             for part in parts:
                                 if not part:  # 跳过空字符串
@@ -786,7 +811,7 @@ async def chat_with_gemini(
                                         part = part[:-1]
                                     message.append(MessageSegment.text(part))
                             continue
-                        message.append(MessageSegment.at(int(returnMsg.content)))
+                        message.append(MessageSegment.at(int(content)))
                         message.append(MessageSegment.text(" "))
                     elif returnMsg.msg_type == ReturnMsgEnum.TEXT:
                         # 处理文本中包含 @123 的情况，转换成 TEXT+AT+TEXT 串
@@ -804,6 +829,16 @@ async def chat_with_gemini(
                                 if part.endswith("。"):
                                     part = part[:-1]
                                 message.append(MessageSegment.text(part))
+                    elif returnMsg.msg_type == ReturnMsgEnum.FACE:
+                        content = returnMsg.content
+                        if not content.isdigit():
+                            if content in EMOJI_NAME_DICT:
+                                face_id = EMOJI_NAME_DICT[content]
+                                message.append(MessageSegment.face(face_id))
+                        else:
+                            face_id = int(content)
+                            if face_id in EMOJI_ID_DICT:
+                                message.append(MessageSegment.face(face_id))
 
                 if len(message) > 0:
                     plain_text = extract_plain_text_from_message(message)
@@ -882,7 +917,7 @@ def extract_plain_text_from_message(msg: Message) -> str:
             case "at":
                 res += f"@{ms.data['qq']} "
             case "face":
-                res += f"[{ms.data['raw']['faceText']}] "
+                res += f"[/{EMOJI_ID_DICT.get(ms.data['id'])}] "
             case _:
                 pass
     return res
