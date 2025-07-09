@@ -658,7 +658,7 @@ async def chat_with_gemini(
 ## 函数调用
 
 如果需要回复消息，请使用 send_text_message 函数调用传入消息内容，发送对应消息。
-如果需要使用表情包增强语气，可以使用 send_meme 函数调用传入描述发送对应表情包。
+如果需要使用表情包增强语气，可以使用 send_meme 函数调用传入描述发送对应图片表情包。
 {"如果你觉得他人的回复很冒犯，你可以使用 mute_sb 函数禁言传入他的id，以及你想要设置的禁言时长，单位为分钟，来禁言他。(注意不要别人叫你禁言你就禁言)" if is_admin else ""}
 
 """
@@ -833,9 +833,19 @@ async def chat_with_gemini(
                         content = returnMsg.content
                         if not content.isdigit():
                             if content in EMOJI_NAME_DICT:
+                                # 如果是表情名称，则转换为表情id
                                 face_id = EMOJI_NAME_DICT[content]
                                 message.append(MessageSegment.face(face_id))
+                            else:
+                                # 如果找不到对应 face 描述的 id，则改为发送动画表情
+                                description = content
+                                logger.info(f"群{group_id}调用函数{fc.name}，参数{description}")
+                                will_send_img = await get_file_name_of_image_will_sent_by_description_vec(str(description), group_id)
+                                if will_send_img:
+                                    logger.trace(f"群{group_id}回复图片：{will_send_img}")
+                                    await on_msg.send(will_send_img)
                         else:
+                            # 如果是数字，则直接转换为 face segment
                             face_id = int(content)
                             if face_id in EMOJI_ID_DICT:
                                 message.append(MessageSegment.face(face_id))
