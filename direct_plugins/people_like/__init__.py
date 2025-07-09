@@ -766,45 +766,32 @@ async def chat_with_gemini(
 
     model = get_model(group_id=group_id)
 
-    try:
-        resp = await _GEMINI_CLIENT.aio.models.generate_content(
-            model=model,
-            contents=contents,
-            config=GenerateContentConfig(
-                http_options=HttpOptions(timeout=6 * 60 * 1000),
-                system_instruction=prompt,
-                top_p=top_p,
-                top_k=top_k,
-                max_output_tokens=c_len,
-                tools=tools,
-                temperature=temperature,
-                tool_config=ToolConfig(
-                    function_calling_config=FunctionCallingConfig(mode=FunctionCallingConfigMode.ANY)
-                ) if not enable_search else None,
-                safety_settings=SAFETY_SETTINGS,
-            ),
-        )
-    except APIError as e:
-        if e.code == 429:
-            change_model()
-        model = get_model(group_id=group_id)
-        resp = await _GEMINI_CLIENT.aio.models.generate_content(
-            model=model,
-            contents=contents,
-            config=GenerateContentConfig(
-                http_options=HttpOptions(timeout=6 * 60 * 1000),
-                system_instruction=prompt,
-                top_p=top_p,
-                top_k=top_k,
-                max_output_tokens=c_len,
-                tools=tools,
-                temperature=temperature,
-                tool_config=ToolConfig(
-                    function_calling_config=FunctionCallingConfig(mode=FunctionCallingConfigMode.ANY)
-                ) if not enable_search else None,
-                safety_settings=SAFETY_SETTINGS,
-            ),
-        )
+    # 至多重试 5 次
+    for _ in range(5):
+        try:
+            resp = await _GEMINI_CLIENT.aio.models.generate_content(
+                model=model,
+                contents=contents,
+                config=GenerateContentConfig(
+                    http_options=HttpOptions(timeout=6 * 60 * 1000),
+                    system_instruction=prompt,
+                    top_p=top_p,
+                    top_k=top_k,
+                    max_output_tokens=c_len,
+                    tools=tools,
+                    temperature=temperature,
+                    tool_config=ToolConfig(
+                        function_calling_config=FunctionCallingConfig(mode=FunctionCallingConfigMode.ANY)
+                    ) if not enable_search else None,
+                    safety_settings=SAFETY_SETTINGS,
+                ),
+            )
+            break
+        except Exception as e:
+            logger.error(f"exception occur {repr(e)}")
+            if isinstance(e, APIError):
+                if e.code == 429:
+                    change_model()
 
     # 如果有函数调用，则传递函数调用的参数，进行图片发送
     for part in resp.candidates[0].content.parts:  # type: ignore
