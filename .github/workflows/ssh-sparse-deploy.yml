@@ -31,6 +31,7 @@ jobs:
 
     - name: generate scp upload command
       id: scp-cmd
+      # TODO 如果项目下有文件新增，则会有问题；比如项目路径下增加了一个 new_file.txt 文件，则对应远程目录下会多一个 new_file.txt/new_file.txt 文件
       run: |
         echo "SCP_FILES=" > scp_files.env
         for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
