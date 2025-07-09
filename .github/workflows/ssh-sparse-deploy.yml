@@ -31,18 +31,16 @@ jobs:
 
     - name: generate scp upload command
       id: scp-cmd
-      # TODO 如果项目下有文件新增，则会有问题；比如项目路径下增加了一个 new_file.txt 文件，则对应远程目录下会多一个 new_file.txt/new_file.txt 文件
       run: |
         echo "SCP_FILES=" > scp_files.env
         for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
-          # 只处理 forward_plugins、direct_plugins、common 目录下的文件
           if [[ "$file" == forward_plugins/* ]]; then
-            echo "'$file' => ~/forward/src/plugins/$(basename $(dirname "$file"))/$(basename $file)" >> scp_files.env
+            echo "'$file' => ~/forward/src/plugins/$(basename $(dirname "$file"))" >> scp_files.env
           elif [[ "$file" == direct_plugins/* ]]; then
-            echo "'$file' => ~/direct/src/plugins/$(basename $(dirname "$file"))/$(basename $file)" >> scp_files.env
+            echo "'$file' => ~/direct/src/plugins/$(basename $(dirname "$file"))" >> scp_files.env
           elif [[ "$file" == common/* ]]; then
-            echo "'$file' => ~/forward/common/$(basename $file)" >> scp_files.env
-            echo "'$file' => ~/direct/common/$(basename $file)" >> scp_files.env
+            echo "'$file' => ~/forward/common" >> scp_files.env
+            echo "'$file' => ~/direct/common" >> scp_files.env
           fi
         done
         echo "SCP_FILES<<EOF" > $GITHUB_ENV
