@@ -259,38 +259,38 @@ async def store_message_segment_into_milvus(event: GroupMessageEvent) -> list[li
         match ms.type:
             case "text":
                 text = ms.data["text"]
-                try:
+                if len(target) > 0:
                     part = target.pop()
                     if txt := part.text:
                         target.append(Part.from_text(text=f"{txt}{text}"))
                     else:
                         target.append(Part.from_text(text=text))
                         file_ids.append("")
-                except IndexError:
+                else:
                     target.append(Part.from_text(text=text))
                     file_ids.append("")
             case "at":
-                try:
+                if len(target) > 0:
                     part = target.pop()
                     if txt := part.text:
                         target.append(Part.from_text(text=f"{txt}@{ms.data['qq']} "))
                     else:
                         target.append(Part.from_text(text=f"@{ms.data['qq']} "))
                         file_ids.append("")
-                except IndexError:
+                else:
                     target.append(Part.from_text(text=f"@{ms.data['qq']} "))
                     file_ids.append("")
             case "face":
                 face_text = EMOJI_ID_DICT.get(ms.data["id"])
                 face_text = "" if face_text is None else f"[/{face_text}]"
-                try:
+                if len(target) > 0:
                     part = target.pop()
                     if txt := part.text:
                         target.append(Part.from_text(text=f"{txt}{face_text} "))
                     else:
                         target.append(Part.from_text(text=f"{face_text} "))
                         file_ids.append("")
-                except IndexError:
+                else:
                     target.append(Part.from_text(text=f"{face_text} "))
                     file_ids.append("")
 
