@@ -9,6 +9,7 @@ from google.genai.types import (
     Part,
     Content,
 )
+from common import retry_on_exception
 
 from .config import plugin_config
 
@@ -399,7 +400,7 @@ class MilvusVector:
                 vector_data_image_list.append(VectorDataImage(**entity))
         return vector_data_image_list
 
-
+@retry_on_exception(max_retries=5)
 async def get_text_embedding(text: str) -> list[float]:
     """获取文本的向量表示"""
     global _GEMINI_CLIENT
@@ -414,6 +415,7 @@ async def get_text_embedding(text: str) -> list[float]:
     return value if value else [0.0] * 768  # 假设向量维度为768，如果没有返回值则返回全0向量
 
 
+@retry_on_exception(max_retries=5)
 async def analysis_image_to_str_description(parts: list[Part]) -> str:
     """分析图片，返回图片分析内容"""
     global _GEMINI_CLIENT

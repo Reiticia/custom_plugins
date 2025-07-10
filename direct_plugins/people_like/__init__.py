@@ -34,6 +34,7 @@ from google.genai.types import (
 )
 from google.genai.errors import APIError
 
+from common import retry_on_exception
 from common.struct import ExpirableDict
 
 require("nonebot_plugin_localstore")
@@ -50,7 +51,13 @@ from sqlalchemy import select
 from .setting import get_value_or_default, get_blacklist
 from .config import Config, plugin_config
 from .image_send import get_file_name_of_image_will_sent_by_description_vec, SAFETY_SETTINGS
-from .vector import VectorData, _GEMINI_CLIENT, analysis_image_to_str_description, get_text_embedding, get_milvus_vector_client
+from .vector import (
+    VectorData,
+    _GEMINI_CLIENT,
+    analysis_image_to_str_description,
+    get_text_embedding,
+    get_milvus_vector_client,
+)
 from .model import GroupMsg
 from .task import get_model, change_model
 
@@ -62,6 +69,7 @@ __plugin_meta__ = PluginMetadata(
 )
 
 DRIVER = get_driver()
+
 
 class Character(Enum):
     BOT = 1
@@ -115,9 +123,9 @@ shutup = on_keyword(keywords={"闭嘴", "shut up", "shutup", "Shut Up", "Shut up
 #         logger.info("数据迁移完成")
 
 
-
-EMOJI_ID_DICT: dict[int,str] = {}
+EMOJI_ID_DICT: dict[int, str] = {}
 EMOJI_NAME_DICT: dict[str, int] = {}
+
 
 @DRIVER.on_startup
 async def init_emoji_dict():
@@ -294,7 +302,7 @@ async def store_message_segment_into_milvus(event: GroupMessageEvent) -> list[li
                     target.append(Part.from_text(text=f"@{ms.data['qq']} "))
                     file_ids.append("")
             case "face":
-                face_text= EMOJI_ID_DICT.get(ms.data['id'])
+                face_text = EMOJI_ID_DICT.get(ms.data["id"])
                 face_text = "" if face_text is None else f"[/{face_text}]"
                 try:
                     part = target.pop()
@@ -764,34 +772,18 @@ async def chat_with_gemini(
     else:
         tools.append(Tool(function_declarations=function_declarations))
 
-    model = get_model(group_id=group_id)
-
     # 至多重试 5 次
-    for _ in range(5):
-        try:
-            resp = await _GEMINI_CLIENT.aio.models.generate_content(
-                model=model,
-                contents=contents,
-                config=GenerateContentConfig(
-                    http_options=HttpOptions(timeout=6 * 60 * 1000),
-                    system_instruction=prompt,
-                    top_p=top_p,
-                    top_k=top_k,
-                    max_output_tokens=c_len,
-                    tools=tools,
-                    temperature=temperature,
-                    tool_config=ToolConfig(
-                        function_calling_config=FunctionCallingConfig(mode=FunctionCallingConfigMode.ANY)
-                    ) if not enable_search else None,
-                    safety_settings=SAFETY_SETTINGS,
-                ),
-            )
-            break
-        except Exception as e:
-            logger.error(f"exception occur {repr(e)}")
-            if isinstance(e, APIError):
-                if e.code in [429, 503]:
-                    change_model()
+    resp = await request_for_resp(
+        group_id=group_id,
+        contents=contents,
+        prompt=prompt,
+        top_p=top_p,
+        top_k=top_k,
+        c_len=c_len,
+        tools=tools,
+        temperature=temperature,
+        enable_search=enable_search,
+    )
 
     # 如果有函数调用，则传递函数调用的参数，进行图片发送
     for part in resp.candidates[0].content.parts:  # type: ignore
@@ -849,7 +841,9 @@ async def chat_with_gemini(
                                 # 如果找不到对应 face 描述的 id，则改为发送动画表情
                                 description = content
                                 logger.info(f"群{group_id}调用函数{fc.name}，参数{description}")
-                                will_send_img = await get_file_name_of_image_will_sent_by_description_vec(str(description), group_id)
+                                will_send_img = await get_file_name_of_image_will_sent_by_description_vec(
+                                    str(description), group_id
+                                )
                                 if will_send_img:
                                     logger.trace(f"群{group_id}回复图片：{will_send_img}")
                                     await on_msg.send(will_send_img)
@@ -890,7 +884,7 @@ async def chat_with_gemini(
                 logger.info(f"群{group_id}调用函数{fc.name}，参数{user_id}，{minute}分钟")
                 await mute_sb(group_id, user_id, minute)
 
-        if isinstance(part, str) and enable_search:   # type: ignore
+        if isinstance(part, str) and enable_search:  # type: ignore
             logger.debug(f"群{group_id}发送消息{part}")
             # 处理文本中包含 @123 的情况，转换成 TEXT+AT+TEXT 串
             content = str(part)
@@ -925,6 +919,7 @@ async def chat_with_gemini(
                         if not GROUP_SPEAK_DISABLE.get(group_id, False):
                             logger.info(f"群{group_id}回复消息：{message.extract_plain_text()}")
                             await on_msg.send(message)
+
 
 def extract_plain_text_from_message(msg: Message) -> str:
     res = ""
@@ -962,3 +957,43 @@ async def mute_sb(group_id: int, user_id: int, minute: int):
         if int(time.time()) >= GROUP_BAN_DICT[group_id][user_id]:
             GROUP_BAN_DICT[group_id][user_id] = int(time.time()) + minute * 60
             await get_bot().call_api("set_group_ban", group_id=group_id, user_id=user_id, duration=minute * 60)
+
+
+def change_model_when_fail(e: Exception, _attempt: int):
+    """
+    失败时修改模型
+    """
+    if isinstance(e, APIError):
+        if e.code in [429, 503]:
+            change_model()
+
+
+@retry_on_exception(max_retries=5, on_exception=change_model_when_fail)
+async def request_for_resp(
+    group_id: int,
+    contents: list,
+    prompt: str,
+    top_p: Optional[float],
+    top_k: Optional[int],
+    c_len: Optional[int],
+    tools: ToolListUnion,
+    temperature: Optional[float],
+    enable_search: bool,
+):
+    return await _GEMINI_CLIENT.aio.models.generate_content(
+        model=get_model(group_id=group_id),
+        contents=contents,
+        config=GenerateContentConfig(
+            http_options=HttpOptions(timeout=6 * 60 * 1000),
+            system_instruction=prompt,
+            top_p=top_p,
+            top_k=top_k,
+            max_output_tokens=c_len,
+            tools=tools,
+            temperature=temperature,
+            tool_config=ToolConfig(function_calling_config=FunctionCallingConfig(mode=FunctionCallingConfigMode.ANY))
+            if not enable_search
+            else None,
+            safety_settings=SAFETY_SETTINGS,
+        ),
+    )
