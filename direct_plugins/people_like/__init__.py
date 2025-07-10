@@ -766,6 +766,8 @@ async def chat_with_gemini(
         enable_search=enable_search,
     )
 
+    logger.debug(f"群{group_id}回复内容：{resp}")
+
     # 如果有函数调用，则传递函数调用的参数，进行图片发送
     for part in resp.candidates[0].content.parts:  # type: ignore
         if fc := part.function_call:
@@ -981,7 +983,7 @@ async def request_for_resp(
     model = get_model(group_id=group_id)
     thinking_config = ThinkingConfig(thinking_budget=512) if model.startswith("gemini-2.5") else None
 
-    return await _GEMINI_CLIENT.aio.models.generate_content(
+    resp =  await _GEMINI_CLIENT.aio.models.generate_content(
         model=model,
         contents=contents,
         config=GenerateContentConfig(
@@ -999,3 +1001,5 @@ async def request_for_resp(
             safety_settings=SAFETY_SETTINGS,
         ),
     )
+
+    return resp
