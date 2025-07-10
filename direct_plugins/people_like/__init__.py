@@ -1,4 +1,3 @@
-from curses.ascii import isdigit
 import logging
 import random
 import re
