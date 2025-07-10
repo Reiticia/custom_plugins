@@ -206,14 +206,12 @@ class AnalysisResult(BaseModel):
 async def analysis_image_trait(file_part: list[Part], group_id: int = 0) -> AnalysisResult:
     """分析图片是否包含违禁内容"""
 
-    model = get_value_or_default(group_id, "model", "gemini-2.0-flash")
-
     global _GEMINI_CLIENT
     prompt = "根据给出的图片内容，判断是否含有色情内容，暴力内容或日本动漫形象内容，返回指定数据类型"
     file_part.append(Part.from_text(text="分析图片是否包含色情内容，暴力内容或日本动漫形象内容"))
     contents: ContentListUnion = [Content(role="user", parts=file_part)]
     resp = await _GEMINI_CLIENT.aio.models.generate_content(
-        model=model,
+        model="gemini-2.5-flash-lite-preview-06-17",
         contents=contents,
         config=GenerateContentConfig(
             system_instruction=prompt,
