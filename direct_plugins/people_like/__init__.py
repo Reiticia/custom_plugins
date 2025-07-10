@@ -32,6 +32,7 @@ from google.genai.types import (
     FunctionCallingConfigMode,
     HttpOptions,
     UrlContext,
+    ThinkingConfig
 )
 from google.genai.errors import APIError
 
@@ -785,14 +786,10 @@ async def chat_with_gemini(
                                 if re.fullmatch(r"@\d+", part):
                                     user_id = int(part[1:])
                                     message.append(MessageSegment.at(user_id))
-                                    # AT之后通常需要一个空格，除非它是消息的末尾或者后面紧跟着非文本内容
-                                    # 这里暂时不自动加空格，依赖于模型返回的文本本身是否包含空格
                                 else:
-                                    part = part[:-1] if part.endswith("。") else part
-                                    message.append(MessageSegment.text(part.strip()))
+                                    message.append(MessageSegment.text(pretty_text_segment(message, part)))
                             continue
                         message.append(MessageSegment.at(int(content)))
-                        message.append(MessageSegment.text(" "))
                     elif returnMsg.msg_type == ReturnMsgEnum.TEXT:
                         # 处理文本中包含 @123 的情况，转换成 TEXT+AT+TEXT 串
                         content = returnMsg.content
@@ -803,9 +800,6 @@ async def chat_with_gemini(
                             if re.fullmatch(r"@\d+", part):
                                 user_id = int(part[1:])
                                 message.append(MessageSegment.at(user_id))
-                                message.append(MessageSegment.text(" "))
-                                # AT之后通常需要一个空格，除非它是消息的末尾或者后面紧跟着非文本内容
-                                # 这里暂时不自动加空格，依赖于模型返回的文本本身是否包含空格
                             elif re.fullmatch(r"\[/[^]]+\]", part):
                                 # 处理face表情的情况
                                 face_name = part[2:-1]
@@ -819,8 +813,7 @@ async def chat_with_gemini(
                                         face_id = EMOJI_NAME_DICT[face_name]
                                         message.append(MessageSegment.face(face_id))
                             else:
-                                part = part[:-1] if part.endswith("。") else part
-                                message.append(MessageSegment.text(part.strip()))
+                                message.append(MessageSegment.text(pretty_text_segment(message, part)))
                     elif returnMsg.msg_type == ReturnMsgEnum.FACE:
                         content = returnMsg.content
                         if not content.isdigit():
@@ -864,7 +857,6 @@ async def chat_with_gemini(
             if fc.name == "send_meme" and fc.args:
                 description = fc.args.get("description")
                 logger.info(f"群{group_id}调用函数{fc.name}，参数{description}")
-                # will_send_img = await get_file_name_of_image_will_sent(str(description), group_id)
                 will_send_img = await get_file_name_of_image_will_sent_by_description_vec(str(description), group_id)
                 if will_send_img:
                     logger.trace(f"群{group_id}回复图片：{will_send_img}")
@@ -880,19 +872,29 @@ async def chat_with_gemini(
             # 处理文本中包含 @123 的情况，转换成 TEXT+AT+TEXT 串
             content = str(part)
             message = Message()
-            parts = re.split(r"(@\d+|\[[^\<\>]+\<\d+\>\])", content)
+            parts = re.split(r"(@\d+|\[[^\<\>]+\<\d+\>\]|\[/[^]]+\])", content)
             for part in parts:
                 if not part:  # 跳过空字符串
                     continue
                 if re.fullmatch(r"@\d+", part):
                     user_id = int(part[1:])
                     message.append(MessageSegment.at(user_id))
-                    # AT之后通常需要一个空格，除非它是消息的末尾或者后面紧跟着非文本内容
-                    # 这里暂时不自动加空格，依赖于模型返回的文本本身是否包含空格
                 elif re.fullmatch(r"\[[^\<\>]+\<\d+\>\]", part):
                     pass
+                elif re.fullmatch(r"\[/[^]]+\]", part):
+                    # 处理face表情的情况
+                    face_name = part[2:-1]
+                    if face_name.isdigit():
+                        # 如果是数字，则直接转换为 face segment
+                        face_id = int(face_name)
+                        if face_id in EMOJI_ID_DICT:
+                            message.append(MessageSegment.face(face_id))
+                    else:
+                        if face_name in EMOJI_NAME_DICT:
+                            face_id = EMOJI_NAME_DICT[face_name]
+                            message.append(MessageSegment.face(face_id))
                 else:
-                    message.append(MessageSegment.text(part))
+                    message.append(MessageSegment.text(pretty_text_segment(message, part)))
 
                 if len(message) > 0:
                     plain_text = extract_plain_text_from_message(message)
@@ -911,6 +913,11 @@ async def chat_with_gemini(
                             logger.info(f"群{group_id}回复消息：{message.extract_plain_text()}")
                             await on_msg.send(message)
 
+
+def pretty_text_segment(msg: Message, text: str) -> str:
+    text = text[:-1] if text.endswith("。") else text
+    text = " " + text.strip() if len(msg) > 0 and msg[-1].type == "at" else text.strip()
+    return text
 
 def extract_plain_text_from_message(msg: Message) -> str:
     res = ""
@@ -971,8 +978,11 @@ async def request_for_resp(
     temperature: Optional[float],
     enable_search: bool,
 ):
+    model = get_model(group_id=group_id)
+    thinking_config = ThinkingConfig(thinking_budget=512) if model.startswith("gemini-2.5") else None
+
     return await _GEMINI_CLIENT.aio.models.generate_content(
-        model=get_model(group_id=group_id),
+        model=model,
         contents=contents,
         config=GenerateContentConfig(
             http_options=HttpOptions(timeout=6 * 60 * 1000),
@@ -985,6 +995,7 @@ async def request_for_resp(
             tool_config=ToolConfig(function_calling_config=FunctionCallingConfig(mode=FunctionCallingConfigMode.ANY))
             if not enable_search
             else None,
+            thinking_config=thinking_config,
             safety_settings=SAFETY_SETTINGS,
         ),
     )
