@@ -550,7 +550,7 @@ async def chat_with_gemini(
                 select(GroupMsg)
                 .where(GroupMsg.group_id == group_id)
                 .order_by(GroupMsg.time.desc())
-                .limit(plugin_config.query_len)
+                .limit(plugin_config.context_size)
             )
         )
     combined_list = list(query_data)
