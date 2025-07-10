@@ -806,8 +806,7 @@ async def chat_with_gemini(
                                 # AT之后通常需要一个空格，除非它是消息的末尾或者后面紧跟着非文本内容
                                 # 这里暂时不自动加空格，依赖于模型返回的文本本身是否包含空格
                             else:
-                                if part.endswith("。"):
-                                    part = part[:-1]
+                                part = part[:-1] if part.endswith("。") else part
                                 message.append(MessageSegment.text(part))
                     elif returnMsg.msg_type == ReturnMsgEnum.FACE:
                         content = returnMsg.content
