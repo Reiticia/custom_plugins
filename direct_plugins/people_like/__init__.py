@@ -787,9 +787,8 @@ async def chat_with_gemini(
                                     # AT之后通常需要一个空格，除非它是消息的末尾或者后面紧跟着非文本内容
                                     # 这里暂时不自动加空格，依赖于模型返回的文本本身是否包含空格
                                 else:
-                                    if part.endswith("。"):
-                                        part = part[:-1]
-                                    message.append(MessageSegment.text(part))
+                                    part = part[:-1] if part.endswith("。") else part
+                                    message.append(MessageSegment.text(part.strip()))
                             continue
                         message.append(MessageSegment.at(int(content)))
                         message.append(MessageSegment.text(" "))
@@ -803,11 +802,12 @@ async def chat_with_gemini(
                             if re.fullmatch(r"@\d+", part):
                                 user_id = int(part[1:])
                                 message.append(MessageSegment.at(user_id))
+                                message.append(MessageSegment.text(" "))
                                 # AT之后通常需要一个空格，除非它是消息的末尾或者后面紧跟着非文本内容
                                 # 这里暂时不自动加空格，依赖于模型返回的文本本身是否包含空格
                             else:
                                 part = part[:-1] if part.endswith("。") else part
-                                message.append(MessageSegment.text(part))
+                                message.append(MessageSegment.text(part.strip()))
                     elif returnMsg.msg_type == ReturnMsgEnum.FACE:
                         content = returnMsg.content
                         if not content.isdigit():
@@ -905,11 +905,11 @@ def extract_plain_text_from_message(msg: Message) -> str:
         match ms.type:
             case "text":
                 text = ms.data["text"]
-                res += text
+                res += text.strip()
             case "at":
                 res += f"@{ms.data['qq']} "
             case "face":
-                res += f"[/{EMOJI_ID_DICT.get(ms.data['id'])}] "
+                res += f"[/{EMOJI_ID_DICT.get(ms.data['id'])}]"
             case _:
                 pass
     return res
