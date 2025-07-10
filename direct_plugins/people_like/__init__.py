@@ -301,7 +301,7 @@ async def store_message_segment_into_milvus(event: GroupMessageEvent) -> list[li
                     data = await _HTTP_CLIENT.get(ms.data["url"])
                     file_id = str(ms.data["file"])
                     file_ids.append(file_id)
-                    # TODO 写入本地路径 ALL_IMAGE_DIR / file_id
+                    # 写入本地路径 ALL_IMAGE_DIR / file_id
                     file_path = ALL_IMAGE_FILE_CACHE_DIR / file_id
                     file_path.parent.mkdir(parents=True, exist_ok=True)  # Ensure directory exists
                     async with aiofiles.open(file_path, "wb") as f:
