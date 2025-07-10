@@ -4,7 +4,7 @@ import re
 import time
 import json
 import aiofiles
-from httpx import AsyncClient, get
+from httpx import AsyncClient
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -102,27 +102,6 @@ GROUP_SPEAK_DISABLE: dict[int, bool] = {}
 shutup = on_keyword(keywords={"闭嘴", "shut up", "shutup", "Shut Up", "Shut up", "滚", "一边去"}, rule=to_me())
 
 
-# @DRIVER.on_startup
-# async def _():
-#     milvus_client = await get_milvus_vector_client()
-#     data_list =[data.model_dump() for data in await milvus_client.query_all_data()]
-#     msg_data_list = []
-#     for data in data_list:
-#         del data["id"]
-#         del data["vec"]
-#         msg_data_list.append(GroupMsg(**data))
-
-#         # 分批插入数据到数据库
-#         if len(msg_data_list) >= 200:
-#             async with get_session() as session:
-#                 session.add_all(msg_data_list)
-#                 await session.commit()
-#                 logger.info(f"已插入 {len(msg_data_list)} 条消息数据到数据库")
-#             msg_data_list.clear()
-#     else:
-#         logger.info("数据迁移完成")
-
-
 EMOJI_ID_DICT: dict[int, str] = {}
 EMOJI_NAME_DICT: dict[str, int] = {}
 
@@ -172,8 +151,8 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
     global GROUP_SPEAK_DISABLE
     # 群组id
     gid = event.group_id
-    # nickname = await get_bot_nickname_of_group(gid)
-    nickname = list(bot.config.nickname)[0]
+    group_remark = await get_bot_nickname_of_group(gid)
+    nickname = list(bot.config.nickname)[0] if len(group_remark) > 5 else group_remark
     # 黑名单内，不检查
     if str(gid) in get_blacklist():
         logger.warning(f"群{gid}消息黑名单内，不处理")
