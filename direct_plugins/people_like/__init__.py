@@ -1,3 +1,4 @@
+from curses.ascii import isdigit
 import logging
 import random
 import re
@@ -795,7 +796,7 @@ async def chat_with_gemini(
                     elif returnMsg.msg_type == ReturnMsgEnum.TEXT:
                         # 处理文本中包含 @123 的情况，转换成 TEXT+AT+TEXT 串
                         content = returnMsg.content
-                        parts = re.split(r"(@\d+)", content)
+                        parts = re.split(r"(@\d+|\[/[^]]+\])", content)
                         for part in parts:
                             if not part:  # 跳过空字符串
                                 continue
@@ -805,6 +806,18 @@ async def chat_with_gemini(
                                 message.append(MessageSegment.text(" "))
                                 # AT之后通常需要一个空格，除非它是消息的末尾或者后面紧跟着非文本内容
                                 # 这里暂时不自动加空格，依赖于模型返回的文本本身是否包含空格
+                            elif re.fullmatch(r"\[/[^]]+\]", part):
+                                # 处理face表情的情况
+                                face_name = part[2:-1]
+                                if face_name.isdigit():
+                                    # 如果是数字，则直接转换为 face segment
+                                    face_id = int(face_name)
+                                    if face_id in EMOJI_ID_DICT:
+                                        message.append(MessageSegment.face(face_id))
+                                else:
+                                    if face_name in EMOJI_NAME_DICT:
+                                        face_id = EMOJI_NAME_DICT[face_name]
+                                        message.append(MessageSegment.face(face_id))
                             else:
                                 part = part[:-1] if part.endswith("。") else part
                                 message.append(MessageSegment.text(part.strip()))
