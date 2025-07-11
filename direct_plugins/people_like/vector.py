@@ -234,6 +234,7 @@ class MilvusVector:
         )
         return [VectorData(**item) for item in results]
 
+    @typing_extensions.deprecated("This method is not used.")
     async def query_self_data(self, group_id: int = 0) -> list[VectorData]:
         today_zero_time = int(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
         exprs = []
