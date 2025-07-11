@@ -163,7 +163,7 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
     # 8位及以上数字字母组合为无意义消息，可能为密码或邀请码之类，过滤不做处理
     if re.match(r"^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$", em.extract_plain_text()):
         return
-    vec_data = await store_message_segment_into_milvus(event)
+    _vec_data = await store_message_segment_into_milvus(event)
 
     logger.debug(f"receive: {em}")
 
@@ -214,7 +214,7 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
         and event.user_id != event.self_id
     ):
         logger.info(f"reply: {em}")
-        await chat_with_gemini(gid, nickname, vec_data, await get_bot_gender(), await is_bot_admin(gid))
+        await chat_with_gemini(gid, nickname, await get_bot_gender(), await is_bot_admin(gid))
 
 
 def convert_to_group_message_event(event: Event) -> GroupMessageEvent:
@@ -392,7 +392,6 @@ async def store_message_segment_into_milvus(event: GroupMessageEvent) -> list[li
         session.add_all(msg_data_list)
         await session.commit()
 
-    logger.debug(f"{type(result)}")
     return result
 
 
@@ -536,14 +535,12 @@ class ReturnMsg(BaseModel):
 async def chat_with_gemini(
     group_id: int,
     bot_nickname: str = "",
-    vec_data: list[list[float]] = [],
     bot_gender: Optional[str] = None,
     is_admin: bool = False,
 ):
     """与gemini聊天"""
     global _GEMINI_CLIENT, ALL_IMAGE_FILE_CACHE_DIR
     bot = get_bot()
-    milvus_client = await get_milvus_vector_client()
 
     async with get_session() as session:
         query_data = list(
@@ -559,9 +556,9 @@ async def chat_with_gemini(
     for item in combined_list:
         unique_dict[item.id] = item  # 使用 item.id 作为键，item 对象作为值
     data: list[GroupMsg] = list(unique_dict.values())  # 返回字典的值的列表 (元素对象)
-    if len(data) < 5:
+    if len(data) < int(plugin_config.context_size / 4):
         # 如果没有数据，则不进行回复
-        logger.info(f"群{group_id}查询结果少于5条，不进行回复")
+        logger.info(f"群{group_id}查询结果少于{int(plugin_config.context_size / 4)}条，不进行回复")
         return
 
     data: list[GroupMsg] = sorted(data, key=lambda x: x.time, reverse=False)  # type: ignore
@@ -815,7 +812,7 @@ async def chat_with_gemini(
                         group_id, False
                     ):
                         # 先睡，睡完再发
-                        await sleep_sometime(len(plain_text))
+                        # await sleep_sometime(len(plain_text))
                         if not GROUP_SPEAK_DISABLE.get(group_id, False):
                             logger.info(f"群{group_id}回复消息：{message.extract_plain_text()}")
                             await on_msg.send(message)
@@ -874,7 +871,7 @@ async def chat_with_gemini(
                         group_id, False
                     ):
                         # 先睡，睡完再发
-                        await sleep_sometime(len(plain_text))
+                        # await sleep_sometime(len(plain_text))
                         if not GROUP_SPEAK_DISABLE.get(group_id, False):
                             logger.info(f"群{group_id}回复消息：{message.extract_plain_text()}")
                             await on_msg.send(message)

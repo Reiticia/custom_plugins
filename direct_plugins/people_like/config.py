@@ -23,7 +23,7 @@ class Config(BaseModel):
     """复读概率"""
     context_size: int = 40
     """上下文长度"""
-    one_word_max_used_time_of_second: int = 1
+    one_word_max_used_time_of_second: int = 0
     """一个字最多花费多少时间"""
     image_analyze: bool = True
     """是否开启图片分析"""

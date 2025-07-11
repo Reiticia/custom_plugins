@@ -7,7 +7,7 @@ from nonebot.rule import to_me
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent
 from aiofiles import open
 from nonebot_plugin_waiter import prompt, suggest
-from typing import Optional, TypeVar, TypedDict, Any
+from typing import TypeVar, TypedDict, Any
 from .config import plugin_config
 
 driver = get_driver()
