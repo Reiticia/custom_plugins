@@ -1,3 +1,4 @@
+from time import sleep
 from typing import Optional, Callable
 from nonebot import require
 import random
@@ -20,7 +21,7 @@ def generate_random_string(length: int) -> str:
     return "".join(random.choices(string.ascii_letters + string.digits, k=length))
 
 
-def retry_on_exception(max_retries: int = 3, exceptions=(Exception,), on_exception: Optional[Callable] = None):
+def retry_on_exception(max_retries: int = 3, sleep_time: int = 0, exceptions=(Exception,), on_exception: Optional[Callable] = None):
     """
     装饰器：指定重试次数，异常时重试，次数用完抛异常
     :param max_retries: 最大重试次数
@@ -42,6 +43,7 @@ def retry_on_exception(max_retries: int = 3, exceptions=(Exception,), on_excepti
                                 await on_exception(e, attempt)
                             else:
                                 on_exception(e, attempt)
+                            await asyncio.sleep(sleep_time)
                         if attempt == max_retries - 1:
                             raise
 
@@ -59,6 +61,7 @@ def retry_on_exception(max_retries: int = 3, exceptions=(Exception,), on_excepti
                                 asyncio.run(on_exception(e, attempt))
                             else:
                                 on_exception(e, attempt)
+                            sleep(sleep_time)
                         if attempt == max_retries - 1:
                             raise
 

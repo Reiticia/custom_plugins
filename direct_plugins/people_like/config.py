@@ -39,6 +39,8 @@ class Config(BaseModel):
     """搜索相关消息的数量"""
     self_len: int = 10
     """查询自身发送消息的数量"""
+    should_reply_len: int = 5
+    """距离被回复的消息已经过去多少条消息，用于判断是否需要使用reply提及回复消息"""
     milvus: MilvusConfig = Field(default_factory=MilvusConfig)
     """Milvus 配置"""
 

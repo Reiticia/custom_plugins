@@ -162,8 +162,7 @@ async def send_image(file_name: str, group_id: int, ext_data: Optional[ImageSend
                     },
                 )
         else:
-            session = get_session()
-            async with session.begin():
+            async with get_session() as session:
                 res = await session.execute(select(ImageSender).where(ImageSender.name == file_name))
                 first = res.scalars().first()
                 if first is None:
@@ -309,8 +308,7 @@ async def add_image(event: GroupMessageEvent):
                     file=file_path, config=UploadFileConfig(mime_type=mime_type)
                 )
                 # 插入数据库
-                session = get_session()
-                async with session.begin():
+                async with get_session() as session:
                     res = await session.execute(select(ImageSender).where(ImageSender.name == file_name))
                     first = res.scalars().first()
                     if first is None:  # 如果原来不存在，则插入
@@ -409,8 +407,7 @@ async def upload_image() -> Optional[str]:
         async with semaphore:
             mime_type = get_mime_type(local_file)
             need_upload_name = ""
-            search_session = get_session()
-            async with search_session.begin():
+            async with get_session() as search_session:
                 res = await search_session.execute(select(ImageSender).where(ImageSender.name == local_file))
                 first = res.scalars().first()
                 now = int(time.time())
@@ -438,8 +435,7 @@ async def upload_image() -> Optional[str]:
                 try:
                     file = await _GEMINI_CLIENT.aio.files.upload(file=file_path, config=UploadFileConfig(mime_type=mime_type))
                     _FILES.add(local_file)
-                    update_session = get_session()
-                    async with update_session.begin():
+                    async with get_session() as update_session:
                         await update_session.execute(
                             update(ImageSender)
                             .where(ImageSender.name == local_file)
@@ -487,8 +483,7 @@ async def who_send_image(msg: Message = CommandArg()):
     if not img_name:
         await who_send.finish("请指定图片名称")
 
-    session = get_session()
-    async with session.begin():
+    async with get_session() as session:
         res = await session.execute(select(ImageSender).where(ImageSender.name == img_name))
         first = res.scalars().first()
         if first is None:
@@ -513,8 +508,7 @@ count_image = on_command("图片统计", aliases={"图片数量", "图片总数"
 
 @count_image.handle()
 async def count_image_handle():
-    session = get_session()
-    async with session.begin():
+    async with get_session() as session:
         res = await session.execute(select(ImageSender))
         all = res.scalars().fetchall()
         await count_image.send(str(len(all)))
@@ -528,9 +522,8 @@ def get_mime_type(filename: str) -> Literal["image/jpeg", "image/png"]:
 
 @driver.on_bot_connect
 async def migrate_imagesender_to_milvus():
-    select_session = get_session()
-    res = await select_session.scalars(select(ImageSender))
-    res = list(res)
+    async with get_session() as select_session:
+        res = list(await select_session.scalars(select(ImageSender)))
     
     logger.debug(f"共需要迁移{len(res)}条数据")
     milvus_client = await get_milvus_vector_client()
@@ -593,8 +586,7 @@ async def migrate_imagesender_to_milvus():
                 else:
                     logger.warning(f"文件{file_name}不存在，无法删除")
             
-        delete_session = get_session()
-        async with delete_session.begin():
+        async with get_session() as delete_session:
             count = await delete_session.execute(delete(ImageSender).where(ImageSender.name.in_(fail_files)))
             logger.info(f"删除数据库中{count.rowcount}条迁移失败的数据")
         logger.info(f"{skip_count}条数据跳过迁移，{error_count}条数据迁移失败，{success_count}条数据迁移成功")

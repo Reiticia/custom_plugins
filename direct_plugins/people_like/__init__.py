@@ -49,7 +49,7 @@ from nonebot_plugin_orm import get_session
 
 import nonebot_plugin_localstore as store
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from .setting import get_value_or_default, get_blacklist
 from .config import Config, plugin_config
 from .image_send import get_file_name_of_image_will_sent_by_description_vec, SAFETY_SETTINGS
@@ -214,7 +214,7 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
         and event.user_id != event.self_id
     ):
         logger.info(f"reply: {em}")
-        await chat_with_gemini(gid, nickname, await get_bot_gender(), await is_bot_admin(gid))
+        await chat_with_gemini(event.message_id, gid, nickname, await get_bot_gender(), await is_bot_admin(gid))
 
 
 def convert_to_group_message_event(event: Event) -> GroupMessageEvent:
@@ -533,6 +533,7 @@ class ReturnMsg(BaseModel):
 
 
 async def chat_with_gemini(
+    message_id: int,
     group_id: int,
     bot_nickname: str = "",
     bot_gender: Optional[str] = None,
@@ -811,8 +812,10 @@ async def chat_with_gemini(
                     if all(ignore not in plain_text for ignore in words) and not GROUP_SPEAK_DISABLE.get(
                         group_id, False
                     ):
-                        # 先睡，睡完再发
-                        # await sleep_sometime(len(plain_text))
+                        # 判断是否需要提及消息
+                        should_reply = await check_should_reply(message_id=message_id, group_id=group_id)
+                        if should_reply:
+                            message.insert(0, MessageSegment.reply(message_id))
                         if not GROUP_SPEAK_DISABLE.get(group_id, False):
                             logger.info(f"群{group_id}回复消息：{message.extract_plain_text()}")
                             await on_msg.send(message)
@@ -870,11 +873,32 @@ async def chat_with_gemini(
                     if all(ignore not in plain_text for ignore in words) and not GROUP_SPEAK_DISABLE.get(
                         group_id, False
                     ):
-                        # 先睡，睡完再发
-                        # await sleep_sometime(len(plain_text))
+                        # 判断是否需要提及消息
+                        should_reply = await check_should_reply(message_id=message_id, group_id=group_id)
+                        if should_reply:
+                            message.insert(0, MessageSegment.reply(message_id))
                         if not GROUP_SPEAK_DISABLE.get(group_id, False):
                             logger.info(f"群{group_id}回复消息：{message.extract_plain_text()}")
                             await on_msg.send(message)
+
+
+async def check_should_reply(message_id: int, group_id: int) -> bool:
+    """
+    查询GroupMsg表中指定 group_id 的所有记录中，time 大于指定 message_id 那个记录的 time 的数量。
+    如果数量为小于指定数量，说明消息回复及时，不使用reply语法，否则reply原消息
+    合并为一次查询完成。
+    """
+    async with get_session() as session:
+        # 一次查询获取指定消息的时间和比该时间更晚的消息数量
+        subquery = select(GroupMsg.time).where(GroupMsg.message_id == message_id).limit(1).scalar_subquery()
+        count = await session.scalar(
+            select(func.count()).where(
+                GroupMsg.group_id == group_id,
+                GroupMsg.time > subquery
+            )
+        )
+        # 如果小于指定长度，则不用reply原消息
+        return count is not None and count >= plugin_config.should_reply_len
 
 
 def pretty_text_segment(msg: Message, text: str) -> str:
