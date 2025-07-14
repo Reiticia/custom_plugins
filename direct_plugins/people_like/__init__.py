@@ -486,13 +486,13 @@ async def is_bot_admin(group_id: int) -> bool:
     bot = get_bot()
     if isinstance(bot, Bot):
         bot_id = int(bot.self_id)
-        permission = _BOT_PERMISSION.get(bot_id)
+        permission = _BOT_PERMISSION.get(group_id)
         if permission is None:
-            new_permission = await bot.call_api("get_group_member_info", group_id=group_id, user_id=bot_id)
-            new_permission = new_permission.get("role") in ["owner", "admin"]
+            user_info = await bot.call_api("get_group_member_info", group_id=group_id, user_id=bot_id)
+            permission = user_info.get("role") in ["owner", "admin"]
             # 缓存一天
-            _BOT_PERMISSION.set(bot_id, new_permission, 60 * 60 * 24)
-            return new_permission
+            _BOT_PERMISSION.set(group_id, permission, 60 * 60 * 24)
+            return permission
         else:
             return permission
     return False
@@ -572,7 +572,7 @@ async def chat_with_gemini(
 
     if is_debug_mode:
         print(f"群组 {group_id} 当前选取为上下文的消息内容为")
-        print({line.message_id: line.content for line in data})
+        print({line.message_id: line.file_id if line.file_id and len(line.file_id) > 0 else line.content  for line in data})
 
     context: list[ChatMsg] = []
     for item in data:
@@ -619,7 +619,7 @@ async def chat_with_gemini(
                     .order_by(GroupMsg.time.desc())
                 )
             )
-        self_has_speak = [data.content for data in query_self_data]
+        self_has_speak = [data.file_id if data.file_id and len(data.file_id) > 0 else data.content for data in query_self_data]
     except Exception as e:
         logger.error(e)
         self_has_speak = []
@@ -729,7 +729,7 @@ async def chat_with_gemini(
     )
 
     logger.debug(f"群{group_id}回复内容：{resp}")
-
+    
     # 如果有函数调用，则传递函数调用的参数，进行图片发送
     for part in resp.candidates[0].content.parts:  # type: ignore
         if fc := part.function_call:

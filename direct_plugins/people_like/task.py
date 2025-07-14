@@ -19,9 +19,7 @@ def reset_model_index_minute():
     pre_model = ALL_MODEL[CURRENT_MODEL_INDEX]
     for i in range(0, len(ALL_MODEL)):
         CURRENT_MODEL_INDEX = i
-        if DAILY_FAIL_COUNT[CURRENT_MODEL_INDEX] >= 3:
-            logger.info(f"模型{ALL_MODEL[CURRENT_MODEL_INDEX]}已在今日内禁用")
-        else:
+        if DAILY_FAIL_COUNT[CURRENT_MODEL_INDEX] < 3:
             if pre_model != ALL_MODEL[CURRENT_MODEL_INDEX]:
                 logger.info(f"模型{pre_model}已禁用，切换到模型{ALL_MODEL[CURRENT_MODEL_INDEX]}")
             break
