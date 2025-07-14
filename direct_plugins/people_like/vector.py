@@ -212,6 +212,7 @@ class MilvusVector:
         )
         return [VectorData(**item) for item in results]
     
+    @typing_extensions.deprecated("This method is not used.")
     async def query_all_data(self) -> list[VectorData]:
         """查询所有数据"""
         await self.async_client.load_collection(collection_name=self.collection_name)

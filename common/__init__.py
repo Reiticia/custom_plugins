@@ -25,6 +25,7 @@ def retry_on_exception(max_retries: int = 3, sleep_time: int = 0, exceptions=(Ex
     """
     装饰器：指定重试次数，异常时重试，次数用完抛异常
     :param max_retries: 最大重试次数
+    :param sleep_time: 重试间隔时间，单位秒
     :param exceptions: 需要捕获的异常类型
     :param on_exception: 捕获异常时额外执行的函数，签名为 func(e, attempt) e 是异常对象，attempt 是当前尝试次数
     """
