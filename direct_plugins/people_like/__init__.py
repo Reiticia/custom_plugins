@@ -32,7 +32,7 @@ from google.genai.types import (
     FunctionCallingConfigMode,
     HttpOptions,
     UrlContext,
-    ThinkingConfig
+    ThinkingConfig,
 )
 from google.genai.errors import APIError
 
@@ -743,41 +743,13 @@ async def chat_with_gemini(
                     if returnMsg.msg_type == ReturnMsgEnum.AT:
                         content = returnMsg.content
                         if not content.isdigit():
-                            parts = re.split(r"(@\d+)", content)
-                            for part in parts:
-                                if not part:  # 跳过空字符串
-                                    continue
-                                if re.fullmatch(r"@\d+", part):
-                                    user_id = int(part[1:])
-                                    message.append(MessageSegment.at(user_id))
-                                else:
-                                    message.append(MessageSegment.text(pretty_text_segment(message, part)))
+                            await process_text_segment(message, content, group_id)
                             continue
                         message.append(MessageSegment.at(int(content)))
                     elif returnMsg.msg_type == ReturnMsgEnum.TEXT:
                         # 处理文本中包含 @123 的情况，转换成 TEXT+AT+TEXT 串
                         content = returnMsg.content
-                        parts = re.split(r"(@\d+|\[/[^]]+\])", content)
-                        for part in parts:
-                            if not part:  # 跳过空字符串
-                                continue
-                            if re.fullmatch(r"@\d+", part):
-                                user_id = int(part[1:])
-                                message.append(MessageSegment.at(user_id))
-                            elif re.fullmatch(r"\[/[^]]+\]", part):
-                                # 处理face表情的情况
-                                face_name = part[2:-1]
-                                if face_name.isdigit():
-                                    # 如果是数字，则直接转换为 face segment
-                                    face_id = int(face_name)
-                                    if face_id in EMOJI_ID_DICT:
-                                        message.append(MessageSegment.face(face_id))
-                                else:
-                                    if face_name in EMOJI_NAME_DICT:
-                                        face_id = EMOJI_NAME_DICT[face_name]
-                                        message.append(MessageSegment.face(face_id))
-                            else:
-                                message.append(MessageSegment.text(pretty_text_segment(message, part)))
+                        await process_text_segment(message, content, group_id)
                     elif returnMsg.msg_type == ReturnMsgEnum.FACE:
                         content = returnMsg.content
                         if not content.isdigit():
@@ -835,51 +807,75 @@ async def chat_with_gemini(
 
         if isinstance(part, str) and enable_search:  # type: ignore
             logger.debug(f"群{group_id}发送消息{part}")
-            # 处理文本中包含 @123 的情况，转换成 TEXT+AT+TEXT 串
             content = str(part)
             message = Message()
-            parts = re.split(r"(@\d+|\[[^\<\>]+\<\d+\>\]|\[/[^]]+\])", content)
-            for part in parts:
-                if not part:  # 跳过空字符串
-                    continue
-                if re.fullmatch(r"@\d+", part):
-                    user_id = int(part[1:])
-                    message.append(MessageSegment.at(user_id))
-                elif re.fullmatch(r"\[[^\<\>]+\<\d+\>\]", part):
-                    pass
-                elif re.fullmatch(r"\[/[^]]+\]", part):
-                    # 处理face表情的情况
-                    face_name = part[2:-1]
-                    if face_name.isdigit():
-                        # 如果是数字，则直接转换为 face segment
-                        face_id = int(face_name)
-                        if face_id in EMOJI_ID_DICT:
-                            message.append(MessageSegment.face(face_id))
-                    else:
-                        if face_name in EMOJI_NAME_DICT:
-                            face_id = EMOJI_NAME_DICT[face_name]
-                            message.append(MessageSegment.face(face_id))
-                else:
-                    message.append(MessageSegment.text(pretty_text_segment(message, part)))
+            await process_text_segment(message, content, group_id)
 
-                if len(message) > 0:
-                    plain_text = extract_plain_text_from_message(message)
+            if len(message) > 0:
+                plain_text = extract_plain_text_from_message(message)
 
-                    if is_debug_mode:
-                        print(f"即将向群组 {group_id} 发送消息")
-                        print(plain_text)
-                        print("被禁止出现在句子中的词汇或短语")
-                        print(words)
-                    if all(ignore not in plain_text for ignore in words) and not GROUP_SPEAK_DISABLE.get(
-                        group_id, False
-                    ):
-                        # 判断是否需要提及消息
-                        should_reply = await check_should_reply(message_id=message_id, group_id=group_id)
-                        if should_reply:
-                            message.insert(0, MessageSegment.reply(message_id))
-                        if not GROUP_SPEAK_DISABLE.get(group_id, False):
-                            logger.info(f"群{group_id}回复消息：{message.extract_plain_text()}")
-                            await on_msg.send(message)
+                if is_debug_mode:
+                    print(f"即将向群组 {group_id} 发送消息")
+                    print(plain_text)
+                    print("被禁止出现在句子中的词汇或短语")
+                    print(words)
+                if all(ignore not in plain_text for ignore in words) and not GROUP_SPEAK_DISABLE.get(group_id, False):
+                    # 判断是否需要提及消息
+                    should_reply = await check_should_reply(message_id=message_id, group_id=group_id)
+                    if should_reply:
+                        message.insert(0, MessageSegment.reply(message_id))
+                    if not GROUP_SPEAK_DISABLE.get(group_id, False):
+                        logger.info(f"群{group_id}回复消息：{message.extract_plain_text()}")
+                        await on_msg.send(message)
+
+
+async def process_text_segment(message: Message, text_content: str, group_id: int):
+    """处理发送 Text 文本消息可能出现的各种异常情况
+
+    Args:
+        message (Message): 将要发送的消息内容
+        text_content (str): 原始文本消息
+        group_id (int): 群组id
+    """
+    parts = re.split(r"(@\d+|\[[^\<\>]+\<\d+\>\]|\[/[^]]+\])", text_content)
+    for part in parts:
+        if not part:  # 跳过空字符串
+            continue
+        if re.fullmatch(r"@\d+", part):
+            # 处理 at 消息情况
+            user_id = int(part[1:])
+            message.append(MessageSegment.at(user_id))
+            continue
+        if re.fullmatch(r"\[[^\<\>]+\<\d+\>\]", part):
+            # 处理消息错误情况
+            continue
+        if re.fullmatch(r"\[/[^]]+\]", part):
+            # 处理face表情的情况
+            face_name = part[2:-1]
+            if "FACE:" in face_name or "face:" in face_name:
+                # AI调用特殊情况 [FACE:12] 类似消息
+                face_name = face_name[6:-1]
+            if face_name.isdigit():
+                 # 如果是数字，则直接转换为 face segment
+                face_id = int(face_name)
+                if face_id in EMOJI_ID_DICT:
+                    message.append(MessageSegment.face(face_id))
+                continue
+            if face_name in EMOJI_NAME_DICT:
+                # 如果是文本且在表情字典中
+                face_id = EMOJI_NAME_DICT[face_name]
+                message.append(MessageSegment.face(face_id))
+                continue
+            # 否则，发送meme图片
+            description = face_name
+            logger.info(f"群{group_id}调用函数send_meme，参数{description}")
+            will_send_img = await get_file_name_of_image_will_sent_by_description_vec(str(description), group_id)
+            if will_send_img:
+                logger.trace(f"群{group_id}回复图片：{will_send_img}")
+                await on_msg.send(will_send_img)
+
+        else:
+            message.append(MessageSegment.text(pretty_text_segment(message, part)))
 
 
 async def check_should_reply(message_id: int, group_id: int) -> bool:
@@ -892,10 +888,7 @@ async def check_should_reply(message_id: int, group_id: int) -> bool:
         # 一次查询获取指定消息的时间和比该时间更晚的消息数量
         subquery = select(GroupMsg.time).where(GroupMsg.message_id == message_id).limit(1).scalar_subquery()
         count = await session.scalar(
-            select(func.count()).where(
-                GroupMsg.group_id == group_id,
-                GroupMsg.time > subquery
-            )
+            select(func.count()).where(GroupMsg.group_id == group_id, GroupMsg.time > subquery)
         )
         # 如果小于指定长度，则不用reply原消息
         return count is not None and count >= plugin_config.should_reply_len
@@ -905,6 +898,7 @@ def pretty_text_segment(msg: Message, text: str) -> str:
     text = text[:-1] if text.endswith("。") else text
     text = " " + text.strip() if len(msg) > 0 and msg[-1].type == "at" else text.strip()
     return text
+
 
 def extract_plain_text_from_message(msg: Message) -> str:
     res = ""
@@ -968,7 +962,7 @@ async def request_for_resp(
     model = get_model(group_id=group_id)
     thinking_config = ThinkingConfig(thinking_budget=512) if model.startswith("gemini-2.5") else None
 
-    resp =  await _GEMINI_CLIENT.aio.models.generate_content(
+    resp = await _GEMINI_CLIENT.aio.models.generate_content(
         model=model,
         contents=contents,
         config=GenerateContentConfig(
