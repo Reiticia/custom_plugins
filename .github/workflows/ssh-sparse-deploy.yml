@@ -20,11 +20,12 @@ on:
       - 'common/**'
 
 jobs:
-  build:
+  changed-files:
     runs-on: ubuntu-latest
+    outputs:
+      scp_files: ${{ steps.scp-cmd.outputs.SCP_FILES }}
     steps:
     - uses: actions/checkout@v3
-
     - name: get changed files
       id: changed-files
       uses: tj-actions/changed-files@v46
@@ -43,38 +44,41 @@ jobs:
             echo "'$file' => ~/direct/common" >> scp_files.env
           fi
         done
-        echo "SCP_FILES<<EOF" > $GITHUB_ENV
-        cat scp_files.env >> $GITHUB_ENV
-        echo "EOF" >> $GITHUB_ENV
-    - name: scp ssh pipelines
-      uses: cross-the-world/ssh-scp-ssh-pipelines@latest
-      if: ${{ ! endsWith(env.SCP_FILES, 'SCP_FILES=') }}
-      with:
-        host: ${{ secrets.DC_HOST }}
-        user: ${{ secrets.DC_USER }}
-        key: ${{ secrets.DC_KEY }}
-        first_ssh: |
-          kill $(cat ~/forward/pid) || true
-          kill $(cat ~/direct/pid) || true
-        scp: ${{ env.SCP_FILES }}
-        last_ssh: |
-          cd ~/forward
-          source ~/forward/.venv/bin/activate
-          nohup ~/.local/bin/nb orm upgrade
-          nohup ~/.local/bin/nb run >> ~/forward/logs/forward.log 2>&1 & echo $! > ~/forward/pid;
-          cd ~/direct
-          source ~/direct/.venv/bin/activate
-          nohup ~/.local/bin/nb orm upgrade
-          nohup ~/.local/bin/nb run >> ~/direct/logs/direct.log 2>&1 & echo $! > ~/direct/pid;
-          # 检查端口是否有进程监听
-          sleep 10
-          if pgrep -f $(cat ~/forward/pid) > /dev/null; then
-              echo "进程 forward 正在运行"
-          else
-              echo "进程 forward 不存在"
-          fi
-          if pgrep -f $(cat ~/direct/pid) > /dev/null; then
-              echo "进程 direct 正在运行"
-          else
-              echo "进程 direct 不存在"
-          fi
+        echo "SCP_FILES<<EOF" > $GITHUB_OUTPUT
+        cat scp_files.env >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+  scp:
+    name: scp files to remote
+    needs: changed-files
+    uses: ./.github/workflows/python-runner.yml
+    if: ${{ ! endsWith(needs.changed-files.outputs.scp_files, 'SCP_FILES=') }}
+    secrets:
+      host: ${{ secrets.DC_HOST }}
+      user: ${{ secrets.DC_USER }}
+      key: ${{ secrets.DC_KEY }}
+    with:
+      pre_ssh: |
+        kill $(cat ~/forward/pid) || true
+        kill $(cat ~/direct/pid) || true
+      scp: ${{ needs.changed-files.outputs.scp_files }}
+      post_ssh: |
+        cd ~/forward
+        source ~/forward/.venv/bin/activate
+        nohup ~/.local/bin/nb orm upgrade
+        nohup ~/.local/bin/nb run >> ~/forward/logs/forward.log 2>&1 & echo $! > ~/forward/pid;
+        cd ~/direct
+        source ~/direct/.venv/bin/activate
+        nohup ~/.local/bin/nb orm upgrade
+        nohup ~/.local/bin/nb run >> ~/direct/logs/direct.log 2>&1 & echo $! > ~/direct/pid;
+        # 检查端口是否有进程监听
+        sleep 10
+        if pgrep -f $(cat ~/forward/pid) > /dev/null; then
+            echo "进程 forward 正在运行"
+        else
+            echo "进程 forward 不存在"
+        fi
+        if pgrep -f $(cat ~/direct/pid) > /dev/null; then
+            echo "进程 direct 正在运行"
+        else
+            echo "进程 direct 不存在"
+        fi

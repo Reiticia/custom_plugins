@@ -111,6 +111,7 @@ EMOJI_NAME_DICT: dict[str, int] = {}
 @DRIVER.on_startup
 async def init_emoji_dict():
     """初始化表情字典"""
+    logger.info("正在加载表情字典...")
     global EMOJI_ID_DICT, EMOJI_NAME_DICT
     if not EMOJI_ID_DICT:
         EMOJI_ID_DICT = load_emoji_txt_to_dict()

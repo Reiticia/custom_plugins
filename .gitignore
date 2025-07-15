@@ -149,3 +149,4 @@ template/
 /data
 /config
 !/emoji.py
+!/runscp.py
