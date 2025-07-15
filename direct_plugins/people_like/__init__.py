@@ -961,7 +961,7 @@ async def request_for_resp(
     enable_search: bool,
 ):
     model = get_model(group_id=group_id)
-    thinking_config = ThinkingConfig(thinking_budget=512) if model.startswith("gemini-2.5") else None
+    thinking_config = ThinkingConfig(thinking_budget=1024) if model.startswith("gemini-2.5") else None
 
     resp = await _GEMINI_CLIENT.aio.models.generate_content(
         model=model,
@@ -992,7 +992,7 @@ def get_prompt(bot_nickname: str, bot_gender: Optional[str], extra_prompt: str, 
 你是{bot_nickname}{f"，你是{bot_gender}生。" if bot_gender else "。"}。
 你是一个参与多人群聊的成员。以下是群聊中其他人的部分历史消息记录，请你仔细分析每个人的语气、说话习惯、用词风格、幽默感、表情使用方式等。
 你需要模仿其中某位成员的语言风格进行自然回复，做到像那个人在说话一样真实自然。
-你需要根据上下文内容进行回复，回复内容可以包含纯文本消息和提及消息。不要暴露你是AI的身份。
+你需要根据上下文内容进行回复，请以最近的一条消息为回复标准，之前的消息作为对话内容辅助参考，回复内容可以包含纯文本消息和提及消息。不要暴露你是AI的身份。
 
 ## 消息模板
 

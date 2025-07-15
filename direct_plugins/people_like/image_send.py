@@ -1,6 +1,7 @@
 import random
 import time
 from datetime import datetime
+import typing_extensions
 from nonebot import get_bot, logger, on_command, on_message, get_driver
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
@@ -97,15 +98,15 @@ async def get_file_name_of_image_will_sent_by_description_vec(description: str, 
                         parts = [Part.from_bytes(data=content, mime_type=str(random_image.mime_type))]
                         res = await analysis_image_trait(parts, group_id)
                         if res.is_adult or res.is_violence:
-                            logger.info(f"图片{name}包含违禁内容, 已删除")
+                            logger.info(f"图片{name}包含违禁内容, 已删除，重新选取图片")
                             os.remove(EMOJI_DIR_PATH.joinpath(str(name)))
-                            return None
-                        elif not res.is_japan_anime and get_value_or_default(group_id, "anime_only", False):
-                            logger.info(f"图片{name}不是二次元图片，不予展示")
-                            return None
-                        else:
-                            return await send_image(str(name), group_id, ext_data_vec=random_image)
-                    break
+                            search_data_result.remove(random_image)
+                            continue
+                        if not res.is_japan_anime and get_value_or_default(group_id, "anime_only", False):
+                            logger.info(f"图片{name}不是二次元图片，不予展示，重新选取图片")
+                            search_data_result.remove(random_image)
+                            continue
+                        return await send_image(str(name), group_id, ext_data_vec=random_image)
                 except Exception as e:
                     search_data_result.remove(random_image)
                     logger.info(f"群聊 {group_id} 发送图片{name}失败，重新选取图片，失败原因: {repr(e)}")
@@ -392,6 +393,8 @@ driver = get_driver()
 
 # @driver.on_bot_connect
 # @scheduler.scheduled_job("interval", days=2, id="update_file_cache")
+
+@typing_extensions.deprecated("This method is not used.")
 async def upload_image() -> Optional[str]:
     """每搁两天重置图片文件缓存"""
     global _GEMINI_CLIENT

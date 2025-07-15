@@ -169,6 +169,7 @@ class MilvusVector:
         else:
             logger.info(f"Collection '{self.collection_name_image}' already exists.")
 
+    @typing_extensions.deprecated("This method is not used.")
     async def insert_data(self, data: list[VectorData]):
         """插入数据到 Milvus 向量数据库 collection_name"""
         data_dict = [item.model_dump() for item in data]
@@ -266,14 +267,15 @@ class MilvusVector:
         return [VectorData(**item) for item in results]
 
     async def query_image_data(self, file_id: str | list[str]) -> list[VectorDataImage]:
+        exprs = []
         if isinstance(file_id, list):
-            expr = f"name in {repr(file_id)}"
+            exprs.append(f"name in {repr(file_id)}")
         else:
-            expr = f"name == '{file_id}'"
+            exprs.append(f"name == '{file_id}'")
         await self.async_client.load_collection(collection_name=self.collection_name_image)
         results = await self.async_client.query(
             collection_name=self.collection_name_image,
-            filter=expr,
+            filter=" and ".join(exprs),
             output_fields=[
                 "id",
                 "description",
