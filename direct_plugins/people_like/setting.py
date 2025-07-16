@@ -8,6 +8,7 @@ from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent
 from aiofiles import open
 from nonebot_plugin_waiter import prompt, suggest
 from typing import Generic, Optional, TypeVar, TypedDict, Any
+
 from .config import plugin_config
 
 driver = get_driver()
@@ -28,20 +29,19 @@ D_TYPE = TypeVar("D_TYPE")
 class PropConfig(TypedDict, Generic[D_TYPE]):
     range: str
     default: D_TYPE
-    type: str
 
 
 _EXPECT_PROP_NAMES: dict[str, PropConfig] = {
-    "prompt": {"range": "", "default": "无", "type": "str"},
-    "topP": {"range": "", "default": 0.95, "type": "float"},
-    "topK": {"range": "", "default": 40, "type": "int"},
-    "temperature": {"range": "0.0-2.0", "default": 1.0, "type": "float"},
-    "length": {"range": "", "default": 0, "type": "int"},
-    "search": {"range": "", "default": False, "type": "bool"},
-    "reply_probability": {"range": "0.0-1.0", "default": plugin_config.reply_probability, "type": "float"},
-    "model": {"range": "", "default": plugin_config.gemini_model, "type": "str"},
-    "anime_only": {"range": "", "default": False, "type": "bool"},
-    "at_reply_probability": {"range": "0.0-1.0", "default": plugin_config.reply_probability * 4, "type": "float"},
+    "prompt": {"range": "", "default": "无"},
+    "topP": {"range": "", "default": 0.95},
+    "topK": {"range": "", "default": 40},
+    "temperature": {"range": "0.0-2.0", "default": 1.0},
+    "length": {"range": "", "default": 0},
+    "search": {"range": "", "default": False},
+    "reply_probability": {"range": "0.0-1.0", "default": plugin_config.reply_probability},
+    "model": {"range": "", "default": plugin_config.gemini_model},
+    "anime_only": {"range": "", "default": False},
+    "at_reply_probability": {"range": "0.0-1.0", "default": plugin_config.reply_probability * 4},
 }
 
 _BLACK_LIST_FILE = _CONFIG_DIR / "blacklist.json"
@@ -134,7 +134,7 @@ async def get_property(bot: Bot, matcher: Matcher, e: MessageEvent):
     conf = _EXPECT_PROP_NAMES.get(str(resp))
     if conf is None:
         await matcher.finish("属性名无效，指令中断")
-    ret = get_value_or_default(int(group_id), property_name, conf["default"])  # type: ignore
+    ret = get_value_or_default(int(group_id), property_name)  # type: ignore
     await matcher.finish(str(ret))
 
 
@@ -163,9 +163,9 @@ async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
     prompt_str = f"""请输入要设置的属性值（取消操作请输入cancel，重置输入reset）
 键：{property_name}
 {"范围：" + conf["range"] if conf["range"] else ""}
-类型：{conf["type"]}
+类型：{type(conf["default"]).__name__}
 默认值：{conf["default"]}
-当前值：{get_value_or_default(int(group_id), property_name, conf["default"])}
+当前值：{get_value_or_default(int(group_id), property_name)}
     """
     resp = await prompt(prompt_str, timeout=60)
     if not resp:
@@ -186,7 +186,7 @@ async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
         # 使用反射转换输入
         property_config = _EXPECT_PROP_NAMES.get(property_name.lower(), {})
         logger.debug(f"{property_name}属性配置{repr(property_config)}")
-        property_type = property_config["type"]
+        property_type = type(property_config["default"]).__name__
         construtor = getattr(builtins, property_type)
         value = construtor(value_str)
         g_v.update({property_name.upper(): value})
@@ -199,12 +199,20 @@ async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
     await matcher.finish(ret)
 
 
+class Ignore:
+    pass
 
-def get_value_or_default(group_id: int, key: str, default: D_TYPE) -> D_TYPE:
+T = TypeVar("T", bound=Any)
+
+def get_value_or_default(group_id: int, key: str, default: T | Ignore = Ignore()) -> T:
     """获取群组属性"""
-    global PROPERTIES
-    value: Optional[D_TYPE] = PROPERTIES.get(str(group_id), {}).get(key.upper(), None)
-    return default if value is None else value
+    value: Optional[T] = PROPERTIES.get(str(group_id), {}).get(key.upper(), None)
+    if value is not None:
+        return value
+    if not isinstance(default, Ignore):
+        return default
+    default_value: T = _EXPECT_PROP_NAMES.get(key, {})["default"]
+    return default_value
 
 
 async def save_profile(matcher: Matcher):

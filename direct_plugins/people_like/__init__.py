@@ -200,12 +200,12 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
             (
                 send := (
                     (r := random.random())
-                    < get_value_or_default(gid, "reply_probability", plugin_config.reply_probability)
+                    < get_value_or_default(gid, "reply_probability")
                 )
             )
             or (
                 event.is_tome()
-                and (r < get_value_or_default(gid, "at_reply_probability", plugin_config.reply_probability * 4) or send)
+                and (r < get_value_or_default(gid, "at_reply_probability") or send)
             )
         )
         and not GROUP_SPEAK_DISABLE.get(gid, False)
@@ -630,7 +630,7 @@ async def chat_with_gemini(
     words.append("忽略")
     words.extend(self_has_speak)  # type: ignore
 
-    extra_prompt = get_value_or_default(group_id, "prompt", "无")
+    extra_prompt = get_value_or_default(group_id, "prompt")
 
     prompt = get_prompt(bot_nickname, bot_gender, extra_prompt, is_admin)
     contents = []
