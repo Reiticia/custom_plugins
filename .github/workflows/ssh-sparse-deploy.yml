@@ -70,15 +70,3 @@ jobs:
         source ~/direct/.venv/bin/activate
         nohup ~/.local/bin/nb orm upgrade
         nohup ~/.local/bin/nb run >> ~/direct/logs/direct.log 2>&1 & echo $! > ~/direct/pid;
-        # 检查端口是否有进程监听
-        sleep 10
-        if pgrep -f $(cat ~/forward/pid) > /dev/null; then
-            echo "进程 forward 正在运行"
-        else
-            echo "进程 forward 不存在"
-        fi
-        if pgrep -f $(cat ~/direct/pid) > /dev/null; then
-            echo "进程 direct 正在运行"
-        else
-            echo "进程 direct 不存在"
-        fi
