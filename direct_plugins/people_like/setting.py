@@ -7,7 +7,7 @@ from nonebot.rule import to_me
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent
 from aiofiles import open
 from nonebot_plugin_waiter import prompt, suggest
-from typing import TypeVar, TypedDict, Any
+from typing import Generic, Optional, TypeVar, TypedDict, Any
 from .config import plugin_config
 
 driver = get_driver()
@@ -22,24 +22,26 @@ PROPERTIES: dict[str, dict[str, Any]] = json.loads(
     "{}" if not _PROFILE.exists() else text if (text := _PROFILE.read_text()) is not None else "{}"
 )
 
+D_TYPE = TypeVar("D_TYPE")
 
-class PropConfig(TypedDict):
+
+class PropConfig(TypedDict, Generic[D_TYPE]):
     range: str
+    default: D_TYPE
     type: str
-    default: str
 
 
 _EXPECT_PROP_NAMES: dict[str, PropConfig] = {
-    "prompt": {"range": "", "type": "str", "default": "无"},
-    "topP": {"range": "", "type": "float", "default": "0.95"},
-    "topK": {"range": "", "type": "int", "default": "40"},
-    "temperature": {"range": "0.0-2.0", "type": "float", "default": "1.0"},
-    "length": {"range": "", "type": "int", "default": "0"},
-    "search": {"range": "", "type": "bool", "default": "False"},
-    "reply_probability": {"range": "0.0-1.0", "type": "float", "default": str(plugin_config.reply_probability)},
-    "model": {"range": "", "type": "str", "default": str(plugin_config.gemini_model)},
-    "anime_only": {"range": "", "type": "bool", "default": "False"},
-    "at_reply_probability": {"range": "0.0-1.0", "type": "float", "default": str(plugin_config.reply_probability * 4)},
+    "prompt": {"range": "", "default": "无", "type": "str"},
+    "topP": {"range": "", "default": 0.95, "type": "float"},
+    "topK": {"range": "", "default": 40, "type": "int"},
+    "temperature": {"range": "0.0-2.0", "default": 1.0, "type": "float"},
+    "length": {"range": "", "default": 0, "type": "int"},
+    "search": {"range": "", "default": False, "type": "bool"},
+    "reply_probability": {"range": "0.0-1.0", "default": plugin_config.reply_probability, "type": "float"},
+    "model": {"range": "", "default": plugin_config.gemini_model, "type": "str"},
+    "anime_only": {"range": "", "default": False, "type": "bool"},
+    "at_reply_probability": {"range": "0.0-1.0", "default": plugin_config.reply_probability * 4, "type": "float"},
 }
 
 _BLACK_LIST_FILE = _CONFIG_DIR / "blacklist.json"
@@ -197,13 +199,11 @@ async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
     await matcher.finish(ret)
 
 
-T = TypeVar("T")
 
-
-def get_value_or_default(group_id: int, key: str, default: T) -> T:
+def get_value_or_default(group_id: int, key: str, default: D_TYPE) -> D_TYPE:
     """获取群组属性"""
     global PROPERTIES
-    value = PROPERTIES.get(str(group_id), {}).get(key.upper(), None)
+    value: Optional[D_TYPE] = PROPERTIES.get(str(group_id), {}).get(key.upper(), None)
     return default if value is None else value
 
 

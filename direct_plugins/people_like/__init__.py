@@ -54,11 +54,8 @@ from .setting import get_value_or_default, get_blacklist
 from .config import Config, plugin_config
 from .image_send import get_file_name_of_image_will_sent_by_description_vec, SAFETY_SETTINGS
 from .vector import (
-    VectorData,
     _GEMINI_CLIENT,
     analysis_image_to_str_description,
-    get_text_embedding,
-    get_milvus_vector_client,
 )
 from .model import GroupMsg
 from .task import get_model, change_model
@@ -164,7 +161,7 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
     # 8位及以上数字字母组合为无意义消息，可能为密码或邀请码之类，过滤不做处理
     if re.match(r"^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$", em.extract_plain_text()):
         return
-    _vec_data = await store_message_segment_into_milvus(event)
+    await store_message_segment_into_milvus(event)
 
     logger.debug(f"receive: {em}")
 
@@ -247,7 +244,7 @@ _HTTP_CLIENT = AsyncClient()
 ALL_IMAGE_FILE_CACHE_DIR = store.get_cache_dir("people_like") / "all"
 
 
-async def store_message_segment_into_milvus(event: GroupMessageEvent) -> list[list[float]]:
+async def store_message_segment_into_milvus(event: GroupMessageEvent):
     """提取群消息事件中的消息内容"""
     global _HTTP_CLIENT, ALL_IMAGE_FILE_CACHE_DIR
     em = event.message
@@ -326,30 +323,30 @@ async def store_message_segment_into_milvus(event: GroupMessageEvent) -> list[li
     group_id = event.group_id
     user_id = event.user_id
     vector_data = []
-    result: list[list[float]] = []
+    # result: list[list[float]] = []
     for index, part in enumerate(target):
         file_id = file_ids[index] if index < len(file_ids) else ""
         if part.text:
             # 生成向量
-            vec = await get_text_embedding(part.text)
-            if vec:
+            # vec = await get_text_embedding(part.text)
+            # if vec:
                 # 创建 VectorData 对象
-                vector_data.append(
-                    {
-                        "message_id": message_id,
-                        "group_id": group_id,
-                        "user_id": user_id,
-                        "self_msg": self_msg,
-                        "to_me": event.is_tome(),
-                        "index": index,
-                        "nick_name": sender_nickname,
-                        "content": part.text,
-                        "file_id": file_id,
-                        "vec": vec,
-                        "time": int(time.time()),
-                    }
-                )
-            result.append(vec)
+            vector_data.append(
+                {
+                    "message_id": message_id,
+                    "group_id": group_id,
+                    "user_id": user_id,
+                    "self_msg": self_msg,
+                    "to_me": event.is_tome(),
+                    "index": index,
+                    "nick_name": sender_nickname,
+                    "content": part.text,
+                    "file_id": file_id,
+                    # "vec": vec,
+                    "time": int(time.time()),
+                }
+            )
+            # result.append(vec)
         if part.inline_data:
             # 如果是图片，则先分析图片
             parts = []
@@ -360,40 +357,40 @@ async def store_message_segment_into_milvus(event: GroupMessageEvent) -> list[li
             logger.debug(content)
             if content:
                 # 生成向量
-                vec = await get_text_embedding(content)
-                if vec:
-                    # 创建 VectorData 对象
-                    vector_data.append(
-                        {
-                            "message_id": message_id,
-                            "group_id": group_id,
-                            "user_id": user_id,
-                            "self_msg": self_msg,
-                            "to_me": event.is_tome(),
-                            "index": index,
-                            "nick_name": sender_nickname,
-                            "content": content,
-                            "file_id": file_id,
-                            "vec": vec,
-                            "time": int(time.time()),
-                        }
-                    )
-                    result.append(vec)
+                # vec = await get_text_embedding(content)
+                # if vec:
+                # 创建 VectorData 对象
+                vector_data.append(
+                    {
+                        "message_id": message_id,
+                        "group_id": group_id,
+                        "user_id": user_id,
+                        "self_msg": self_msg,
+                        "to_me": event.is_tome(),
+                        "index": index,
+                        "nick_name": sender_nickname,
+                        "content": content,
+                        "file_id": file_id,
+                        # "vec": vec,
+                        "time": int(time.time()),
+                    }
+                )
+                    # result.append(vec)
 
     # 插入数据到 Milvus
-    vector_data_list = [VectorData(**data) for data in vector_data]
-    milvus_client = await get_milvus_vector_client()
-    await milvus_client.insert_data(vector_data_list)
+    # vector_data_list = [VectorData(**data) for data in vector_data]
+    # milvus_client = await get_milvus_vector_client()
+    # await milvus_client.insert_data(vector_data_list)
     # 插入数据到数据库
     msg_data_list = []
     for data in vector_data:
-        del data["vec"]
+        # del data["vec"]
         msg_data_list.append(GroupMsg(**data))
     async with get_session() as session:
         session.add_all(msg_data_list)
         await session.commit()
 
-    return result
+    # return result
 
 
 _USER_OF_GROUP_NICKNAME: dict[int, ExpirableDict[int, str]] = dict()

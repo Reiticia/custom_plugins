@@ -97,42 +97,42 @@ class MilvusVector:
         self.create_collection()
 
     def create_collection(self):
-        if not self.client.has_collection(self.collection_name):
-            # 定义字段 Schema
-            schema = self.client.create_schema(
-                auto_id=True,  # 启用自增主键[3,4](@ref)
-                enable_dynamic_field=False,
-            )
-            schema.add_field("id", DataType.INT64, is_primary=True)
-            schema.add_field("message_id", DataType.INT64)
-            schema.add_field("group_id", DataType.INT64)
-            schema.add_field("user_id", DataType.INT64)
-            schema.add_field("self_msg", DataType.BOOL, default=False)  # 是否为自己的消息
-            schema.add_field("to_me", DataType.BOOL, default=False)  # 是否为提及自己的消息
-            schema.add_field("index", DataType.INT32)
-            schema.add_field("nick_name", DataType.VARCHAR, max_length=255)
-            schema.add_field("content", DataType.VARCHAR, max_length=4096)
-            schema.add_field("file_id", DataType.VARCHAR, max_length=1024)
-            schema.add_field("vec", DataType.FLOAT_VECTOR, dim=768)  # 向量维度需自定义
-            schema.add_field("time", DataType.INT64)
-            schema.add_field("extra", DataType.JSON)
+        # if not self.client.has_collection(self.collection_name):
+        #     # 定义字段 Schema
+        #     schema = self.client.create_schema(
+        #         auto_id=True,  # 启用自增主键[3,4](@ref)
+        #         enable_dynamic_field=False,
+        #     )
+        #     schema.add_field("id", DataType.INT64, is_primary=True)
+        #     schema.add_field("message_id", DataType.INT64)
+        #     schema.add_field("group_id", DataType.INT64)
+        #     schema.add_field("user_id", DataType.INT64)
+        #     schema.add_field("self_msg", DataType.BOOL, default=False)  # 是否为自己的消息
+        #     schema.add_field("to_me", DataType.BOOL, default=False)  # 是否为提及自己的消息
+        #     schema.add_field("index", DataType.INT32)
+        #     schema.add_field("nick_name", DataType.VARCHAR, max_length=255)
+        #     schema.add_field("content", DataType.VARCHAR, max_length=4096)
+        #     schema.add_field("file_id", DataType.VARCHAR, max_length=1024)
+        #     schema.add_field("vec", DataType.FLOAT_VECTOR, dim=768)  # 向量维度需自定义
+        #     schema.add_field("time", DataType.INT64)
+        #     schema.add_field("extra", DataType.JSON)
 
-            # 创建索引参数（向量字段必建索引）
-            index_params = self.client.prepare_index_params()
-            index_params.add_index(
-                field_name="vec",
-                index_type="IVF_FLAT",  # 中等规模数据集推荐[3](@ref)
-                metric_type="COSINE",  # 余弦相似度
-                params={"nlist": 128},  # 聚类中心数
-            )
+        #     # 创建索引参数（向量字段必建索引）
+        #     index_params = self.client.prepare_index_params()
+        #     index_params.add_index(
+        #         field_name="vec",
+        #         index_type="IVF_FLAT",  # 中等规模数据集推荐[3](@ref)
+        #         metric_type="COSINE",  # 余弦相似度
+        #         params={"nlist": 128},  # 聚类中心数
+        #     )
 
-            # 创建集合
-            self.client.create_collection(
-                collection_name=self.collection_name, schema=schema, index_params=index_params
-            )
-            logger.info(f"Collection '{self.collection_name}' created.")
-        else:
-            logger.info(f"Collection '{self.collection_name}' already exists.")
+        #     # 创建集合
+        #     self.client.create_collection(
+        #         collection_name=self.collection_name, schema=schema, index_params=index_params
+        #     )
+        #     logger.info(f"Collection '{self.collection_name}' created.")
+        # else:
+        #     logger.info(f"Collection '{self.collection_name}' already exists.")
 
         # 创建图片集合
         if not self.client.has_collection(self.collection_name_image):
