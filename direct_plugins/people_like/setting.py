@@ -219,7 +219,7 @@ async def save_profile(matcher: Matcher):
     """保存配置文件"""
     global PROPERTIES, _PROFILE
     async with open(_PROFILE, "w", encoding="utf-8") as f:
-        await f.write(json.dumps(PROPERTIES))
+        await f.write(json.dumps(PROPERTIES, ensure_ascii=False, indent=4))
     await matcher.send("配置文件已保存")
 
 
@@ -227,5 +227,5 @@ async def save_blacklist(matcher: Matcher):
     """保存黑名单"""
     global BLACK_LIST, _BLACK_LIST_FILE
     async with open(_BLACK_LIST_FILE, "w", encoding="utf-8") as f:
-        await f.write(json.dumps(BLACK_LIST))
+        await f.write(json.dumps(BLACK_LIST, ensure_ascii=False, indent=4))
     await matcher.send("黑名单已保存")

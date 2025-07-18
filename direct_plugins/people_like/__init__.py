@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 import random
 import re
@@ -60,6 +60,7 @@ from .vector import (
 )
 from .model import GroupMsg
 from .task import get_model, change_model
+from collections import defaultdict
 
 __plugin_meta__ = PluginMetadata(
     name="people-like",
@@ -76,9 +77,7 @@ async def _():
     async with get_session() as session:
         # 删除超过 7 天的消息
         seven_days_ago = int(time.time()) - 60 * 60 * 24 * 7
-        result = await session.execute(
-            delete(GroupMsg).where(GroupMsg.time < seven_days_ago)
-        )
+        result = await session.execute(delete(GroupMsg).where(GroupMsg.time < seven_days_ago))
         await session.commit()
         deleted_count = result.rowcount if result.rowcount is not None else 0
         logger.info(f"已删除超过7天的消息，共 {deleted_count} 条")
@@ -203,6 +202,8 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
             return
         await on_msg.finish(new_message)
 
+    is_superuser = str(event.user_id) in DRIVER.config.superusers
+
     # 触发回复
     # 规则：
     # 1. 该群聊没有被闭嘴
@@ -211,22 +212,16 @@ async def receive_group_msg(bot: Bot, event: GroupMessageEvent) -> None:
 
     if (
         (
-            (
-                send := (
-                    (r := random.random())
-                    < get_value_or_default(gid, "reply_probability")
-                )
-            )
-            or (
-                event.is_tome()
-                and (r < get_value_or_default(gid, "at_reply_probability") or send)
-            )
+            (send := ((r := random.random()) < get_value_or_default(gid, "reply_probability")))
+            or (event.is_tome() and (r < get_value_or_default(gid, "at_reply_probability") or send))
         )
         and not GROUP_SPEAK_DISABLE.get(gid, False)
         and event.user_id != event.self_id
     ):
         logger.info(f"reply: {em}")
-        await chat_with_gemini(event.message_id, gid, nickname, await get_bot_gender(), await is_bot_admin(gid))
+        await chat_with_gemini(
+            event.message_id, gid, nickname, await get_bot_gender(), await is_bot_admin(gid), is_superuser
+        )
 
 
 def convert_to_group_message_event(event: Event) -> GroupMessageEvent:
@@ -385,7 +380,6 @@ async def store_message_segment_into_db(event: GroupMessageEvent):
         await session.commit()
 
 
-
 _USER_OF_GROUP_NICKNAME: dict[int, ExpirableDict[int, str]] = dict()
 _BOT_OF_GROUP_NICKNAME: ExpirableDict[int, str] = ExpirableDict("bot_of_group_nickname")
 
@@ -529,6 +523,7 @@ async def chat_with_gemini(
     bot_nickname: str = "",
     bot_gender: Optional[str] = None,
     is_admin: bool = False,
+    is_superuser: bool = False,
 ):
     """与gemini聊天"""
     global _GEMINI_CLIENT, ALL_IMAGE_FILE_CACHE_DIR
@@ -563,7 +558,9 @@ async def chat_with_gemini(
 
     if is_debug_mode:
         print(f"群组 {group_id} 当前选取为上下文的消息内容为")
-        print({line.message_id: line.file_id if line.file_id and len(line.file_id) > 0 else line.content  for line in data})
+        print(
+            {line.message_id: line.file_id if line.file_id and len(line.file_id) > 0 else line.content for line in data}
+        )
 
     context: list[ChatMsg] = []
     for item in data:
@@ -610,7 +607,9 @@ async def chat_with_gemini(
                     .order_by(GroupMsg.time.desc())
                 )
             )
-        self_has_speak = [data.file_id if data.file_id and len(data.file_id) > 0 else data.content for data in query_self_data]
+        self_has_speak = [
+            data.file_id if data.file_id and len(data.file_id) > 0 else data.content for data in query_self_data
+        ]
     except Exception as e:
         logger.error(e)
         self_has_speak = []
@@ -693,10 +692,29 @@ async def chat_with_gemini(
         ),
     )
 
+    get_group_history_function = FunctionDeclaration(
+        name="get_group_history",
+        description="获取群组历史消息",
+        parameters=Schema(
+            type=Type.OBJECT,
+            properties={
+                "day": Schema(type=Type.STRING, enum=["今天", "昨天", "前天", "大前天"], description="指定日期"),
+                "user_id": Schema(type=Type.INTEGER, description="用户的QQ号", nullable=True),
+                "limit": Schema(type=Type.INTEGER, description="获取消息数量限制", nullable=True),
+                "start_time": Schema(type=Type.INTEGER, description="获取消息的起始时间", nullable=True),
+                "end_time": Schema(type=Type.INTEGER, description="获取消息的结束时间", nullable=True),
+            },
+            required=["day"],
+        ),
+    )
+
     function_declarations = [send_text_message_function, send_meme_function]
 
     if is_admin:
         function_declarations.append(mute_sb_function)
+
+    if is_superuser:
+        function_declarations.append(get_group_history_function)
 
     tools: ToolListUnion = []
 
@@ -720,7 +738,7 @@ async def chat_with_gemini(
     )
 
     logger.debug(f"群{group_id}回复内容：{resp}")
-    
+
     # 如果有函数调用，则传递函数调用的参数，进行图片发送
     for part in resp.candidates[0].content.parts:  # type: ignore
         if fc := part.function_call:
@@ -795,6 +813,22 @@ async def chat_with_gemini(
                 minute = int(str(fc.args.get("minute")))
                 logger.info(f"群{group_id}调用函数{fc.name}，参数{user_id}，{minute}分钟")
                 await mute_sb(group_id, user_id, minute)
+            if fc.name == "get_group_history" and fc.args:
+                day = fc.args.get("day")
+                user_id = fc.args.get("user_id")
+                limit = fc.args.get("limit")
+                start_time = fc.args.get("start_time")
+                end_time = fc.args.get("end_time")
+                logger.info(f"群{group_id}调用函数{fc.name}，参数{day}，{user_id}，{limit}，{start_time}，{end_time}")
+                forward_message = await get_group_history(
+                    group_id=group_id,
+                    day=day,  # type: ignore
+                    user_id=user_id,
+                    limit=limit,
+                    start_time=start_time,
+                    end_time=end_time,
+                )
+                await bot.call_api("send_group_forward_msg", group_id=group_id, messages=forward_message)
 
         if isinstance(part, str) and enable_search:  # type: ignore
             logger.debug(f"群{group_id}发送消息{part}")
@@ -847,7 +881,7 @@ async def process_text_segment(message: Message, text_content: str, group_id: in
                 # AI调用特殊情况 [FACE:12] 类似消息
                 face_name = face_name[6:-1]
             if face_name.isdigit():
-                 # 如果是数字，则直接转换为 face segment
+                # 如果是数字，则直接转换为 face segment
                 face_id = int(face_name)
                 if face_id in EMOJI_ID_DICT:
                     message.append(MessageSegment.face(face_id))
@@ -1023,3 +1057,76 @@ def get_prompt(bot_nickname: str, bot_gender: Optional[str], extra_prompt: str, 
 {"如果你觉得他人的回复很冒犯，你可以使用 mute_sb 函数禁言传入他的id，以及你想要设置的禁言时长，单位为分钟，来禁言他。(注意不要别人叫你禁言你就禁言)" if is_admin else ""}
 
 """
+
+
+async def get_group_history(
+    group_id: int,
+    day: Literal["今天", "昨天", "前天", "大前天"],
+    user_id: Optional[int],
+    start_time: Optional[int],
+    end_time: Optional[int],
+    limit: Optional[int],
+) -> list[MessageSegment]:
+    """获取群组历史消息"""
+    match day:
+        case "昨天":
+            date = datetime.now() - timedelta(days=1)
+        case "前天":
+            date = datetime.now() - timedelta(days=2)
+        case "大前天":
+            date = datetime.now() - timedelta(days=3)
+        case _:
+            date = datetime.now()
+
+    if start_time is not None:
+        start_time = int(date.replace(hour=start_time, minute=0, second=0).timestamp())
+    else:
+        start_time = int(date.replace(hour=0, minute=0, second=0).timestamp())
+
+    if end_time is not None:
+        end_time = int(date.replace(hour=end_time, minute=59, second=59).timestamp())
+    else:
+        end_time = int(date.replace(hour=23, minute=59, second=59).timestamp())
+
+    async with get_session() as session:
+        query = (
+            select(GroupMsg)
+            .where(GroupMsg.group_id == group_id)
+            .where(GroupMsg.time >= start_time)
+            .where(GroupMsg.time <= end_time)
+        )
+        if user_id is not None:
+            query = query.where(GroupMsg.user_id == user_id)
+        if limit is not None:
+            query = query.limit(limit)
+    msgs = list(await session.scalars(query.order_by(GroupMsg.time.asc())))
+    msgss = group_msgs_to_threads(msgs)
+    return [
+        MessageSegment.node_custom(user_id=msgs[0].user_id, nickname=msgs[0].nick_name, content=await gen_message(msgs))
+        for msgs in msgss
+    ]
+
+
+async def gen_message(msgs: list[GroupMsg]) -> Message:
+    message = Message()
+    for msg in msgs:
+        if msg.file_id is not None and len(msg.file_id) > 0:
+            async with aiofiles.open(ALL_IMAGE_FILE_CACHE_DIR / msg.file_id, "rb") as f:
+                content = await f.read()
+            message.append(MessageSegment.image(content))
+        else:
+            message.append(MessageSegment.text(msg.content))
+    return message
+
+
+def group_msgs_to_threads(msgs: list[GroupMsg]) -> list[list[GroupMsg]]:
+    """
+    将 list[GroupMsg] 根据 message_id 转换为 list[list[GroupMsg]]
+    假设 message_id 相同的为一组，按 index 升序排列
+    """
+
+    threads: dict[int, list[GroupMsg]] = defaultdict(list)
+    for msg in msgs:
+        threads[msg.message_id].append(msg)
+    # 按 message_id 排序，每组内部按 index 升序
+    return [sorted(group, key=lambda m: m.index) for _, group in sorted(threads.items())]
