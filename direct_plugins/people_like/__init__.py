@@ -682,12 +682,12 @@ async def chat_with_gemini(
 
     mute_sb_function = FunctionDeclaration(
         name="mute_sb",
-        description="禁言群组里某一个人多少分钟",
+        description="禁言群组里某一个人多少分钟或解除群成员禁言状态",
         parameters=Schema(
             type=Type.OBJECT,
             properties={
                 "user_id": Schema(type=Type.INTEGER, description="需要禁言的用户的QQ号"),
-                "minute": Schema(type=Type.INTEGER, description="禁言分钟数"),
+                "minute": Schema(type=Type.INTEGER, description="禁言分钟数，输入0解除禁言状态", minimum=0, maximum=1440),
             },
         ),
     )
@@ -952,10 +952,13 @@ GROUP_BAN_DICT: dict[int, dict[int, int]] = {}
 async def mute_sb(group_id: int, user_id: int, minute: int):
     """禁言群组里某一个人多少分钟"""
     global GROUP_BAN_DICT
+    if minute == 0:
+        await get_bot().call_api("set_group_ban", group_id=group_id, user_id=user_id, duration=0)
+        return
     # 判断那个人是否被禁言过，如果没被禁言过，则禁言
     if not GROUP_BAN_DICT.get(group_id):
         GROUP_BAN_DICT[group_id] = {}
-    if not GROUP_BAN_DICT[group_id].get(user_id):
+    if not GROUP_BAN_DICT[group_id].get(user_id):  # 没被禁言过
         GROUP_BAN_DICT[group_id][user_id] = int(time.time()) + minute * 60
         await get_bot().call_api("set_group_ban", group_id=group_id, user_id=user_id, duration=minute * 60)
     else:
@@ -963,6 +966,7 @@ async def mute_sb(group_id: int, user_id: int, minute: int):
         if int(time.time()) >= GROUP_BAN_DICT[group_id][user_id]:
             GROUP_BAN_DICT[group_id][user_id] = int(time.time()) + minute * 60
             await get_bot().call_api("set_group_ban", group_id=group_id, user_id=user_id, duration=minute * 60)
+        
 
 
 def change_model_when_fail(e: Exception, _attempt: int):
