@@ -739,6 +739,8 @@ async def chat_with_gemini(
 
     logger.debug(f"群{group_id}回复内容：{resp}")
 
+    logger.info(f"本次请求总token数{resp.usage_metadata.total_token_count}")  # type: ignore
+
     # 如果有函数调用，则传递函数调用的参数，进行图片发送
     for part in resp.candidates[0].content.parts:  # type: ignore
         if fc := part.function_call:
