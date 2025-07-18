@@ -57,6 +57,7 @@ jobs:
       user: ${{ secrets.DC_USER }}
       key: ${{ secrets.DC_KEY }}
     with:
+      connect_timeout: 5m
       pre_ssh: |
         kill $(cat ~/forward/pid) || true
         kill $(cat ~/direct/pid) || true
