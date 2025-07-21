@@ -111,7 +111,7 @@ class GroupMemberDict:
 
 GROUP_SPEAK_DISABLE: dict[int, bool] = {}
 
-shutup = on_keyword(keywords={"闭嘴", "shut up", "shutup", "Shut Up", "Shut up", "滚", "一边去"}, rule=to_me())
+shutup = on_keyword(keywords={"闭嘴", "shut up", "shutup", "Shut Up", "Shut up", "滚", "一边去", "别叫", "住口", "口住"}, rule=to_me())
 
 
 EMOJI_ID_DICT: dict[int, str] = {}
@@ -966,7 +966,7 @@ async def mute_sb(group_id: int, user_id: int, minute: int):
         if int(time.time()) >= GROUP_BAN_DICT[group_id][user_id]:
             GROUP_BAN_DICT[group_id][user_id] = int(time.time()) + minute * 60
             await get_bot().call_api("set_group_ban", group_id=group_id, user_id=user_id, duration=minute * 60)
-        
+
 
 
 def change_model_when_fail(e: Exception, _attempt: int):
