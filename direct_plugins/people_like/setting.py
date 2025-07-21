@@ -27,20 +27,20 @@ D_TYPE = TypeVar("D_TYPE")
 
 
 class PropConfig(TypedDict, Generic[D_TYPE]):
-    range: str
+    range: Optional[str] # 属性范围
     default: D_TYPE
 
 
 _EXPECT_PROP_NAMES: dict[str, PropConfig] = {
-    "prompt": {"range": "", "default": "无"},
-    "topP": {"range": "", "default": 0.95},
-    "topK": {"range": "", "default": 40},
+    "prompt": {"range": None, "default": "无"},
+    "topP": {"range": None, "default": 0.95},
+    "topK": {"range": None, "default": 40},
     "temperature": {"range": "0.0-2.0", "default": 1.0},
-    "length": {"range": "", "default": 0},
-    "search": {"range": "", "default": False},
+    "length": {"range": None, "default": 0},
+    "search": {"range": None, "default": False},
     "reply_probability": {"range": "0.0-1.0", "default": plugin_config.reply_probability},
-    "model": {"range": "", "default": plugin_config.gemini_model},
-    "anime_only": {"range": "", "default": False},
+    "model": {"range": None, "default": plugin_config.gemini_model},
+    "anime_only": {"range": None, "default": False},
     "at_reply_probability": {"range": "0.0-1.0", "default": plugin_config.reply_probability * 4},
 }
 
@@ -189,6 +189,10 @@ async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
         property_type = type(property_config["default"]).__name__
         construtor = getattr(builtins, property_type)
         value = construtor(value_str)
+        if range := property_config["range"]:
+            min, max = range.split("_")
+            if not (construtor(min) <= value <= construtor(max)):
+                await matcher.finish(f"输入不合法，值{value}不在范围{range}内")
         g_v.update({property_name.upper(): value})
         ret: str = f"""群：{group_id}
 键：{property_name}

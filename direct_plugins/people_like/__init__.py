@@ -810,11 +810,13 @@ async def chat_with_gemini(
                 if will_send_img:
                     logger.trace(f"群{group_id}回复图片：{will_send_img}")
                     await on_msg.send(will_send_img)
+
             if fc.name == "mute_sb" and fc.args:
                 user_id = int(str(fc.args.get("user_id")))
                 minute = int(str(fc.args.get("minute")))
                 logger.info(f"群{group_id}调用函数{fc.name}，参数{user_id}，{minute}分钟")
                 await mute_sb(group_id, user_id, minute)
+
             if fc.name == "get_group_history" and fc.args:
                 day = fc.args.get("day")
                 user_id = fc.args.get("user_id")
