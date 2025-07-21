@@ -24,6 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       scp_files: ${{ steps.scp-cmd.outputs.SCP_FILES }}
+      del_files: ${{ steps.scp-cmd.outputs.DEL_FILES }}
     steps:
     - uses: actions/checkout@v3
     - name: get changed files
@@ -33,25 +34,55 @@ jobs:
     - name: generate scp upload command
       id: scp-cmd
       run: |
+        # 处理修改/新增的文件
         echo "SCP_FILES=" > scp_files.env
         for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
           if [[ "$file" == forward_plugins/* ]]; then
-            echo "'$file' => ~/forward/src/plugins/$(basename $(dirname "$file"))" >> scp_files.env
+            target_path="${file/forward_plugins\//~/forward/src/plugins/}"
+            target_dir=$(dirname "$target_path")
+            echo "'$file' => $target_dir" >> scp_files.env
           elif [[ "$file" == direct_plugins/* ]]; then
-            echo "'$file' => ~/direct/src/plugins/$(basename $(dirname "$file"))" >> scp_files.env
+            target_path="${file/direct_plugins\//~/direct/src/plugins/}"
+            target_dir=$(dirname "$target_path")
+            echo "'$file' => $target_dir" >> scp_files.env
           elif [[ "$file" == common/* ]]; then
-            echo "'$file' => ~/forward/common" >> scp_files.env
-            echo "'$file' => ~/direct/common" >> scp_files.env
+            forward_target_path="${file/common\//~/forward/common/}"
+            direct_target_path="${file/common\//~/direct/common/}"
+            forward_target_dir=$(dirname "$forward_target_path")
+            direct_target_dir=$(dirname "$direct_target_path")
+            echo "'$file' => $forward_target_dir" >> scp_files.env
+            echo "'$file' => $direct_target_dir" >> scp_files.env
           fi
         done
         echo "SCP_FILES<<EOF" > $GITHUB_OUTPUT
         cat scp_files.env >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
+
+        # 处理被删除的文件
+        echo "DEL_FILES=" > del_files.env
+        for file in ${{ steps.changed-files.outputs.deleted_files }}; do
+          if [[ "$file" == forward_plugins/* ]]; then
+            target_path="${file/forward_plugins\//~/forward/src/plugins/}"
+            echo "$target_path" >> del_files.env
+          elif [[ "$file" == direct_plugins/* ]]; then
+            target_path="${file/direct_plugins\//~/direct/src/plugins/}"
+            echo "$target_path" >> del_files.env
+          elif [[ "$file" == common/* ]]; then
+            forward_target_path="${file/common\//~/forward/common/}"
+            direct_target_path="${file/common\//~/direct/common/}"
+            echo "$forward_target_path" >> del_files.env
+            echo "$direct_target_path" >> del_files.env
+          fi
+        done
+        echo "DEL_FILES<<EOF" >> $GITHUB_OUTPUT
+        cat del_files.env >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
   scp:
     name: scp files to remote
     needs: changed-files
     uses: ./.github/workflows/python-runner.yml
-    if: ${{ ! endsWith(needs.changed-files.outputs.scp_files, 'SCP_FILES=') }}
+    if: ${{ ! endsWith(needs.changed-files.outputs.scp_files, 'SCP_FILES=') || ! endsWith(needs.changed-files.outputs.del_files, 'DEL_FILES=') }}
     secrets:
       host: ${{ secrets.DC_HOST }}
       user: ${{ secrets.DC_USER }}
@@ -61,6 +92,11 @@ jobs:
       pre_ssh: |
         kill $(cat ~/forward/pid) || true
         kill $(cat ~/direct/pid) || true
+                
+        # 删除被删除的文件
+        for file in $(echo "${{ needs.changed-files.outputs.del_files }}" | grep -v "DEL_FILES=" | sed 's/^DEL_FILES=//'); do
+          [ -f "$file" ] && rm -f "$file"
+        done
       scp: ${{ needs.changed-files.outputs.scp_files }}
       post_ssh: |
         cd ~/forward
