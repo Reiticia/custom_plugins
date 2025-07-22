@@ -50,7 +50,7 @@ from nonebot_plugin_apscheduler import scheduler
 
 import nonebot_plugin_localstore as store
 
-from sqlalchemy import delete, select, func
+from sqlalchemy import delete, select, func, update
 from .setting import get_value_or_default, get_blacklist
 from .config import Config, plugin_config
 from .image_send import get_file_name_of_image_will_sent_by_description_vec, SAFETY_SETTINGS
@@ -58,7 +58,7 @@ from .vector import (
     _GEMINI_CLIENT,
     analysis_image_to_str_description,
 )
-from .model import GroupMsg
+from .model import GroupMemberImpression, GroupMsg
 from .task import get_model, change_model
 from collections import defaultdict
 
@@ -111,7 +111,9 @@ class GroupMemberDict:
 
 GROUP_SPEAK_DISABLE: dict[int, bool] = {}
 
-shutup = on_keyword(keywords={"闭嘴", "shut up", "shutup", "Shut Up", "Shut up", "滚", "一边去", "别叫", "住口", "口住"}, rule=to_me())
+shutup = on_keyword(
+    keywords={"闭嘴", "shut up", "shutup", "Shut Up", "Shut up", "滚", "一边去", "别叫", "住口", "口住"}, rule=to_me()
+)
 
 
 EMOJI_ID_DICT: dict[int, str] = {}
@@ -624,7 +626,19 @@ async def chat_with_gemini(
 
     extra_prompt = get_value_or_default(group_id, "prompt")
 
-    prompt = get_prompt(bot_nickname, bot_gender, extra_prompt, is_admin)
+    async with get_session() as session:
+        impression = list(
+            await session.scalars(select(GroupMemberImpression).where(GroupMemberImpression.group_id == group_id))
+        )
+    impression_dict: dict[int,str] = {}
+    for item in impression:
+        impression_dict.update(
+            {
+                item.user_id: item.impression
+            }
+        )
+
+    prompt = get_prompt(bot_nickname, bot_gender, extra_prompt, is_admin, impression_dict)
     contents = []
     for msg in context:
         if len(c := msg.content) > 0:
@@ -687,7 +701,9 @@ async def chat_with_gemini(
             type=Type.OBJECT,
             properties={
                 "user_id": Schema(type=Type.INTEGER, description="需要禁言的用户的QQ号"),
-                "minute": Schema(type=Type.INTEGER, description="禁言分钟数，输入0解除禁言状态", minimum=0, maximum=1440),
+                "minute": Schema(
+                    type=Type.INTEGER, description="禁言分钟数，输入0解除禁言状态", minimum=0, maximum=1440
+                ),
             },
         ),
     )
@@ -701,8 +717,12 @@ async def chat_with_gemini(
                 "day": Schema(type=Type.STRING, enum=["今天", "昨天", "前天", "大前天"], description="指定日期"),
                 "user_id": Schema(type=Type.INTEGER, description="用户的QQ号", nullable=True),
                 "limit": Schema(type=Type.INTEGER, description="获取消息数量限制", nullable=True),
-                "start_time": Schema(type=Type.INTEGER, description="获取消息的起始时间", minimum=0, maximum=23, nullable=True),
-                "end_time": Schema(type=Type.INTEGER, description="获取消息的结束时间", minimum=0, maximum=23, nullable=True),
+                "start_time": Schema(
+                    type=Type.INTEGER, description="获取消息的起始时间", minimum=0, maximum=23, nullable=True
+                ),
+                "end_time": Schema(
+                    type=Type.INTEGER, description="获取消息的结束时间", minimum=0, maximum=23, nullable=True
+                ),
             },
             required=["day"],
         ),
@@ -970,7 +990,6 @@ async def mute_sb(group_id: int, user_id: int, minute: int):
             await get_bot().call_api("set_group_ban", group_id=group_id, user_id=user_id, duration=minute * 60)
 
 
-
 def change_model_when_fail(e: Exception, _attempt: int):
     """
     失败时修改模型
@@ -1017,7 +1036,9 @@ async def request_for_resp(
     return resp
 
 
-def get_prompt(bot_nickname: str, bot_gender: Optional[str], extra_prompt: str, is_admin: bool) -> str:
+def get_prompt(
+    bot_nickname: str, bot_gender: Optional[str], extra_prompt: str, is_admin: bool, impression: dict[int, str]
+) -> str:
     return f"""
 ## 基础设定
 
@@ -1025,6 +1046,7 @@ def get_prompt(bot_nickname: str, bot_gender: Optional[str], extra_prompt: str, 
 你是一个参与多人群聊的成员。以下是群聊中其他人的部分历史消息记录，请你仔细分析每个人的语气、说话习惯、用词风格、幽默感、表情使用方式等。
 你需要模仿其中某位成员的语言风格进行自然回复，做到像那个人在说话一样真实自然。
 你需要根据上下文内容进行回复，请以最近的一条消息为回复标准，之前的消息作为对话内容辅助参考，回复内容可以包含纯文本消息和提及消息。不要暴露你是AI的身份。
+你需要根据对该成员的印象选择适合的语气进行回复。
 
 ## 消息模板
 
@@ -1053,6 +1075,10 @@ def get_prompt(bot_nickname: str, bot_gender: Optional[str], extra_prompt: str, 
 请明确别人的对话目标，当别人的问题提及到其他人回答时，请不要抢答。
 回复内容可以有多段，请将纯文本消息与提及消息分割为不同的段落，并以列表返回对象。
 请以最近的一条消息作为优先级最高的回复对象，越早的消息优先级越低。
+
+## 对每个群成员的印象
+
+{repr(impression)}
 
 ## 额外设定
 
@@ -1138,3 +1164,155 @@ def group_msgs_to_threads(msgs: list[GroupMsg]) -> list[list[GroupMsg]]:
         threads[msg.message_id].append(msg)
     # 按 message_id 排序，每组内部按 index 升序
     return [sorted(group, key=lambda m: m.index) for _, group in sorted(threads.items())]
+
+@scheduler.scheduled_job("cron", hour="20", id="update group member impression")
+async def _():
+    """每天更新群组成员印象"""
+    # 查询最近两天的所有群消息
+    async with get_session() as session:
+        two_days_ago = int((datetime.now() - timedelta(days=2)).timestamp())
+        query = select(GroupMsg).where(GroupMsg.time >= two_days_ago).order_by(GroupMsg.time.desc())
+        msgs = list(await session.scalars(query))
+    # 按群分组
+    group_messages: dict[int, list[GroupMsg]] = defaultdict(list)
+    for msg in msgs:
+        group_messages[msg.group_id].append(msg)
+    for k, v in group_messages.items():
+        # 分析群组消息
+        await analysis_messages_of_group(k, v)
+
+
+async def analysis_messages_of_group(group_id: int, messages: list[GroupMsg]):
+    content = []
+    messages = sorted(messages, key=lambda x: x.time, reverse=False)
+    bot = get_bot()
+    context: list[ChatMsg] = []
+    for item in messages:
+        if item.self_msg:
+            character = Character.BOT
+        else:
+            character = Character.USER
+        # 生成 parts
+        if item.file_id:
+            # 判断为图片消息
+            # 读取指定文件二进制信息
+            async with aiofiles.open(ALL_IMAGE_FILE_CACHE_DIR / item.file_id, "rb") as f:
+                content = await f.read()
+            suffix_name = item.file_id.split(".")[-1]
+            mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
+            match suffix_name:
+                case "jpg" | "gif":
+                    mime_type = "image/jpeg"
+                case "png":
+                    mime_type = "image/png"
+            parts = []
+            parts.append(Part.from_text(text=f"[{item.nick_name}<{item.user_id}>]"))
+            if item.to_me:
+                parts.append(Part.from_text(text=f"@{bot.self_id} "))
+            parts.append(Part.from_bytes(data=content, mime_type=mime_type))
+            context.append(ChatMsg(sender=character, content=parts))
+        else:
+            parts = []
+            parts.append(Part.from_text(text=f"[{item.nick_name}<{item.user_id}>]"))
+            if item.to_me:
+                parts.append(Part.from_text(text=f"@{bot.self_id} "))
+            parts.append(Part.from_text(text=str(item.content)))
+            context.append(ChatMsg(sender=character, content=parts))
+
+    contents = []
+    for msg in context:
+        if len(c := msg.content) > 0:
+            match msg.sender:
+                case Character.USER:
+                    contents.append({"role": "user", "parts": c})
+                case Character.BOT:
+                    contents.append({"role": "model", "parts": c})
+
+    res = await request_for_impression_list(contents=contents)
+    logger.info(f"群{group_id}成员印象")
+    logger.info(res)
+    # 更新或插入数据库
+    for item in res:
+        async with get_session() as session:
+            # 查询是否存在该用户印象
+            existing_impression = await session.scalar(
+                select(GroupMemberImpression)
+                .where(GroupMemberImpression.user_id == item.user_id)
+                .where(GroupMemberImpression.group_id == group_id)
+            )
+            if existing_impression:
+                # 更新印象内容
+                existing_impression.impression = item.impression
+                existing_impression.update_time = int(time.time())
+                await session.execute(
+                    update(GroupMemberImpression)
+                    .where(GroupMemberImpression.user_id == item.user_id)
+                    .where(GroupMemberImpression.group_id == group_id)
+                    .values({"update_time": int(time.time()), "impression": item.impression})
+                )
+            else:
+                # 插入新的印象
+                new_impression = GroupMemberImpression(
+                    user_id=item.user_id,
+                    group_id=group_id,
+                    impression=item.impression,
+                    create_time=int(time.time()),
+                    update_time=int(time.time()),
+                )
+                session.add(new_impression)
+                await session.commit()
+
+
+class MemberImpression(BaseModel):
+    """群成员印象"""
+
+    user_id: int
+    """用户id"""
+    impression: str
+    """印象内容"""
+
+
+@retry_on_exception(max_retries=5)
+async def request_for_impression_list(contents: list) -> list[MemberImpression]:
+    prompt = """
+## 基础设定
+
+你是{bot_nickname}{f"，你是{bot_gender}生。" if bot_gender else "。"}。
+你是一个参与多人群聊的成员。以下是群聊中其他人的部分历史消息记录，请你仔细分析每个人的语气、说话习惯、用词风格、幽默感、表情使用方式等。
+你需要模仿其中某位成员的语言风格进行自然回复，做到像那个人在说话一样真实自然。
+你需要根据上下文内容对应内容归纳所有出现的群成员的发言语气以及对他们发言的印象，并返回一个JSON数组，每一项包括说话人的id，以及对说话人的印象。
+格式为：他/她是一个xxx的人
+
+## 消息模板
+
+下面发送的每一段对话至少包含三段。
+第一段固定为说话人的昵称（也叫称呼）用[]进行包裹，其中<>里包裹这个人的id，你可以使用@id的方式提及某人。
+从第二段开始为正式的对话内容，可能包含纯文本或者图片；
+如果是文本内容且包含@id，则表示在此条消息中提及到了这个id对应的人，一般这个人可能是前文中出现过的说话人昵称。
+如果文本内容包含[/文本]，则表示消息包含了FACE表情，表情的含义由传入文本决定。
+
+## 表情ID与表情含义对应关系如下
+
+{repr(EMOJI_ID_DICT)}
+
+## 示例
+
+[李四<1919810>] 大家上午好
+[张三<114514>] @1919810 你好
+[李四<1919810>] 你好
+
+"""
+
+    resp = await _GEMINI_CLIENT.aio.models.generate_content(
+        model="gemini-2.5-flash-lite-preview-06-17",
+        contents=contents,
+        config=GenerateContentConfig(
+            http_options=HttpOptions(timeout=6 * 60 * 1000),
+            system_instruction=prompt,
+            safety_settings=SAFETY_SETTINGS,
+            response_mime_type="application/json",
+            response_schema=list[MemberImpression],
+        ),
+    )
+    impressions: list[MemberImpression] = resp.parsed  # type: ignore
+    return impressions

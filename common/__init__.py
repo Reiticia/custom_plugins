@@ -1,12 +1,9 @@
 from time import sleep
 from typing import Optional, Callable
-from nonebot import require
 import random
 import string
 import functools
 import asyncio
-
-require("nonebot_plugin_uninfo")
 
 
 def generate_random_string(length: int) -> str:

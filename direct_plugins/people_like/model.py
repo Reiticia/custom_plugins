@@ -50,3 +50,12 @@ class GroupMsg(Model):
     content: Mapped[str]
     file_id: Mapped[str] = mapped_column(nullable=True)
     time: Mapped[int]  # 时间戳
+
+class GroupMemberImpression(Model):
+    """群成员印象"""
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    group_id: Mapped[int]
+    user_id: Mapped[int]
+    impression: Mapped[str] = mapped_column(nullable=True)
+    create_time: Mapped[int]
+    update_time: Mapped[int]
