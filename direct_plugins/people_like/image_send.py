@@ -331,7 +331,6 @@ async def add_image(event: GroupMessageEvent):
                             mime_type=mime_type
                         )
                         session.add(image_sender)
-                        await session.commit()
                         logger.info(f"新增表情包图片{file_name}成功")
 
                         parts = []
@@ -377,7 +376,10 @@ async def add_image(event: GroupMessageEvent):
                                 }
                             )
                         )
+
+                        await session.flush()
                         logger.info(f"更新表情包图片{file_name}成功")
+                    await session.commit()
 
         else:
             resp = await _HTTP_CLIENT.get(url)
@@ -438,8 +440,8 @@ async def upload_image() -> Optional[str]:
                 try:
                     file = await _GEMINI_CLIENT.aio.files.upload(file=file_path, config=UploadFileConfig(mime_type=mime_type))
                     _FILES.add(local_file)
-                    async with get_session() as update_session:
-                        await update_session.execute(
+                    async with get_session() as session:
+                        await session.execute(
                             update(ImageSender)
                             .where(ImageSender.name == local_file)
                             .values(
@@ -451,7 +453,9 @@ async def upload_image() -> Optional[str]:
                                 }
                             )
                         )
+                        await session.flush()
                         logger.debug(f"更新图片{local_file}成功")
+                        await session.commit()
                 except RemoteProtocolError as e:
                     logger.error(f"文件{file_path}更新失败{repr(e)}")
 
@@ -525,8 +529,8 @@ def get_mime_type(filename: str) -> Literal["image/jpeg", "image/png"]:
 
 @driver.on_bot_connect
 async def migrate_imagesender_to_milvus():
-    async with get_session() as select_session:
-        res = list(await select_session.scalars(select(ImageSender)))
+    async with get_session() as session:
+        res = list(await session.scalars(select(ImageSender)))
     
     logger.debug(f"共需要迁移{len(res)}条数据")
     milvus_client = await get_milvus_vector_client()
@@ -589,7 +593,9 @@ async def migrate_imagesender_to_milvus():
                 else:
                     logger.warning(f"文件{file_name}不存在，无法删除")
             
-        async with get_session() as delete_session:
-            count = await delete_session.execute(delete(ImageSender).where(ImageSender.name.in_(fail_files)))
-            logger.info(f"删除数据库中{count.rowcount}条迁移失败的数据")
+        async with get_session() as session:
+            count = await session.execute(delete(ImageSender).where(ImageSender.name.in_(fail_files)))
+            await session.flush()
+            await session.commit()
+        logger.info(f"删除数据库中{count.rowcount}条迁移失败的数据")
         logger.info(f"{skip_count}条数据跳过迁移，{error_count}条数据迁移失败，{success_count}条数据迁移成功")
