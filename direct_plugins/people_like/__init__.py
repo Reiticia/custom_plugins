@@ -1301,7 +1301,7 @@ async def request_for_impression_list(contents: list) -> list[MemberImpression]:
 """
 
     resp = await _GEMINI_CLIENT.aio.models.generate_content(
-        model="gemini-2.5-flash-lite-preview-06-17",
+        model="gemini-2.5-flash-lite",
         contents=contents,
         config=GenerateContentConfig(
             http_options=HttpOptions(timeout=6 * 60 * 1000),
@@ -1309,6 +1309,7 @@ async def request_for_impression_list(contents: list) -> list[MemberImpression]:
             safety_settings=SAFETY_SETTINGS,
             response_mime_type="application/json",
             response_schema=list[MemberImpression],
+            thinking_config=ThinkingConfig(thinking_budget=10240),
         ),
     )
     impressions: list[MemberImpression] = resp.parsed  # type: ignore

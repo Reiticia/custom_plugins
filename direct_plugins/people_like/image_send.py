@@ -211,7 +211,7 @@ async def analysis_image_trait(file_part: list[Part], group_id: int = 0) -> Anal
     file_part.append(Part.from_text(text="分析图片是否包含色情内容，暴力内容或日本动漫形象内容"))
     contents: ContentListUnion = [Content(role="user", parts=file_part)]
     resp = await _GEMINI_CLIENT.aio.models.generate_content(
-        model="gemini-2.5-flash-lite-preview-06-17",
+        model="gemini-2.5-flash-lite",
         contents=contents,
         config=GenerateContentConfig(
             system_instruction=prompt,

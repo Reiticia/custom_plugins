@@ -387,7 +387,7 @@ async def analysis_image_to_str_description(parts: list[Part]) -> str:
     """分析图片，返回图片分析内容"""
     global _GEMINI_CLIENT
     response = await _GEMINI_CLIENT.aio.models.generate_content(
-        model="gemini-2.5-flash-lite-preview-06-17",
+        model="gemini-2.5-flash-lite",
         contents=[
             Content(
                 role="user",

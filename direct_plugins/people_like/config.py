@@ -31,7 +31,7 @@ class Config(BaseModel):
     """Gemini API Key"""
     gemini_base_url: Optional[str] = None
     """Gemini API Base URL"""
-    gemini_model: str = "gemini-2.5-flash-lite-preview-06-17"
+    gemini_model: str = "gemini-2.5-flash-lite"
     """Gemini 模型"""
     query_len: int = 20
     """查询最近消息的数量"""
