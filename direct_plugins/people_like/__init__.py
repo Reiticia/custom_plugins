@@ -61,6 +61,7 @@ from .vector import (
 from .model import GroupMemberImpression, GroupMsg
 from .task import get_model, change_model
 from collections import defaultdict
+import asyncio
 
 __plugin_meta__ = PluginMetadata(
     name="people-like",
@@ -71,6 +72,7 @@ __plugin_meta__ = PluginMetadata(
 
 DRIVER = get_driver()
 
+LOG_LEVEL = DRIVER.config.log_level
 
 @scheduler.scheduled_job("interval", days=1, id="remove_old_msg")
 async def _():
@@ -552,13 +554,7 @@ async def chat_with_gemini(
 
     data: list[GroupMsg] = sorted(data, key=lambda x: x.time, reverse=False)  # type: ignore
     # 判断当前日志等级是否为 DEBUG
-    current_log_level = DRIVER.config.log_level
-    if isinstance(current_log_level, str):
-        is_debug_mode = current_log_level.upper() == "DEBUG"
-    else:
-        is_debug_mode = current_log_level == logging.DEBUG
-
-    if is_debug_mode:
+    if LOG_LEVEL.upper() == "DEBUG" if isinstance(LOG_LEVEL, str) else LOG_LEVEL == logging.DEBUG:
         print(f"群组 {group_id} 当前选取为上下文的消息内容为")
         print(
             {line.message_id: line.file_id if line.file_id and len(line.file_id) > 0 else line.content for line in data}
@@ -807,7 +803,7 @@ async def chat_with_gemini(
                 if len(message) > 0:
                     plain_text = extract_plain_text_from_message(message)
 
-                    if is_debug_mode:
+                    if LOG_LEVEL.upper() == "DEBUG" if isinstance(LOG_LEVEL, str) else LOG_LEVEL == logging.DEBUG:
                         print(f"即将向群组 {group_id} 发送消息")
                         print(plain_text)
                         print("被禁止出现在句子中的词汇或短语")
@@ -863,7 +859,7 @@ async def chat_with_gemini(
             if len(message) > 0:
                 plain_text = extract_plain_text_from_message(message)
 
-                if is_debug_mode:
+                if LOG_LEVEL.upper() == "DEBUG" if isinstance(LOG_LEVEL, str) else LOG_LEVEL == logging.DEBUG:
                     print(f"即将向群组 {group_id} 发送消息")
                     print(plain_text)
                     print("被禁止出现在句子中的词汇或短语")
@@ -1165,7 +1161,7 @@ def group_msgs_to_threads(msgs: list[GroupMsg]) -> list[list[GroupMsg]]:
     # 按 message_id 排序，每组内部按 index 升序
     return [sorted(group, key=lambda m: m.index) for _, group in sorted(threads.items())]
 
-@scheduler.scheduled_job("cron", hour="20", id="update group member impression")
+@scheduler.scheduled_job("cron", hour="8,20", id="update group member impression")
 async def _():
     """每天更新群组成员印象"""
     # 查询最近两天的所有群消息
@@ -1177,9 +1173,8 @@ async def _():
     group_messages: dict[int, list[GroupMsg]] = defaultdict(list)
     for msg in msgs:
         group_messages[msg.group_id].append(msg)
-    for k, v in group_messages.items():
-        # 分析群组消息
-        await analysis_messages_of_group(k, v)
+    tasks = [analysis_messages_of_group(k, v) for k, v in group_messages.items()]
+    await asyncio.gather(*tasks)
 
 
 async def analysis_messages_of_group(group_id: int, messages: list[GroupMsg]):
@@ -1229,8 +1224,10 @@ async def analysis_messages_of_group(group_id: int, messages: list[GroupMsg]):
                     contents.append({"role": "model", "parts": c})
 
     res = await request_for_impression_list(contents=contents)
-    logger.info(f"群{group_id}成员印象")
-    logger.info(res)
+    if LOG_LEVEL.upper() == "INFO" if isinstance(LOG_LEVEL, str) else LOG_LEVEL == logging.INFO:
+        print(f"群{group_id}成员印象")
+        for item in res:
+            print(f"用户{item.user_id}的印象为：{item.impression}")
     # 更新或插入数据库
     for item in res:
         async with get_session() as session:
