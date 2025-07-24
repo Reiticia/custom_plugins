@@ -42,6 +42,7 @@ _EXPECT_PROP_NAMES: dict[str, PropConfig] = {
     "model": {"range": None, "default": plugin_config.gemini_model},
     "anime_only": {"range": None, "default": False},
     "at_reply_probability": {"range": "0.0-1.0", "default": plugin_config.reply_probability * 4},
+    "context_size": {"range": "0-1000", "default": plugin_config.context_size},
 }
 
 _BLACK_LIST_FILE = _CONFIG_DIR / "blacklist.json"

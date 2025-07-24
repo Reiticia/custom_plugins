@@ -533,13 +533,15 @@ async def chat_with_gemini(
     global _GEMINI_CLIENT, ALL_IMAGE_FILE_CACHE_DIR
     bot = get_bot()
 
+    context_size: int  = get_value_or_default(group_id, "context_size")
+
     async with get_session() as session:
         query_data = list(
             await session.scalars(
                 select(GroupMsg)
                 .where(GroupMsg.group_id == group_id)
                 .order_by(GroupMsg.time.desc())
-                .limit(plugin_config.context_size)
+                .limit(context_size)
             )
         )
     combined_list = list(query_data)
@@ -547,9 +549,9 @@ async def chat_with_gemini(
     for item in combined_list:
         unique_dict[item.id] = item  # 使用 item.id 作为键，item 对象作为值
     data: list[GroupMsg] = list(unique_dict.values())  # 返回字典的值的列表 (元素对象)
-    if len(data) < int(plugin_config.context_size / 4):
+    if len(data) < int(context_size / 4):
         # 如果没有数据，则不进行回复
-        logger.info(f"群{group_id}查询结果少于{int(plugin_config.context_size / 4)}条，不进行回复")
+        logger.info(f"群{group_id}查询结果少于{int(context_size / 4)}条，不进行回复")
         return
 
     data: list[GroupMsg] = sorted(data, key=lambda x: x.time, reverse=False)  # type: ignore
@@ -741,64 +743,133 @@ async def chat_with_gemini(
         tools.append(Tool(function_declarations=function_declarations))
 
     # 至多重试 5 次
-    resp = await request_for_resp(
-        group_id=group_id,
-        contents=contents,
-        prompt=prompt,
-        top_p=top_p,
-        top_k=top_k,
-        c_len=c_len,
-        tools=tools,
-        temperature=temperature,
-        enable_search=enable_search,
-    )
+    success = True  # 是否正确处理
+    for i in range(5):
+        logger.debug(f"群{group_id}第{i + 1}次请求消息")
+        resp = await request_for_resp(
+            group_id=group_id,
+            contents=contents,
+            prompt=prompt,
+            top_p=top_p,
+            top_k=top_k,
+            c_len=c_len,
+            tools=tools,
+            temperature=temperature,
+            enable_search=enable_search,
+        )
 
-    logger.debug(f"群{group_id}回复内容：{resp}")
+        logger.debug(f"群{group_id}回复内容：{resp}")
 
-    logger.info(f"本次请求总token数{resp.usage_metadata.total_token_count}")  # type: ignore
+        logger.info(f"本次请求总token数{resp.usage_metadata.total_token_count}")  # type: ignore
 
-    # 如果有函数调用，则传递函数调用的参数，进行图片发送
-    for part in resp.candidates[0].content.parts:  # type: ignore
-        if fc := part.function_call:
-            if fc.name == "send_text_message" and fc.args:
-                messages = fc.args.get("messages")
-                logger.debug(f"群{group_id}调用函数{fc.name}，参数{messages}")
-                msg_str = str(messages)
-                returnMsgs: list[ReturnMsg] = [ReturnMsg(**item) for item in json.loads(msg_str.replace("'", '"'))]
-                message = Message()
-                for returnMsg in returnMsgs:
-                    if returnMsg.msg_type == ReturnMsgEnum.AT:
-                        content = returnMsg.content
-                        if not content.isdigit():
-                            await process_text_segment(message, content, group_id)
-                            continue
-                        message.append(MessageSegment.at(int(content)))
-                    elif returnMsg.msg_type == ReturnMsgEnum.TEXT:
-                        # 处理文本中包含 @123 的情况，转换成 TEXT+AT+TEXT 串
-                        content = returnMsg.content
-                        await process_text_segment(message, content, group_id)
-                    elif returnMsg.msg_type == ReturnMsgEnum.FACE:
-                        content = returnMsg.content
-                        if not content.isdigit():
-                            if content in EMOJI_NAME_DICT:
-                                # 如果是表情名称，则转换为表情id
-                                face_id = EMOJI_NAME_DICT[content]
-                                message.append(MessageSegment.face(face_id))
+        # 如果有函数调用，则传递函数调用的参数，进行图片发送
+        for part in resp.candidates[0].content.parts:  # type: ignore
+            if fc := part.function_call:
+                if fc.name == "send_text_message" and fc.args:
+                    messages = fc.args.get("messages")
+                    logger.debug(f"群{group_id}调用函数{fc.name}，参数{messages}")
+                    msg_str = str(messages)
+                    returnMsgs: list[ReturnMsg] = [ReturnMsg(**item) for item in json.loads(msg_str.replace("'", '"'))]
+                    message = Message()
+                    for returnMsg in returnMsgs:
+                        if returnMsg.msg_type == ReturnMsgEnum.AT:
+                            content = returnMsg.content
+                            if not content.isdigit():
+                                if not await process_text_segment(message, content, group_id):
+                                    success = False
+                                    logger.warning(f"发送到群{group_id}的文本消息中包含非法文本：{content}，重新请求消息")
+                                    break
+                                else:
+                                    continue
+                            message.append(MessageSegment.at(int(content)))
+                        elif returnMsg.msg_type == ReturnMsgEnum.TEXT:
+                            # 处理文本中包含 @123 的情况，转换成 TEXT+AT+TEXT 串
+                            content = returnMsg.content
+                            if not await process_text_segment(message, content, group_id):
+                                success = False
+                                logger.warning(f"发送到群{group_id}的文本消息中包含非法文本：{content}，重新请求消息")
+                                break
+                        elif returnMsg.msg_type == ReturnMsgEnum.FACE:
+                            content = returnMsg.content
+                            if not content.isdigit():
+                                if content in EMOJI_NAME_DICT:
+                                    # 如果是表情名称，则转换为表情id
+                                    face_id = EMOJI_NAME_DICT[content]
+                                    message.append(MessageSegment.face(face_id))
+                                else:
+                                    # 如果找不到对应 face 描述的 id，则改为发送动画表情
+                                    description = content
+                                    logger.info(f"群{group_id}调用函数{fc.name}，参数{description}")
+                                    will_send_img = await get_file_name_of_image_will_sent_by_description_vec(
+                                        str(description), group_id
+                                    )
+                                    if will_send_img:
+                                        logger.trace(f"群{group_id}回复图片：{will_send_img}")
+                                        await on_msg.send(will_send_img)
                             else:
-                                # 如果找不到对应 face 描述的 id，则改为发送动画表情
-                                description = content
-                                logger.info(f"群{group_id}调用函数{fc.name}，参数{description}")
-                                will_send_img = await get_file_name_of_image_will_sent_by_description_vec(
-                                    str(description), group_id
-                                )
-                                if will_send_img:
-                                    logger.trace(f"群{group_id}回复图片：{will_send_img}")
-                                    await on_msg.send(will_send_img)
-                        else:
-                            # 如果是数字，则直接转换为 face segment
-                            face_id = int(content)
-                            if face_id in EMOJI_ID_DICT:
-                                message.append(MessageSegment.face(face_id))
+                                # 如果是数字，则直接转换为 face segment
+                                face_id = int(content)
+                                if face_id in EMOJI_ID_DICT:
+                                    message.append(MessageSegment.face(face_id))
+
+                    if len(message) > 0:
+                        plain_text = extract_plain_text_from_message(message)
+
+                        if LOG_LEVEL.upper() == "DEBUG" if isinstance(LOG_LEVEL, str) else LOG_LEVEL == logging.DEBUG:
+                            print(f"即将向群组 {group_id} 发送消息")
+                            print(plain_text)
+                            print("被禁止出现在句子中的词汇或短语")
+                            print(words)
+                        if all(ignore not in plain_text for ignore in words) and not GROUP_SPEAK_DISABLE.get(
+                            group_id, False
+                        ):
+                            # 判断是否需要提及消息
+                            should_reply = await check_should_reply(message_id=message_id, group_id=group_id)
+                            if should_reply:
+                                message.insert(0, MessageSegment.reply(message_id))
+                            if not GROUP_SPEAK_DISABLE.get(group_id, False):
+                                logger.info(f"群{group_id}回复消息：{message.extract_plain_text()}")
+                                await on_msg.send(message)
+
+                if fc.name == "send_meme" and fc.args:
+                    description = fc.args.get("description")
+                    logger.info(f"群{group_id}调用函数{fc.name}，参数{description}")
+                    will_send_img = await get_file_name_of_image_will_sent_by_description_vec(str(description), group_id)
+                    if will_send_img:
+                        logger.trace(f"群{group_id}回复图片：{will_send_img}")
+                        await on_msg.send(will_send_img)
+
+                if fc.name == "mute_sb" and fc.args:
+                    user_id = int(str(fc.args.get("user_id")))
+                    minute = int(str(fc.args.get("minute")))
+                    logger.info(f"群{group_id}调用函数{fc.name}，参数{user_id}，{minute}分钟")
+                    await mute_sb(group_id, user_id, minute)
+
+                if fc.name == "get_group_history" and fc.args:
+                    day = fc.args.get("day")
+                    user_id = fc.args.get("user_id")
+                    limit = fc.args.get("limit")
+                    start_time = fc.args.get("start_time")
+                    end_time = fc.args.get("end_time")
+                    logger.info(f"群{group_id}调用函数{fc.name}，参数{day}，{user_id}，{limit}，{start_time}，{end_time}")
+                    forward_message = await get_group_history(
+                        group_id=group_id,
+                        day=day,  # type: ignore
+                        user_id=user_id,
+                        limit=limit,
+                        start_time=start_time,
+                        end_time=end_time,
+                    )
+                    await bot.call_api("send_group_forward_msg", group_id=group_id, messages=forward_message)
+
+            if isinstance(part, str) and enable_search:  # type: ignore
+                logger.debug(f"群{group_id}发送消息{part}")
+                content = str(part)
+                message = Message()
+                if not await process_text_segment(message, content, group_id):
+                    success = False
+                    logger.warning(f"发送到群{group_id}的文本消息中包含非法文本：{content}，重新请求消息")
+                    break
 
                 if len(message) > 0:
                     plain_text = extract_plain_text_from_message(message)
@@ -808,9 +879,7 @@ async def chat_with_gemini(
                         print(plain_text)
                         print("被禁止出现在句子中的词汇或短语")
                         print(words)
-                    if all(ignore not in plain_text for ignore in words) and not GROUP_SPEAK_DISABLE.get(
-                        group_id, False
-                    ):
+                    if all(ignore not in plain_text for ignore in words) and not GROUP_SPEAK_DISABLE.get(group_id, False):
                         # 判断是否需要提及消息
                         should_reply = await check_should_reply(message_id=message_id, group_id=group_id)
                         if should_reply:
@@ -819,60 +888,8 @@ async def chat_with_gemini(
                             logger.info(f"群{group_id}回复消息：{message.extract_plain_text()}")
                             await on_msg.send(message)
 
-            if fc.name == "send_meme" and fc.args:
-                description = fc.args.get("description")
-                logger.info(f"群{group_id}调用函数{fc.name}，参数{description}")
-                will_send_img = await get_file_name_of_image_will_sent_by_description_vec(str(description), group_id)
-                if will_send_img:
-                    logger.trace(f"群{group_id}回复图片：{will_send_img}")
-                    await on_msg.send(will_send_img)
-
-            if fc.name == "mute_sb" and fc.args:
-                user_id = int(str(fc.args.get("user_id")))
-                minute = int(str(fc.args.get("minute")))
-                logger.info(f"群{group_id}调用函数{fc.name}，参数{user_id}，{minute}分钟")
-                await mute_sb(group_id, user_id, minute)
-
-            if fc.name == "get_group_history" and fc.args:
-                day = fc.args.get("day")
-                user_id = fc.args.get("user_id")
-                limit = fc.args.get("limit")
-                start_time = fc.args.get("start_time")
-                end_time = fc.args.get("end_time")
-                logger.info(f"群{group_id}调用函数{fc.name}，参数{day}，{user_id}，{limit}，{start_time}，{end_time}")
-                forward_message = await get_group_history(
-                    group_id=group_id,
-                    day=day,  # type: ignore
-                    user_id=user_id,
-                    limit=limit,
-                    start_time=start_time,
-                    end_time=end_time,
-                )
-                await bot.call_api("send_group_forward_msg", group_id=group_id, messages=forward_message)
-
-        if isinstance(part, str) and enable_search:  # type: ignore
-            logger.debug(f"群{group_id}发送消息{part}")
-            content = str(part)
-            message = Message()
-            await process_text_segment(message, content, group_id)
-
-            if len(message) > 0:
-                plain_text = extract_plain_text_from_message(message)
-
-                if LOG_LEVEL.upper() == "DEBUG" if isinstance(LOG_LEVEL, str) else LOG_LEVEL == logging.DEBUG:
-                    print(f"即将向群组 {group_id} 发送消息")
-                    print(plain_text)
-                    print("被禁止出现在句子中的词汇或短语")
-                    print(words)
-                if all(ignore not in plain_text for ignore in words) and not GROUP_SPEAK_DISABLE.get(group_id, False):
-                    # 判断是否需要提及消息
-                    should_reply = await check_should_reply(message_id=message_id, group_id=group_id)
-                    if should_reply:
-                        message.insert(0, MessageSegment.reply(message_id))
-                    if not GROUP_SPEAK_DISABLE.get(group_id, False):
-                        logger.info(f"群{group_id}回复消息：{message.extract_plain_text()}")
-                        await on_msg.send(message)
-
+        if success:
+            break
 
 async def process_text_segment(message: Message, text_content: str, group_id: int):
     """处理发送 Text 文本消息可能出现的各种异常情况
@@ -921,6 +938,12 @@ async def process_text_segment(message: Message, text_content: str, group_id: in
 
         else:
             message.append(MessageSegment.text(pretty_text_segment(message, part)))
+
+    # 判断 text 消息段是否含有非法字符串，如果有，则返回 False
+    words = ["face", "FACE", "at", "AT", "@"]
+    if any(any(ignore in ms.data["text"] for ignore in words) for ms in message if ms.type == "text"):
+        return False
+    return True
 
 
 async def check_should_reply(message_id: int, group_id: int) -> bool:
