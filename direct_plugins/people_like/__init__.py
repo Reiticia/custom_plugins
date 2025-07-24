@@ -53,7 +53,7 @@ import nonebot_plugin_localstore as store
 from sqlalchemy import delete, select, func, update
 from .setting import get_value_or_default, get_blacklist
 from .config import Config, plugin_config
-from .image_send import get_file_name_of_image_will_sent_by_description_vec, SAFETY_SETTINGS
+from .image_send import get_file_name_of_image_will_sent_by_description_vec, SAFETY_SETTINGS, _HTTP_CLIENT
 from .vector import (
     _GEMINI_CLIENT,
     analysis_image_to_str_description,
@@ -237,8 +237,6 @@ async def sleep_sometime(size: int):
     time = random.random() * plugin_config.one_word_max_used_time_of_second * size
     await sleep(time)
 
-
-_HTTP_CLIENT = AsyncClient()
 
 ALL_IMAGE_FILE_CACHE_DIR = store.get_cache_dir("people_like") / "all"
 

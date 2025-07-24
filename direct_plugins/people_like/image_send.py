@@ -275,7 +275,7 @@ async def inc_image(event: GroupMessageEvent) -> bool:
     return event.message.has("image")
 
 
-_HTTP_CLIENT = AsyncClient()
+_HTTP_CLIENT = AsyncClient(verify=False, timeout=30.0)
 
 
 @on_message(rule=inc_image).handle()
