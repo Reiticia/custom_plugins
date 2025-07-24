@@ -8,12 +8,12 @@ from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent
 from aiofiles import open
 from nonebot_plugin_waiter import prompt, suggest
 from typing import Generic, Optional, TypeVar, TypedDict, Any
+import nonebot_plugin_localstore as store  # noqa: E402
 
 from .config import plugin_config
 
 driver = get_driver()
 
-import nonebot_plugin_localstore as store  # noqa: E402
 
 _CONFIG_DIR = store.get_config_dir("people_like")
 

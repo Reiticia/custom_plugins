@@ -1,7 +1,16 @@
 import random
 import time
-from datetime import datetime
+import os
+import asyncio
 import typing_extensions
+import json
+from datetime import datetime
+from typing import Literal, Optional
+from pydantic import BaseModel
+from httpx import RemoteProtocolError, AsyncClient
+from aiofiles import open as aopen
+from nonebot_plugin_orm import get_session
+from sqlalchemy import delete, select, update
 from nonebot import get_bot, logger, on_command, on_message, get_driver
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
@@ -9,16 +18,8 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent, Message
 from nonebot.adapters.onebot.utils import b2s, f2s
 from nonebot.permission import SUPERUSER
 import nonebot_plugin_localstore as store  # noqa: E402
-from httpx import AsyncClient
-from aiofiles import open as aopen
-from nonebot_plugin_orm import get_session
-from sqlalchemy import delete, select, update
-from .model import ImageSender
-from .vector import analysis_image_to_str_description
+from nonebot_plugin_apscheduler import scheduler
 
-import os
-import asyncio
-from typing import Literal, Optional
 
 from google.genai.types import (
     File,
@@ -34,13 +35,10 @@ from google.genai.types import (
 
 from google.genai.errors import ClientError
 
+from .model import ImageSender
 from .setting import get_value_or_default
-from .vector import _GEMINI_CLIENT, VectorDataImage, get_text_embedding, get_milvus_vector_client
-from pydantic import BaseModel
-import json
-from httpx import RemoteProtocolError
+from .vector import _GEMINI_CLIENT, VectorDataImage, get_text_embedding, get_milvus_vector_client, analysis_image_to_str_description
 
-from nonebot_plugin_apscheduler import scheduler
 
 EMOJI_DIR_PATH = store.get_data_dir("people_like") / "image"
 NORMAL_IMAGE_DIR_PATH = store.get_data_dir("people_like") / "normal"

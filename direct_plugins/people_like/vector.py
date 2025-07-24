@@ -1,5 +1,5 @@
-from typing import Optional
 import typing_extensions
+from typing import Optional
 from pydantic import BaseModel
 from pymilvus import DataType, AsyncMilvusClient, MilvusClient
 from datetime import datetime
@@ -175,7 +175,7 @@ class MilvusVector:
             limit=self.query_len,  # 限制返回数量
         )
         return [VectorData(**item) for item in results]
-    
+
     @typing_extensions.deprecated("This method is not used.")
     async def query_all_data(self) -> list[VectorData]:
         """查询所有数据"""
@@ -195,7 +195,7 @@ class MilvusVector:
                 "file_id",
                 "vec",
                 "time",
-            ]
+            ],
         )
         return [VectorData(**item) for item in results]
 
@@ -366,6 +366,7 @@ class MilvusVector:
                 entity = item.get("entity", item)
                 vector_data_image_list.append(VectorDataImage(**entity))
         return vector_data_image_list
+
 
 @retry_on_exception(max_retries=5)
 async def get_text_embedding(text: str) -> list[float]:
