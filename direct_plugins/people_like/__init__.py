@@ -80,7 +80,6 @@ async def _():
         # 删除超过 7 天的消息
         seven_days_ago = int(time.time()) - 60 * 60 * 24 * 7
         result = await session.execute(delete(GroupMsg).where(GroupMsg.time < seven_days_ago))
-        await session.flush()
         deleted_count = result.rowcount if result.rowcount is not None else 0
         logger.info(f"已删除超过7天的消息，共 {deleted_count} 条")
         await session.commit()
@@ -1248,7 +1247,6 @@ async def analysis_messages_of_group(group_id: int, messages: list[GroupMsg]):
                     .where(GroupMemberImpression.group_id == group_id)
                     .values({"update_time": int(time.time()), "impression": item.impression})
                 )
-                await session.flush()
             else:
                 # 插入新的印象
                 new_impression = GroupMemberImpression(

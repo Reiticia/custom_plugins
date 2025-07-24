@@ -377,7 +377,6 @@ async def add_image(event: GroupMessageEvent):
                             )
                         )
 
-                        await session.flush()
                         logger.info(f"更新表情包图片{file_name}成功")
                     await session.commit()
 
@@ -453,7 +452,6 @@ async def upload_image() -> Optional[str]:
                                 }
                             )
                         )
-                        await session.flush()
                         logger.debug(f"更新图片{local_file}成功")
                         await session.commit()
                 except RemoteProtocolError as e:
@@ -595,7 +593,6 @@ async def migrate_imagesender_to_milvus():
             
         async with get_session() as session:
             count = await session.execute(delete(ImageSender).where(ImageSender.name.in_(fail_files)))
-            await session.flush()
             await session.commit()
         logger.info(f"删除数据库中{count.rowcount}条迁移失败的数据")
         logger.info(f"{skip_count}条数据跳过迁移，{error_count}条数据迁移失败，{success_count}条数据迁移成功")
