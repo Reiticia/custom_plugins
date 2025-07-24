@@ -74,6 +74,7 @@ DRIVER = get_driver()
 
 LOG_LEVEL = DRIVER.config.log_level
 
+
 @scheduler.scheduled_job("interval", days=1, id="remove_old_msg")
 async def _():
     async with get_session() as session:
@@ -94,21 +95,6 @@ class Character(Enum):
 class ChatMsg:
     sender: Character
     content: list[Part]
-
-
-@dataclass
-class GroupMemberDict:
-    group_id: int
-    members: dict[int, str]
-
-    def add_member(self, user_id: int, user_name: str):
-        self.members[user_id] = user_name
-
-    def get_id_by_name(self, user_name: str) -> Optional[int]:
-        for user_id, name in self.members.items():
-            if name == user_name:
-                return user_id
-        return None
 
 
 GROUP_SPEAK_DISABLE: dict[int, bool] = {}
@@ -533,15 +519,12 @@ async def chat_with_gemini(
     global _GEMINI_CLIENT, ALL_IMAGE_FILE_CACHE_DIR
     bot = get_bot()
 
-    context_size: int  = get_value_or_default(group_id, "context_size")
+    context_size: int = get_value_or_default(group_id, "context_size")
 
     async with get_session() as session:
         query_data = list(
             await session.scalars(
-                select(GroupMsg)
-                .where(GroupMsg.group_id == group_id)
-                .order_by(GroupMsg.time.desc())
-                .limit(context_size)
+                select(GroupMsg).where(GroupMsg.group_id == group_id).order_by(GroupMsg.time.desc()).limit(context_size)
             )
         )
     combined_list = list(query_data)
@@ -628,13 +611,9 @@ async def chat_with_gemini(
         impression = list(
             await session.scalars(select(GroupMemberImpression).where(GroupMemberImpression.group_id == group_id))
         )
-    impression_dict: dict[int,str] = {}
+    impression_dict: dict[int, str] = {}
     for item in impression:
-        impression_dict.update(
-            {
-                item.user_id: item.impression
-            }
-        )
+        impression_dict.update({item.user_id: item.impression})
 
     prompt = get_prompt(bot_nickname, bot_gender, extra_prompt, is_admin, impression_dict)
     contents = []
@@ -777,7 +756,9 @@ async def chat_with_gemini(
                             if not content.isdigit():
                                 if not await process_text_segment(message, content, group_id):
                                     success = False
-                                    logger.warning(f"发送到群{group_id}的文本消息中包含非法文本：{content}，重新请求消息")
+                                    logger.warning(
+                                        f"发送到群{group_id}的文本消息中包含非法文本：{content}，重新请求消息"
+                                    )
                                     break
                                 else:
                                     continue
@@ -824,7 +805,9 @@ async def chat_with_gemini(
                             group_id, False
                         ):
                             # 判断是否需要提及消息
-                            should_reply = await check_should_reply(message_id=message_id, group_id=group_id)
+                            should_reply = await check_should_reply(
+                                message_id=message_id, group_id=group_id, will_send_message=message
+                            )
                             if should_reply:
                                 message.insert(0, MessageSegment.reply(message_id))
                             if not GROUP_SPEAK_DISABLE.get(group_id, False):
@@ -834,7 +817,9 @@ async def chat_with_gemini(
                 if fc.name == "send_meme" and fc.args:
                     description = fc.args.get("description")
                     logger.info(f"群{group_id}调用函数{fc.name}，参数{description}")
-                    will_send_img = await get_file_name_of_image_will_sent_by_description_vec(str(description), group_id)
+                    will_send_img = await get_file_name_of_image_will_sent_by_description_vec(
+                        str(description), group_id
+                    )
                     if will_send_img:
                         logger.trace(f"群{group_id}回复图片：{will_send_img}")
                         await on_msg.send(will_send_img)
@@ -851,7 +836,9 @@ async def chat_with_gemini(
                     limit = fc.args.get("limit")
                     start_time = fc.args.get("start_time")
                     end_time = fc.args.get("end_time")
-                    logger.info(f"群{group_id}调用函数{fc.name}，参数{day}，{user_id}，{limit}，{start_time}，{end_time}")
+                    logger.info(
+                        f"群{group_id}调用函数{fc.name}，参数{day}，{user_id}，{limit}，{start_time}，{end_time}"
+                    )
                     forward_message = await get_group_history(
                         group_id=group_id,
                         day=day,  # type: ignore
@@ -879,9 +866,11 @@ async def chat_with_gemini(
                         print(plain_text)
                         print("被禁止出现在句子中的词汇或短语")
                         print(words)
-                    if all(ignore not in plain_text for ignore in words) and not GROUP_SPEAK_DISABLE.get(group_id, False):
+                    if any(ignore in plain_text for ignore in words) and not GROUP_SPEAK_DISABLE.get(group_id, False):
                         # 判断是否需要提及消息
-                        should_reply = await check_should_reply(message_id=message_id, group_id=group_id)
+                        should_reply = await check_should_reply(
+                            message_id=message_id, group_id=group_id, will_send_message=message
+                        )
                         if should_reply:
                             message.insert(0, MessageSegment.reply(message_id))
                         if not GROUP_SPEAK_DISABLE.get(group_id, False):
@@ -890,6 +879,7 @@ async def chat_with_gemini(
 
         if success:
             break
+
 
 async def process_text_segment(message: Message, text_content: str, group_id: int):
     """处理发送 Text 文本消息可能出现的各种异常情况
@@ -946,11 +936,13 @@ async def process_text_segment(message: Message, text_content: str, group_id: in
     return True
 
 
-async def check_should_reply(message_id: int, group_id: int) -> bool:
+async def check_should_reply(message_id: int, group_id: int, will_send_message: Message) -> bool:
     """
     查询GroupMsg表中指定 group_id 的所有记录中，time 大于指定 message_id 那个记录的 time 的数量。
-    如果数量为小于指定数量，说明消息回复及时，不使用reply语法，否则reply原消息
+    如果数量为小于指定数量，说明消息回复及时，不使用reply语法，否则需要判断消息相关性判断是否需要 reply
     合并为一次查询完成。
+
+    再判断与原来消息的相关性，如果相关则 reply原消息，否则不reply原消息
     """
     async with get_session() as session:
         # 一次查询获取指定消息的时间和比该时间更晚的消息数量
@@ -958,14 +950,94 @@ async def check_should_reply(message_id: int, group_id: int) -> bool:
         count = await session.scalar(
             select(func.count()).where(GroupMsg.group_id == group_id, GroupMsg.time > subquery)
         )
-        # 如果小于指定长度，则不用reply原消息
-        return count is not None and count >= plugin_config.should_reply_len
+        messages = list(await session.scalars(select(GroupMsg).where(GroupMsg.message_id == message_id)))  # 原消息内容
+
+    # 如果小于指定长度，则不用reply原消息
+    should_reply = count is not None and count >= plugin_config.should_reply_len
+
+    if not should_reply:
+        # 如果不需要回复原消息，则直接返回
+        return False
+
+    # 原消息生成 parts
+    parts = []
+    for item in messages:
+        # 生成 parts
+        if item.file_id:
+            # 判断为图片消息
+            # 读取指定文件二进制信息
+            async with aiofiles.open(ALL_IMAGE_FILE_CACHE_DIR / item.file_id, "rb") as f:
+                content = await f.read()
+            suffix_name = item.file_id.split(".")[-1]
+            mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
+            match suffix_name:
+                case "jpg" | "gif":
+                    mime_type = "image/jpeg"
+                case "png":
+                    mime_type = "image/png"
+            parts.append(Part.from_bytes(data=content, mime_type=mime_type))
+        else:
+            parts.append(Part.from_text(text=str(item.content)))
+
+    contents = []
+    contents.append({"role": "user", "parts": parts})
+
+    contents.append({"role": "user", "parts": [Part.from_text(text=process_message(will_send_message))]})
+
+    return await check_message_relevance(contents=contents)
+
+
+async def check_message_relevance(contents: list) -> bool:
+    """
+    检查两条消息的相关性
+
+    """
+
+    class ResponseSchema(BaseModel):
+        """响应模式"""
+
+        related: bool
+        """是否相关"""
+
+    resp = await _GEMINI_CLIENT.aio.models.generate_content(
+        model="gemini-2.5-flash-lite",
+        contents=contents,
+        config=GenerateContentConfig(
+            http_options=HttpOptions(timeout=6 * 60 * 1000),
+            system_instruction="判断这两条消息话题是否相关",
+            safety_settings=SAFETY_SETTINGS,
+            response_mime_type="application/json",
+            response_schema=ResponseSchema,
+        ),
+    )
+    obj: ResponseSchema = resp.parsed # type: ignore
+
+    return obj.related
 
 
 def pretty_text_segment(msg: Message, text: str) -> str:
     text = text[:-1] if text.endswith("。") else text
     text = " " + text.strip() if len(msg) > 0 and msg[-1].type == "at" else text.strip()
     return text
+
+
+def process_message(message: Message) -> str:
+    """消息扁平化处理"""
+    target: str = ""
+    for ms in message:
+        match ms.type:
+            case "text":
+                target += ms.data["text"]
+            case "at":
+                target += f"@{ms.data['qq']} "
+            case "face":
+                face_text = EMOJI_ID_DICT.get(ms.data["id"])
+                face_text = "" if face_text is None else f"[/{face_text}]"
+                target += f"{face_text}"
+            case _:
+                pass
+
+    return target
 
 
 def extract_plain_text_from_message(msg: Message) -> str:
@@ -1184,6 +1256,7 @@ def group_msgs_to_threads(msgs: list[GroupMsg]) -> list[list[GroupMsg]]:
     # 按 message_id 排序，每组内部按 index 升序
     return [sorted(group, key=lambda m: m.index) for _, group in sorted(threads.items())]
 
+
 @scheduler.scheduled_job("cron", hour="8,20", id="update group member impression")
 async def _():
     """每天更新群组成员印象"""
@@ -1280,7 +1353,7 @@ async def analysis_messages_of_group(group_id: int, messages: list[GroupMsg]):
                     update_time=int(time.time()),
                 )
                 session.add(new_impression)
-                
+
             await session.commit()
 
 
