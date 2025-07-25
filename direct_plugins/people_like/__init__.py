@@ -752,7 +752,8 @@ async def chat_with_gemini(
                                     )
                                     if will_send_img:
                                         logger.trace(f"群{group_id}回复图片：{will_send_img}")
-                                        await on_msg.send(will_send_img)
+                                        await bot.call_api("send_group_msg", group_id=group_id, message=[will_send_img])
+                                        # await on_msg.send(will_send_img)
                             else:
                                 # 如果是数字，则直接转换为 face segment
                                 face_id = int(content)
@@ -778,7 +779,7 @@ async def chat_with_gemini(
                                 message.insert(0, MessageSegment.reply(message_id))
                             if not GROUP_SPEAK_DISABLE.get(group_id, False):
                                 logger.info(f"群{group_id}回复消息：{message.extract_plain_text()}")
-                                await on_msg.send(message)
+                                await bot.call_api("send_group_msg", group_id=group_id, message=message)
 
                 if fc.name == "send_meme" and fc.args:
                     description = fc.args.get("description")
@@ -788,7 +789,7 @@ async def chat_with_gemini(
                     )
                     if will_send_img:
                         logger.trace(f"群{group_id}回复图片：{will_send_img}")
-                        await on_msg.send(will_send_img)
+                        await bot.call_api("send_group_msg", group_id=group_id, message=[will_send_img])
 
                 if fc.name == "mute_sb" and fc.args:
                     user_id = int(str(fc.args.get("user_id")))
@@ -842,7 +843,7 @@ async def chat_with_gemini(
                         message.insert(0, MessageSegment.reply(message_id))
                     if not GROUP_SPEAK_DISABLE.get(group_id, False):
                         logger.info(f"群{group_id}回复消息：{message.extract_plain_text()}")
-                        await on_msg.send(message)
+                        await bot.call_api("send_group_msg", group_id=group_id, message=message)
 
         if success:
             break
@@ -882,7 +883,7 @@ async def build_message_content(bot, item) -> ChatMsg:
         return ChatMsg(sender=character, content=parts)
 
 
-async def process_text_segment(message: Message, text_content: str, group_id: int):
+async def process_text_segment(message: Message, text_content: str, group_id: int) -> bool:
     """处理发送 Text 文本消息可能出现的各种异常情况
 
     Args:
@@ -890,6 +891,7 @@ async def process_text_segment(message: Message, text_content: str, group_id: in
         text_content (str): 原始文本消息
         group_id (int): 群组id
     """
+    bot = get_bot()
     parts = re.split(r"(@\d+|\[[^\<\>]+\<\d+\>\]|\[/[^]]+\])", text_content)
     for part in parts:
         if not part:  # 跳过空字符串
@@ -925,7 +927,7 @@ async def process_text_segment(message: Message, text_content: str, group_id: in
             will_send_img = await get_file_name_of_image_will_sent_by_description_vec(str(description), group_id)
             if will_send_img:
                 logger.trace(f"群{group_id}回复图片：{will_send_img}")
-                await on_msg.send(will_send_img)
+                await bot.call_api("send_group_msg", group_id=group_id, message=[will_send_img])
 
         else:
             message.append(MessageSegment.text(pretty_text_segment(message, part)))
