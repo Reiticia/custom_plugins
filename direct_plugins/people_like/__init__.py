@@ -96,12 +96,7 @@ class ChatMsg:
     content: list[Part]
 
 
-GROUP_SPEAK_DISABLE: dict[int, bool] = {}
-
-shutup = on_keyword(
-    keywords={"闭嘴", "shut up", "shutup", "Shut Up", "Shut up", "滚", "一边去", "别叫", "住口", "口住"}, rule=to_me()
-)
-
+# ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓FACE表情处理↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
 
 EMOJI_ID_DICT: dict[int, str] = {}
 EMOJI_NAME_DICT: dict[str, int] = {}
@@ -136,6 +131,18 @@ def load_emoji_txt_to_dict(path: Path = Path(__file__).parent / "emoji.txt") -> 
     return emoji_dict
 
 
+# ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑FACE表情处理↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
+
+
+# ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓闭嘴处理↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
+
+GROUP_SPEAK_DISABLE: dict[int, bool] = {}
+
+shutup = on_keyword(
+    keywords={"闭嘴", "shut up", "shutup", "Shut Up", "Shut up", "滚", "一边去", "别叫", "住口", "口住"}, rule=to_me()
+)
+
+
 @shutup.handle()
 async def _(event: GroupMessageEvent):
     global GROUP_SPEAK_DISABLE
@@ -144,6 +151,8 @@ async def _(event: GroupMessageEvent):
     await sleep(300)
     GROUP_SPEAK_DISABLE.update({gid: False})
 
+
+# ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑闭嘴处理↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
 
 on_msg: type[Matcher] = on_message()
 
@@ -468,6 +477,9 @@ async def is_bot_admin(group_id: int) -> bool:
         else:
             return permission
     return False
+
+
+# ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓触发对话处理↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
 
 
 class ReturnMsgEnum(str, Enum):
@@ -834,6 +846,7 @@ async def chat_with_gemini(
         if success:
             break
 
+
 async def build_message_content(bot, item) -> ChatMsg:
     """提取数据库中的消息元素，将其转为特定格式的文本消息内容"""
     if item.self_msg:
@@ -842,8 +855,8 @@ async def build_message_content(bot, item) -> ChatMsg:
         character = Character.USER
         # 生成 parts
     if item.file_id:
-            # 判断为图片消息
-            # 读取指定文件二进制信息
+        # 判断为图片消息
+        # 读取指定文件二进制信息
         async with aiofiles.open(ALL_IMAGE_FILE_CACHE_DIR / item.file_id, "rb") as f:
             content = await f.read()
         suffix_name = item.file_id.split(".")[-1]
@@ -997,7 +1010,7 @@ async def check_message_relevance(contents: list) -> bool:
             response_schema=ResponseSchema,
         ),
     )
-    obj: ResponseSchema = resp.parsed # type: ignore
+    obj: ResponseSchema = resp.parsed  # type: ignore
 
     return obj.related
 
@@ -1171,6 +1184,12 @@ def get_prompt(
 """
 
 
+# ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑触发对话处理↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
+
+
+# ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓检索群成员消息↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
+
+
 async def get_group_history(
     group_id: int,
     day: Literal["今天", "昨天", "前天", "大前天"],
@@ -1242,6 +1261,12 @@ def group_msgs_to_threads(msgs: list[GroupMsg]) -> list[list[GroupMsg]]:
         threads[msg.message_id].append(msg)
     # 按 message_id 排序，每组内部按 index 升序
     return [sorted(group, key=lambda m: m.index) for _, group in sorted(threads.items())]
+
+
+# ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑检索群成员消息↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
+
+
+# ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓更新群成员印象↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
 
 
 @scheduler.scheduled_job("cron", hour="8,20", id="update group member impression")
@@ -1368,3 +1393,6 @@ async def request_for_impression_list(contents: list) -> list[MemberImpression]:
     )
     impressions: list[MemberImpression] = resp.parsed  # type: ignore
     return impressions
+
+
+# ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑更新群成员印象↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
