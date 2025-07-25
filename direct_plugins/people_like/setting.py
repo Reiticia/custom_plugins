@@ -191,7 +191,7 @@ async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
         construtor = getattr(builtins, property_type)
         value = construtor(value_str)
         if range := property_config["range"]:
-            min, max = range.split("_")
+            min, max = range.split("-")
             if not (construtor(min) <= value <= construtor(max)):
                 await matcher.finish(f"输入不合法，值{value}不在范围{range}内")
         g_v.update({property_name.upper(): value})

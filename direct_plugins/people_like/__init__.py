@@ -1107,6 +1107,7 @@ async def request_for_resp(
 ):
     model = get_model(group_id=group_id)
     thinking_config = ThinkingConfig(thinking_budget=1024) if model.startswith("gemini-2.5") else None
+    thinking_config = ThinkingConfig(thinking_budget=0) if enable_search else thinking_config
 
     resp = await _GEMINI_CLIENT.aio.models.generate_content(
         model=model,
