@@ -815,33 +815,34 @@ async def chat_with_gemini(
                     )
                     await bot.call_api("send_group_forward_msg", group_id=group_id, messages=forward_message)
 
-            if isinstance(part, str) and enable_search:  # type: ignore
-                logger.debug(f"群{group_id}发送消息{part}")
-                content = str(part)
-                message = Message()
-                if not await process_text_segment(message, content, group_id):
-                    success = False
-                    logger.warning(f"发送到群{group_id}的文本消息中包含非法文本：{content}，重新请求消息")
-                    break
+        if enable_search:
+            text = resp.text  # type: ignore
+            logger.debug(f"群{group_id}发送消息{text}")
+            content = str(text)
+            message = Message()
+            if not await process_text_segment(message, content, group_id):
+                success = False
+                logger.warning(f"发送到群{group_id}的文本消息中包含非法文本：{content}，重新请求消息")
+                break
 
-                if len(message) > 0:
-                    plain_text = extract_plain_text_from_message(message)
+            if len(message) > 0:
+                plain_text = extract_plain_text_from_message(message)
 
-                    if LOG_LEVEL.upper() == "DEBUG" if isinstance(LOG_LEVEL, str) else LOG_LEVEL == logging.DEBUG:
-                        print(f"即将向群组 {group_id} 发送消息")
-                        print(plain_text)
-                        print("被禁止出现在句子中的词汇或短语")
-                        print(words)
-                    if any(ignore in plain_text for ignore in words) and not GROUP_SPEAK_DISABLE.get(group_id, False):
-                        # 判断是否需要提及消息
-                        should_reply = await check_should_reply(
-                            message_id=message_id, group_id=group_id, will_send_message=message
-                        )
-                        if should_reply:
-                            message.insert(0, MessageSegment.reply(message_id))
-                        if not GROUP_SPEAK_DISABLE.get(group_id, False):
-                            logger.info(f"群{group_id}回复消息：{message.extract_plain_text()}")
-                            await on_msg.send(message)
+                if LOG_LEVEL.upper() == "DEBUG" if isinstance(LOG_LEVEL, str) else LOG_LEVEL == logging.DEBUG:
+                    print(f"即将向群组 {group_id} 发送消息")
+                    print(plain_text)
+                    print("被禁止出现在句子中的词汇或短语")
+                    print(words)
+                if any(ignore in plain_text for ignore in words) and not GROUP_SPEAK_DISABLE.get(group_id, False):
+                    # 判断是否需要提及消息
+                    should_reply = await check_should_reply(
+                        message_id=message_id, group_id=group_id, will_send_message=message
+                    )
+                    if should_reply:
+                        message.insert(0, MessageSegment.reply(message_id))
+                    if not GROUP_SPEAK_DISABLE.get(group_id, False):
+                        logger.info(f"群{group_id}回复消息：{message.extract_plain_text()}")
+                        await on_msg.send(message)
 
         if success:
             break
