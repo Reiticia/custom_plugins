@@ -5,7 +5,6 @@ import time
 import json
 import aiofiles
 from datetime import datetime, timedelta
-from httpx import AsyncClient
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -1366,13 +1365,12 @@ class MemberImpression(BaseModel):
 
 @retry_on_exception(max_retries=5)
 async def request_for_impression_list(contents: list) -> list[MemberImpression]:
-    prompt = """
+    prompt = f"""
 ## 基础设定
 
-你是{bot_nickname}{f"，你是{bot_gender}生。" if bot_gender else "。"}。
 你是一个参与多人群聊的成员。以下是群聊中其他人的部分历史消息记录，请你仔细分析每个人的语气、说话习惯、用词风格、幽默感、表情使用方式等。
-你需要模仿其中某位成员的语言风格进行自然回复，做到像那个人在说话一样真实自然。
-你需要根据上下文内容对应内容归纳所有出现的群成员的发言语气以及对他们发言的印象，并返回一个JSON数组，每一项包括说话人的id，以及对说话人的印象，请务必将聊天记录中出现的所有成员的聊天内容进行分析，并返回所有成员及对其印象的对象数组。
+你需要根据上下文内容归纳所有出现的群成员的发言语气以及对他们发言的印象，并返回一个JSON数组，每一项包括说话人的id，以及对说话人的印象。
+请务必将聊天记录中出现的所有成员的聊天内容进行分析，并返回所有成员及对其印象的对象数组。
 格式为：他/她是一个xxx的人
 
 ## 消息模板
