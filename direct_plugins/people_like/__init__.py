@@ -470,20 +470,6 @@ async def is_bot_admin(group_id: int) -> bool:
     return False
 
 
-def handle_context_list(
-    context: list[ChatMsg], new_msg: list[Part], character: Character = Character.USER
-) -> list[ChatMsg]:
-    """处理消息上下文列表"""
-    if new_msg:
-        context.append(ChatMsg(sender=character, content=new_msg))
-        # 如果长度超出指定长度，则删除最前面的元素
-        if len(context) > plugin_config.context_size:
-            context.pop(0)
-        return context
-    else:
-        return context
-
-
 class ReturnMsgEnum(str, Enum):
     """返回消息枚举"""
 
@@ -544,36 +530,7 @@ async def chat_with_gemini(
 
     context: list[ChatMsg] = []
     for item in data:
-        if item.self_msg:
-            character = Character.BOT
-        else:
-            character = Character.USER
-        # 生成 parts
-        if item.file_id:
-            # 判断为图片消息
-            # 读取指定文件二进制信息
-            async with aiofiles.open(ALL_IMAGE_FILE_CACHE_DIR / item.file_id, "rb") as f:
-                content = await f.read()
-            suffix_name = item.file_id.split(".")[-1]
-            mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
-            match suffix_name:
-                case "jpg" | "gif":
-                    mime_type = "image/jpeg"
-                case "png":
-                    mime_type = "image/png"
-            parts = []
-            parts.append(Part.from_text(text=f"[{item.nick_name}<{item.user_id}>]"))
-            if item.to_me:
-                parts.append(Part.from_text(text=f"@{bot.self_id} "))
-            parts.append(Part.from_bytes(data=content, mime_type=mime_type))
-            context.append(ChatMsg(sender=character, content=parts))
-        else:
-            parts = []
-            parts.append(Part.from_text(text=f"[{item.nick_name}<{item.user_id}>]"))
-            if item.to_me:
-                parts.append(Part.from_text(text=f"@{bot.self_id} "))
-            parts.append(Part.from_text(text=str(item.content)))
-            context.append(ChatMsg(sender=character, content=parts))
+        context.append(await build_message_content(bot, item))
 
     try:
         today_zero_time = int(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
@@ -877,6 +834,39 @@ async def chat_with_gemini(
         if success:
             break
 
+async def build_message_content(bot, item) -> ChatMsg:
+    """提取数据库中的消息元素，将其转为特定格式的文本消息内容"""
+    if item.self_msg:
+        character = Character.BOT
+    else:
+        character = Character.USER
+        # 生成 parts
+    if item.file_id:
+            # 判断为图片消息
+            # 读取指定文件二进制信息
+        async with aiofiles.open(ALL_IMAGE_FILE_CACHE_DIR / item.file_id, "rb") as f:
+            content = await f.read()
+        suffix_name = item.file_id.split(".")[-1]
+        mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
+        match suffix_name:
+            case "jpg" | "gif":
+                mime_type = "image/jpeg"
+            case "png":
+                mime_type = "image/png"
+        parts = []
+        parts.append(Part.from_text(text=f"[{item.nick_name}<{item.user_id}>]"))
+        if item.to_me:
+            parts.append(Part.from_text(text=f"@{bot.self_id} "))
+        parts.append(Part.from_bytes(data=content, mime_type=mime_type))
+        return ChatMsg(sender=character, content=parts)
+    else:
+        parts = []
+        parts.append(Part.from_text(text=f"[{item.nick_name}<{item.user_id}>]"))
+        if item.to_me:
+            parts.append(Part.from_text(text=f"@{bot.self_id} "))
+        parts.append(Part.from_text(text=str(item.content)))
+        return ChatMsg(sender=character, content=parts)
+
 
 async def process_text_segment(message: Message, text_content: str, group_id: int):
     """处理发送 Text 文本消息可能出现的各种异常情况
@@ -1134,7 +1124,7 @@ def get_prompt(
 你是一个参与多人群聊的成员。以下是群聊中其他人的部分历史消息记录，请你仔细分析每个人的语气、说话习惯、用词风格、幽默感、表情使用方式等。
 你需要模仿其中某位成员的语言风格进行自然回复，做到像那个人在说话一样真实自然。
 你需要根据上下文内容进行回复，请以最近的一条消息为回复标准，之前的消息作为对话内容辅助参考，回复内容可以包含纯文本消息和提及消息。不要暴露你是AI的身份。
-你需要根据对该成员的印象选择适合的语气进行回复。
+务必根据你要回复的消息发送者的印象选择与其相同的对话风格进行回复。
 
 ## 消息模板
 
@@ -1271,41 +1261,12 @@ async def _():
 
 
 async def analysis_messages_of_group(group_id: int, messages: list[GroupMsg]):
-    content = []
+    """分析指定群组的所有消息中群成员的印象，并更新数据库"""
     messages = sorted(messages, key=lambda x: x.time, reverse=False)
     bot = get_bot()
     context: list[ChatMsg] = []
     for item in messages:
-        if item.self_msg:
-            character = Character.BOT
-        else:
-            character = Character.USER
-        # 生成 parts
-        if item.file_id:
-            # 判断为图片消息
-            # 读取指定文件二进制信息
-            async with aiofiles.open(ALL_IMAGE_FILE_CACHE_DIR / item.file_id, "rb") as f:
-                content = await f.read()
-            suffix_name = item.file_id.split(".")[-1]
-            mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
-            match suffix_name:
-                case "jpg" | "gif":
-                    mime_type = "image/jpeg"
-                case "png":
-                    mime_type = "image/png"
-            parts = []
-            parts.append(Part.from_text(text=f"[{item.nick_name}<{item.user_id}>]"))
-            if item.to_me:
-                parts.append(Part.from_text(text=f"@{bot.self_id} "))
-            parts.append(Part.from_bytes(data=content, mime_type=mime_type))
-            context.append(ChatMsg(sender=character, content=parts))
-        else:
-            parts = []
-            parts.append(Part.from_text(text=f"[{item.nick_name}<{item.user_id}>]"))
-            if item.to_me:
-                parts.append(Part.from_text(text=f"@{bot.self_id} "))
-            parts.append(Part.from_text(text=str(item.content)))
-            context.append(ChatMsg(sender=character, content=parts))
+        context.append(await build_message_content(bot, item))
 
     contents = []
     for msg in context:
