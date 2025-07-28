@@ -515,6 +515,7 @@ async def chat_with_gemini(
     bot = get_bot()
 
     context_size: int = get_value_or_default(group_id, "context_size")
+    forget_self: Optional[int] = get_value_or_default(group_id, "forget_self", None)
 
     async with get_session() as session:
         query_data = list(
@@ -522,6 +523,13 @@ async def chat_with_gemini(
                 select(GroupMsg).where(GroupMsg.group_id == group_id).order_by(GroupMsg.time.desc()).limit(context_size)
             )
         )
+    # 过滤自身消息
+    if forget_self is not None:
+        query_data = [
+            data
+            for data in query_data
+            if data.self_msg is False or data.time > forget_self
+        ]
     combined_list = list(query_data)
     unique_dict: dict[int, GroupMsg] = {}
     for item in combined_list:

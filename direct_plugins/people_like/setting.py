@@ -29,20 +29,22 @@ D_TYPE = TypeVar("D_TYPE")
 class PropConfig(TypedDict, Generic[D_TYPE]):
     range: Optional[str] # 属性范围
     default: D_TYPE
+    desc: str
 
 
 _EXPECT_PROP_NAMES: dict[str, PropConfig] = {
-    "prompt": {"range": None, "default": "无"},
-    "topP": {"range": None, "default": 0.95},
-    "topK": {"range": None, "default": 40},
-    "temperature": {"range": "0.0-2.0", "default": 1.0},
-    "length": {"range": None, "default": 0},
-    "search": {"range": None, "default": False},
-    "reply_probability": {"range": "0.0-1.0", "default": plugin_config.reply_probability},
-    "model": {"range": None, "default": plugin_config.gemini_model},
-    "anime_only": {"range": None, "default": False},
-    "at_reply_probability": {"range": "0.0-1.0", "default": plugin_config.reply_probability * 4},
-    "context_size": {"range": "0-1000", "default": plugin_config.context_size},
+    "prompt": {"range": None, "default": "无", "desc": "额外提示词"},
+    "topP": {"range": None, "default": 0.95, "desc": "topP采样概率"},
+    "topK": {"range": None, "default": 40, "desc": "topK采样数量"},
+    "temperature": {"range": "0.0-2.0", "default": 1.0, "desc": "温度系数"},
+    "length": {"range": None, "default": 0, "desc": "限制生成token数量"},
+    "search": {"range": None, "default": False, "desc": "是否启用搜索"},
+    "reply_probability": {"range": "0.0-1.0", "default": plugin_config.reply_probability, "desc":"回复概率"},
+    "model": {"range": None, "default": plugin_config.gemini_model, "desc": "模型名称"},
+    "anime_only": {"range": None, "default": False, "desc": "发送动画表情时是否只发送二次元动画表情"},
+    "at_reply_probability": {"range": "0.0-1.0", "default": plugin_config.reply_probability * 4, "desc": "提及回复概率"},
+    "context_size": {"range": "0-1000", "default": plugin_config.context_size, "desc": "上下文长度"},
+    "forget_self": {"range": None, "default": 0, "desc": "不将指定时间戳之前的自身消息列入上下文"},
 }
 
 _BLACK_LIST_FILE = _CONFIG_DIR / "blacklist.json"
@@ -163,6 +165,7 @@ async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
         await matcher.finish("属性名无效，指令中断")
     prompt_str = f"""请输入要设置的属性值（取消操作请输入cancel，重置输入reset）
 键：{property_name}
+描述：{conf["desc"]}
 {"范围：" + conf["range"] if conf["range"] else ""}
 类型：{type(conf["default"]).__name__}
 默认值：{conf["default"]}
