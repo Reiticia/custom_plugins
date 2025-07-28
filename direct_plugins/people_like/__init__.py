@@ -542,6 +542,8 @@ async def chat_with_gemini(
 
     data: list[GroupMsg] = sorted(data, key=lambda x: x.time, reverse=False)  # type: ignore
     # 判断当前日志等级是否为 DEBUG
+    # 写入AI调用日志文件，异步任务，使用子线程不阻塞主流程
+    asyncio.create_task(write_ai_invoke_log_before_request(data, group_id, message_id))
     if LOG_LEVEL.upper() == "DEBUG" if isinstance(LOG_LEVEL, str) else LOG_LEVEL == logging.DEBUG:
         print(f"群组 {group_id} 当前选取为上下文的消息内容为")
         print(
@@ -732,7 +734,7 @@ async def chat_with_gemini(
                         if returnMsg.msg_type == ReturnMsgEnum.AT:
                             content = returnMsg.content
                             if not content.isdigit():
-                                if not await process_text_segment(message, content, group_id):
+                                if not await process_text_segment(message, content, group_id, message_id):
                                     success = False
                                     logger.warning(
                                         f"发送到群{group_id}的文本消息中包含非法文本：{content}，重新请求消息"
@@ -744,7 +746,7 @@ async def chat_with_gemini(
                         elif returnMsg.msg_type == ReturnMsgEnum.TEXT:
                             # 处理文本中包含 @123 的情况，转换成 TEXT+AT+TEXT 串
                             content = returnMsg.content
-                            if not await process_text_segment(message, content, group_id):
+                            if not await process_text_segment(message, content, group_id, message_id):
                                 success = False
                                 logger.warning(f"发送到群{group_id}的文本消息中包含非法文本：{content}，重新请求消息")
                                 break
@@ -765,6 +767,7 @@ async def chat_with_gemini(
                                     if will_send_img:
                                         logger.trace(f"群{group_id}回复图片：{will_send_img}")
                                         await on_msg.send(will_send_img)
+                                        asyncio.create_task(write_ai_invoke_log_after_response(repr(will_send_img), group_id, message_id))
                             else:
                                 # 如果是数字，则直接转换为 face segment
                                 face_id = int(content)
@@ -791,6 +794,7 @@ async def chat_with_gemini(
                             if not GROUP_SPEAK_DISABLE.get(group_id, False):
                                 logger.info(f"群{group_id}回复消息：{message.extract_plain_text()}")
                                 await on_msg.send(message)
+                                asyncio.create_task(write_ai_invoke_log_after_response(message.extract_plain_text(), group_id, message_id))
 
                 if fc.name == "send_meme" and fc.args:
                     description = fc.args.get("description")
@@ -801,6 +805,7 @@ async def chat_with_gemini(
                     if will_send_img:
                         logger.trace(f"群{group_id}回复图片：{will_send_img}")
                         await on_msg.send(will_send_img)
+                        asyncio.create_task(write_ai_invoke_log_after_response(repr(will_send_img), group_id, message_id))
 
                 if fc.name == "mute_sb" and fc.args:
                     user_id = int(str(fc.args.get("user_id")))
@@ -832,7 +837,7 @@ async def chat_with_gemini(
             logger.debug(f"群{group_id}发送消息{text}")
             content = str(text)
             message = Message()
-            if not await process_text_segment(message, content, group_id):
+            if not await process_text_segment(message, content, group_id, message_id):
                 success = False
                 logger.warning(f"发送到群{group_id}的文本消息中包含非法文本：{content}，重新请求消息")
                 break
@@ -855,6 +860,7 @@ async def chat_with_gemini(
                     if not GROUP_SPEAK_DISABLE.get(group_id, False):
                         logger.info(f"群{group_id}回复消息：{message.extract_plain_text()}")
                         await on_msg.send(message)
+                        asyncio.create_task(write_ai_invoke_log_after_response(message.extract_plain_text(), group_id, message_id))
 
         if success:
             break
@@ -894,7 +900,7 @@ async def build_message_content(bot, item) -> ChatMsg:
         return ChatMsg(sender=character, content=parts)
 
 
-async def process_text_segment(message: Message, text_content: str, group_id: int) -> bool:
+async def process_text_segment(message: Message, text_content: str, group_id: int, message_id: int) -> bool:
     """处理发送 Text 文本消息可能出现的各种异常情况
 
     Args:
@@ -938,6 +944,7 @@ async def process_text_segment(message: Message, text_content: str, group_id: in
             if will_send_img:
                 logger.trace(f"群{group_id}回复图片：{will_send_img}")
                 await on_msg.send(will_send_img)
+                asyncio.create_task(write_ai_invoke_log_after_response(repr(will_send_img), group_id, message_id))
 
         else:
             message.append(MessageSegment.text(pretty_text_segment(message, part)))
@@ -1196,6 +1203,41 @@ def get_prompt(
 
 """
 
+INVOKE_LOG_CACHE_DIR = store.get_cache_dir("people_like") / "log"
+
+
+async def write_ai_invoke_log_before_request(data: list[GroupMsg], group_id: int, message_id: int):
+    """请求前写入AI调用日志文件，JSON格式"""
+    # 获取当前时间戳
+    now = datetime.now()
+    date = now.strftime("%Y-%m-%d")
+    timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
+    log_data = [
+        {
+            "message_id": line.message_id,
+            "user_id": line.user_id,
+            "content": line.content if line.file_id and len(line.file_id) > 0 else line.content,
+        } for line in data
+    ]
+    log_file = INVOKE_LOG_CACHE_DIR / f"{date}.log"
+    # 判断文件是否存在，不存在则创建
+    if not INVOKE_LOG_CACHE_DIR.exists():
+        INVOKE_LOG_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    if not log_file.exists():
+        log_file.touch(exist_ok=True)
+    async with aiofiles.open(log_file, "a", encoding="utf-8") as f:
+        await f.write(f"{timestamp} - group {group_id} - message {message_id} request: {json.dumps(log_data, ensure_ascii=False)}\n")
+
+
+async def write_ai_invoke_log_after_response(data: str, group_id: int, message_id: int):
+    """请求后写入AI调用日志文件，JSON格式"""
+    # 获取当前时间戳
+    now = datetime.now()
+    date = now.strftime("%Y-%m-%d")
+    timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
+    log_file = INVOKE_LOG_CACHE_DIR / f"{date}.log"
+    async with aiofiles.open(log_file, "a", encoding="utf-8") as f:
+        await f.write(f"{timestamp} - group {group_id} - message {message_id} response: {data}\n")
 
 # ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑触发对话处理↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
 
