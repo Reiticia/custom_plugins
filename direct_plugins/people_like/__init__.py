@@ -575,7 +575,11 @@ async def chat_with_gemini(
 
     async with get_session() as session:
         impression = list(
-            await session.scalars(select(GroupMemberImpression).where(GroupMemberImpression.group_id == group_id))
+            await session.scalars(
+                select(GroupMemberImpression)
+                .where(GroupMemberImpression.group_id == group_id)
+                .where(GroupMemberImpression.user_id != int(bot.self_id))
+            )
         )
     impression_dict: dict[int, str] = {}
     for item in impression:
@@ -789,7 +793,6 @@ async def chat_with_gemini(
                     if will_send_img:
                         logger.trace(f"群{group_id}回复图片：{will_send_img}")
                         await on_msg.send(will_send_img)
-
 
                 if fc.name == "mute_sb" and fc.args:
                     user_id = int(str(fc.args.get("user_id")))
