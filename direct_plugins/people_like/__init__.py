@@ -52,7 +52,7 @@ import nonebot_plugin_localstore as store
 from sqlalchemy import delete, select, func, update
 from .setting import get_value_or_default, get_blacklist
 from .config import Config, plugin_config
-from .image_send import get_file_name_of_image_will_sent_by_description_vec, SAFETY_SETTINGS, _HTTP_CLIENT
+from .image_send import get_file_bytes, get_file_name_of_image_will_sent_by_description_vec, SAFETY_SETTINGS, _HTTP_CLIENT, get_mime_type
 from .vector import (
     _GEMINI_CLIENT,
     analysis_image_to_str_description,
@@ -300,25 +300,20 @@ async def store_message_segment_into_db(event: GroupMessageEvent):
                     file_ids.append("")
             case "image":
                 if plugin_config.image_analyze:
-                    # 下载图片进行处理
                     data = await _HTTP_CLIENT.get(ms.data["url"])
                     file_id = str(ms.data["file"])
-                    file_ids.append(file_id)
                     # 写入本地路径 ALL_IMAGE_DIR / file_id
                     file_path = ALL_IMAGE_FILE_CACHE_DIR / file_id
                     file_path.parent.mkdir(parents=True, exist_ok=True)  # Ensure directory exists
                     async with aiofiles.open(file_path, "wb") as f:
                         await f.write(data.content)
+                    # 下载图片进行处理
+                    file_ids.append(file_id)
 
-                    suffix_name = file_id.split(".")[-1]
-                    mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
-                    match suffix_name:
-                        case "jpg" | "gif":
-                            mime_type = "image/jpeg"
-                        case "png":
-                            mime_type = "image/png"
-                    if data.status_code == 200:
-                        target.append(Part.from_bytes(data=data.content, mime_type=mime_type))
+                    mime_type = get_mime_type(file_id)
+                    bytes_content = await get_file_bytes(file_id, file_path=file_path)
+                    if data.status_code == 200 and bytes_content:
+                        target.append(Part.from_bytes(data=bytes_content, mime_type=mime_type))
             case _:
                 pass
 
@@ -876,20 +871,14 @@ async def build_message_content(bot, item) -> ChatMsg:
     if item.file_id:
         # 判断为图片消息
         # 读取指定文件二进制信息
-        async with aiofiles.open(ALL_IMAGE_FILE_CACHE_DIR / item.file_id, "rb") as f:
-            content = await f.read()
-        suffix_name = item.file_id.split(".")[-1]
-        mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
-        match suffix_name:
-            case "jpg" | "gif":
-                mime_type = "image/jpeg"
-            case "png":
-                mime_type = "image/png"
+        bytes_content = await get_file_bytes(file_name=item.file_id, file_path=ALL_IMAGE_FILE_CACHE_DIR / item.file_id)
+        mime_type = get_mime_type(item.file_id)
         parts = []
         parts.append(Part.from_text(text=f"[{item.nick_name}<{item.user_id}>]"))
         if item.to_me:
             parts.append(Part.from_text(text=f"@{bot.self_id} "))
-        parts.append(Part.from_bytes(data=content, mime_type=mime_type))
+        if bytes_content:
+            parts.append(Part.from_bytes(data=bytes_content, mime_type=mime_type))
         return ChatMsg(sender=character, content=parts)
     else:
         parts = []
@@ -986,16 +975,10 @@ async def check_should_reply(message_id: int, group_id: int, will_send_message: 
         if item.file_id:
             # 判断为图片消息
             # 读取指定文件二进制信息
-            async with aiofiles.open(ALL_IMAGE_FILE_CACHE_DIR / item.file_id, "rb") as f:
-                content = await f.read()
-            suffix_name = item.file_id.split(".")[-1]
-            mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
-            match suffix_name:
-                case "jpg" | "gif":
-                    mime_type = "image/jpeg"
-                case "png":
-                    mime_type = "image/png"
-            parts.append(Part.from_bytes(data=content, mime_type=mime_type))
+            bytes_content = await get_file_bytes(file_name=item.file_id, file_path=ALL_IMAGE_FILE_CACHE_DIR / item.file_id)
+            mime_type = get_mime_type(item.file_id)
+            if bytes_content:
+                parts.append(Part.from_bytes(data=bytes_content, mime_type=mime_type))
         else:
             parts.append(Part.from_text(text=str(item.content)))
 

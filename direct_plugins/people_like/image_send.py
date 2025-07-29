@@ -1,13 +1,12 @@
+from pathlib import Path
 import random
-import time
 import os
 import asyncio
-import typing_extensions
 import json
 from datetime import datetime
 from typing import Literal, Optional
 from pydantic import BaseModel
-from httpx import RemoteProtocolError, AsyncClient
+from httpx import AsyncClient
 from aiofiles import open as aopen
 from nonebot_plugin_orm import get_session
 from sqlalchemy import delete, select, update
@@ -19,10 +18,10 @@ from nonebot.adapters.onebot.utils import b2s, f2s
 from nonebot.permission import SUPERUSER
 import nonebot_plugin_localstore as store  # noqa: E402
 from nonebot_plugin_apscheduler import scheduler
-
+from moviepy import VideoFileClip
+import tempfile
 
 from google.genai.types import (
-    File,
     Part,
     GenerateContentConfig,
     SafetySetting,
@@ -30,10 +29,7 @@ from google.genai.types import (
     HarmBlockThreshold,
     Content,
     ContentListUnion,
-    UploadFileConfig,
 )
-
-from google.genai.errors import ClientError
 
 from .model import ImageSender
 from .setting import get_value_or_default
@@ -46,14 +42,6 @@ NORMAL_IMAGE_DIR_PATH = store.get_data_dir("people_like") / "normal"
 
 _IMAGE_DICT: dict[str, ImageSender] = {}
 
-
-class LocalFile(BaseModel):
-    mime_type: Literal["image/jpeg", "image/png"]
-    file_name: str
-    file: File
-
-
-# _FILES: list[LocalFile] = []
 
 SAFETY_SETTINGS = [
     SafetySetting(category=HarmCategory.HARM_CATEGORY_HARASSMENT, threshold=HarmBlockThreshold.OFF),
@@ -235,11 +223,11 @@ async def anti(e: MessageEvent):
     if ims := e.message.include("image"):
         parts = []
         for im in ims:
-            resp = await _HTTP_CLIENT.get(im.data["url"])
-            byte_content = resp.read()
             file_name = str(im.data["file"])
+            bytes_content = await get_file_bytes(file_name, file_url=im.data["url"])
             mime_type = get_mime_type(file_name)
-            parts.append(Part.from_bytes(data=byte_content, mime_type=mime_type))
+            if bytes_content:
+                parts.append(Part.from_bytes(data=bytes_content, mime_type=mime_type))
         res = await analysis_image_trait(parts)
         if res.is_adult:
             await anti_image.send("图片包含色情内容")
@@ -254,11 +242,11 @@ async def anti(e: MessageEvent):
         ims = e.reply.message.include("image")
         parts = []
         for im in ims:
-            resp = await _HTTP_CLIENT.get(im.data["url"])
-            byte_content = resp.read()
             file_name = str(im.data["file"])
+            byte_content = await get_file_bytes(file_name, file_url=im.data["url"])
             mime_type = get_mime_type(file_name)
-            parts.append(Part.from_bytes(data=byte_content, mime_type=mime_type))
+            if byte_content:
+                parts.append(Part.from_bytes(data=byte_content, mime_type=mime_type))
         res = await analysis_image_trait(parts)
         if res.is_adult:
             await anti_image.send("图片包含色情内容")
@@ -300,12 +288,10 @@ async def add_image(event: GroupMessageEvent):
                 async with aopen(file_path, "wb") as f:
                     await f.write(resp.content)
                 logger.info(f"下载表情包图片{file_name}成功")
-                # 上传图片到gemini
                 mime_type = get_mime_type(file_name)
+                if emoji_id:
+                    mime_type = "image/png"
                 suffix_name = str(file_name).split(".")[-1]
-                file = await _GEMINI_CLIENT.aio.files.upload(
-                    file=file_path, config=UploadFileConfig(mime_type=mime_type)
-                )
                 # 插入数据库
                 async with get_session() as session:
                     res = await session.execute(select(ImageSender).where(ImageSender.name == file_name))
@@ -318,22 +304,22 @@ async def add_image(event: GroupMessageEvent):
                             user_id=event.user_id,
                             ext_name=suffix_name,
                             url=url,
-                            file_uri=str(file.uri),
                             file_size=file_size,
                             key=key,
                             emoji_id=emoji_id,
                             emoji_package_id=emoji_package_id,
                             create_time=int(event.time),
                             update_time=int(event.time),
-                            remote_file_name=file.name,
                             mime_type=mime_type
                         )
                         session.add(image_sender)
                         logger.info(f"新增表情包图片{file_name}成功")
 
                         parts = []
-                        parts.append(Part.from_text(text="分析一下这张图片描述的内容，用中文描述它"))
-                        parts.append(Part.from_bytes(data=resp.content, mime_type=mime_type))
+                        parts.append(Part.from_text(text=f"分析一下{'这段视频' if mime_type.startswith('video') else '这张图片'}描述的内容，用中文描述它"))
+                        bytes_content = await get_file_bytes(file_name, file_url=url)
+                        if bytes_content:
+                            parts.append(Part.from_bytes(data=bytes_content, mime_type=mime_type))
                         content = await analysis_image_to_str_description(parts=parts)
                         vec = await get_text_embedding(content)
 
@@ -360,7 +346,6 @@ async def add_image(event: GroupMessageEvent):
                             .values(
                                 {
                                     "update_time": int(event.time),
-                                    "file_uri": str(file.uri),
                                     "group_id": event.group_id,
                                     "user_id": event.user_id,
                                     "summary": summary,
@@ -369,8 +354,7 @@ async def add_image(event: GroupMessageEvent):
                                     "key": key,
                                     "emoji_id": emoji_id,
                                     "emoji_package_id": emoji_package_id,
-                                    "mime_type": mime_type,
-                                    "remote_file_name": file.name,                                    
+                                    "mime_type": mime_type                             
                                 }
                             )
                         )
@@ -388,82 +372,6 @@ async def add_image(event: GroupMessageEvent):
 
 
 driver = get_driver()
-
-
-# @driver.on_bot_connect
-# @scheduler.scheduled_job("interval", days=2, id="update_file_cache")
-
-@typing_extensions.deprecated("This method is not used.")
-async def upload_image() -> Optional[str]:
-    """每搁两天重置图片文件缓存"""
-    global _GEMINI_CLIENT
-    _FILES = set()
-    logger.debug(f"图片存储目录{EMOJI_DIR_PATH.absolute()}")
-    do_not_re_upload = 0
-
-    async_lock = asyncio.Lock()
-    semaphore = asyncio.Semaphore(10)
-
-    async def process_file(local_file: str):
-        nonlocal do_not_re_upload
-        async with semaphore:
-            mime_type = get_mime_type(local_file)
-            need_upload_name = ""
-            async with get_session() as search_session:
-                res = await search_session.execute(select(ImageSender).where(ImageSender.name == local_file))
-                first = res.scalars().first()
-                now = int(time.time())
-                if first is not None:
-                    need_upload_name = first.remote_file_name
-                    if (
-                        now - int(first.update_time) < 46 * 60 * 60
-                        and first.remote_file_name is not None
-                        and first.mime_type is not None
-                    ):
-                        remote_file_name = f"files/{first.remote_file_name}"
-                        try:
-                            exsit_file = await _GEMINI_CLIENT.aio.files.get(name=remote_file_name)
-                            if exsit_file is not None:
-                                _FILES.add(local_file)
-                                logger.debug(f"图片: {local_file} 文件名: {remote_file_name} 未过期，跳过上传")
-                                need_upload_name = ""
-                                async with async_lock:
-                                    do_not_re_upload += 1
-                        except ClientError as e:
-                            logger.error(f"{e.message}")
-
-            if need_upload_name != "":
-                file_path = EMOJI_DIR_PATH / local_file
-                try:
-                    file = await _GEMINI_CLIENT.aio.files.upload(file=file_path, config=UploadFileConfig(mime_type=mime_type))
-                    _FILES.add(local_file)
-                    async with get_session() as session:
-                        await session.execute(
-                            update(ImageSender)
-                            .where(ImageSender.name == local_file)
-                            .values(
-                                {
-                                    "update_time": int(time.time()),
-                                    "file_uri": str(file.uri),
-                                    "remote_file_name": str(file.name),
-                                    "mime_type": file.mime_type,
-                                }
-                            )
-                        )
-                        logger.debug(f"更新图片{local_file}成功")
-                        await session.commit()
-                except RemoteProtocolError as e:
-                    logger.error(f"文件{file_path}更新失败{repr(e)}")
-
-    tasks = []
-    for _, _, file_list in os.walk(EMOJI_DIR_PATH):
-        logger.info(f"检测到图片目录下共有 {len(file_list)} 个文件")
-        for local_file in file_list:
-            tasks.append(process_file(local_file))
-    if tasks:
-        await asyncio.gather(*tasks)
-        logger.info(f"图片缓存刷新完成，共有 {len(_FILES)} 个文件，其中{do_not_re_upload}个文件未过期，跳过上传")
-
 
 @driver.on_bot_connect
 @scheduler.scheduled_job("interval", minutes=10, id="update_image_dict_cache")
@@ -517,9 +425,15 @@ async def count_image_handle():
         await count_image.send(str(len(all)))
 
 
-def get_mime_type(filename: str) -> Literal["image/jpeg", "image/png"]:
+def get_mime_type(filename: str) -> Literal["image/jpeg", "image/png", "video/mp4"]:
     ext = filename.lower().split(".")[-1]
-    return "image/png" if ext == "png" else "image/jpeg"
+    match ext:
+        case "png":
+            return "image/png"
+        case "gif":
+            return "video/mp4"
+        case _:
+            return "image/jpeg"
 
 
 
@@ -546,16 +460,29 @@ async def migrate_imagesender_to_milvus():
 
         res = await milvus_client.query_image_data(name)
         if len(res) > 0:
-            skip_count += 1
-            logger.debug(f"图片{name}已存在，不进行数据迁移")
-            continue
+            # 文件后缀是 gif 时，mime_type 必须是 video/mp4，否则删除原文件重新分析图片
+            if res[0].name.endswith('gif') and mime_type != "video/mp4" and res[0].emoji_id is None: # type: ignore
+                logger.info(f"图片{name}已存在，但mime_type不正确，删除原分析数据，重新分析图片")
+                # 删除原分析数据
+                await milvus_client.delete_image_data(name)
+            elif res[0].emoji_id is not None and res[0].mime_type != "image/png":  # type: ignore
+                logger.info(f"图片{name}已存在，但mime_type不正确，删除原分析数据，重新分析图片")
+                # 删除原分析数据
+                await milvus_client.delete_image_data(name)
+            else:
+                skip_count += 1
+                logger.debug(f"图片{name}已存在，不进行数据迁移")
+                continue
 
         try:
-            async with aopen(EMOJI_DIR_PATH.joinpath(name), "rb") as f:
-                content = await f.read()
+            mime_type = get_mime_type(name)
+            if emoji_id is not None and len(emoji_id) > 0:
+                mime_type = "image/png"
+            byte_content = await get_file_bytes(name, file_path=EMOJI_DIR_PATH.joinpath(name))
             parts = []
-            parts.append(Part.from_text(text="分析一下这张图片描述的内容，用中文描述它"))
-            parts.append(Part.from_bytes(data=content, mime_type=mime_type))
+            parts.append(Part.from_text(text=f"请用中文描述分析一下{'这段视频' if mime_type.startswith('video') else '这张图片'}的内容"))
+            if byte_content:
+                parts.append(Part.from_bytes(data=byte_content, mime_type=mime_type))
             description = await analysis_image_to_str_description(parts=parts)
             vec = await get_text_embedding(description)
             vec_image_data = VectorDataImage(
@@ -588,9 +515,76 @@ async def migrate_imagesender_to_milvus():
                     logger.info(f"删除失败的文件{file_name}成功")
                 else:
                     logger.warning(f"文件{file_name}不存在，无法删除")
-            
+
         async with get_session() as session:
             count = await session.execute(delete(ImageSender).where(ImageSender.name.in_(fail_files)))
             await session.commit()
         logger.info(f"删除数据库中{count.rowcount}条迁移失败的数据")
         logger.info(f"{skip_count}条数据跳过迁移，{error_count}条数据迁移失败，{success_count}条数据迁移成功")
+
+
+async def get_file_bytes(file_name: str, *, file_url: Optional[str] = None, file_path: Optional[Path] = None) -> Optional[bytes]:
+    """获取文件二进制数据"""
+    ext = file_name.split(".")[-1]
+    bytes_content = None
+    if file_url is not None:
+        resp = await _HTTP_CLIENT.get(file_url)
+        bytes_content = resp.content
+    if file_path is not None:
+        async with aopen(file_path, "rb") as f:
+            bytes_content = await f.read()
+    if ext in ["jpg", "jpeg", "png"]:
+        return bytes_content
+    if ext == "gif" and bytes_content:
+        # GIF 文件需要处理成 MP4 格式文件并重新获取 bytes
+        return await gif_bytes_to_mp4_bytes(bytes_content)
+    return None
+
+
+async def gif_bytes_to_mp4_bytes(gif_bytes: bytes) -> bytes:
+    """从GIF二进制数据转换为MP4二进制数据"""
+    def _convert():
+        # 创建临时文件
+        with tempfile.NamedTemporaryFile(suffix='.gif', delete=False) as temp_gif:
+            temp_gif.write(gif_bytes)
+            temp_gif_path = temp_gif.name
+        
+        # 创建临时输出文件
+        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as temp_mp4:
+            temp_mp4_path = temp_mp4.name
+        
+        try:
+            clip = VideoFileClip(temp_gif_path)
+            
+            # 直接写入临时文件，添加更多参数
+            clip.write_videofile(
+                temp_mp4_path,
+                codec='libx264',
+                audio_codec='aac',
+                logger=None,
+                temp_audiofile='temp-audio.m4a',
+                remove_temp=True,
+                ffmpeg_params=['-pix_fmt', 'yuv420p']  # 确保兼容性
+            )
+            
+            clip.close()
+            
+            # 读取生成的MP4文件
+            with open(temp_mp4_path, 'rb') as f:
+                content = f.read()
+            
+            return content
+        except Exception as e:
+            logger.error(f"GIF转MP4失败: {e}")
+            # 如果转换失败，返回原始GIF数据
+            return gif_bytes
+        finally:
+            # 清理临时文件
+            if os.path.exists(temp_gif_path):
+                os.unlink(temp_gif_path)
+            if os.path.exists(temp_mp4_path):
+                os.unlink(temp_mp4_path)
+    
+    
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _convert)
