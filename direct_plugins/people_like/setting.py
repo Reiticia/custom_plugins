@@ -164,7 +164,7 @@ async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
     conf = _EXPECT_PROP_NAMES.get(str(resp))
     if conf is None:
         await matcher.finish("属性名无效，指令中断")
-    prompt_str = f"""请输入要设置的属性值（取消操作请输入cancel，重置输入reset）
+    prompt_str = f"""请输入要设置的属性值（取消操作请输入cancel，重置输入reset，如果类型为bool则输入其他任意字符取反）
 键：{property_name}
 描述：{conf["desc"]}
 {"范围：" + conf["range"] if conf["range"] else ""}
@@ -192,12 +192,17 @@ async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
         property_config = _EXPECT_PROP_NAMES.get(property_name.lower(), {})
         logger.debug(f"{property_name}属性配置{repr(property_config)}")
         property_type = type(property_config["default"]).__name__
-        construtor = getattr(builtins, property_type)
-        value = construtor(value_str)
-        if range := property_config["range"]:
-            min, max = range.split("-")
-            if not (construtor(min) <= value <= construtor(max)):
-                await matcher.finish(f"输入不合法，值{value}不在范围{range}内")
+        if property_type == 'bool':
+            # 如果默认值类型为 bool，则取反
+            value = not get_value_or_default(int(group_id), property_name)
+        else:
+            construtor = getattr(builtins, property_type)
+            value = construtor(value_str)
+            if range := property_config["range"]:
+                min, max = range.split("-")
+                if not (construtor(min) <= value <= construtor(max)):
+                    await matcher.finish(f"输入不合法，值{value}不在范围{range}内")
+
         g_v.update({property_name.upper(): value})
         ret: str = f"""群：{group_id}
 键：{property_name}
