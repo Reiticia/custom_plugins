@@ -583,19 +583,22 @@ async def chat_with_gemini(
 
     extra_prompt = get_value_or_default(group_id, "prompt")
 
-    async with get_session() as session:
-        impression = list(
-            await session.scalars(
-                select(GroupMemberImpression)
-                .where(GroupMemberImpression.group_id == group_id)
-                .where(GroupMemberImpression.user_id != int(bot.self_id))
+    enable_impression: bool = get_value_or_default(group_id, "impression")
+    if enable_impression:
+        async with get_session() as session:
+            impression = list(
+                await session.scalars(
+                    select(GroupMemberImpression)
+                    .where(GroupMemberImpression.group_id == group_id)
+                    .where(GroupMemberImpression.user_id != int(bot.self_id))
+                )
             )
-        )
-    impression_dict: dict[int, str] = {}
-    for item in impression:
-        impression_dict.update({item.user_id: item.impression})
-
-    prompt = get_prompt(bot_nickname, bot_gender, extra_prompt, is_admin, impression_dict)
+        impression_dict: dict[int, str] = {}
+        for item in impression:
+            impression_dict.update({item.user_id: item.impression})
+        prompt = get_prompt(bot_nickname, bot_gender, extra_prompt, is_admin, impression_dict)
+    else:
+        prompt = get_prompt(bot_nickname, bot_gender, extra_prompt, is_admin, None)
     contents = []
     for msg in context:
         if len(c := msg.content) > 0:
@@ -1148,7 +1151,7 @@ async def request_for_resp(
 
 
 def get_prompt(
-    bot_nickname: str, bot_gender: Optional[str], extra_prompt: str, is_admin: bool, impression: dict[int, str]
+    bot_nickname: str, bot_gender: Optional[str], extra_prompt: str, is_admin: bool, impression: Optional[dict[int, str]]
 ) -> str:
     return f"""
 ## 基础设定
@@ -1157,7 +1160,7 @@ def get_prompt(
 你是一个参与多人群聊的成员。以下是群聊中其他人的部分历史消息记录，请你仔细分析每个人的语气、说话习惯、用词风格、幽默感、表情使用方式等。
 你需要模仿其中某位成员的语言风格进行自然回复，做到像那个人在说话一样真实自然。
 你需要根据上下文内容进行回复，请以最近的一条消息为回复标准，之前的消息作为对话内容辅助参考，回复内容可以包含纯文本消息和提及消息。不要暴露你是AI的身份。
-务必根据你要回复的消息发送者的印象选择与其相同的对话风格进行回复。
+{'务必根据你要回复的消息发送者的印象选择与其相同的对话风格进行回复。' if impression else ''}
 
 ## 消息模板
 
@@ -1187,9 +1190,15 @@ def get_prompt(
 回复内容可以有多段，请将纯文本消息与提及消息分割为不同的段落，并以列表返回对象。
 请以最近的一条消息作为优先级最高的回复对象，越早的消息优先级越低。
 
+{
+    f'''
 ## 对每个群成员的印象
 
 {repr(impression)}
+
+'''
+    if impression else ''
+}
 
 ## 额外设定
 

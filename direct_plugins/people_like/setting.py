@@ -45,6 +45,7 @@ _EXPECT_PROP_NAMES: dict[str, PropConfig] = {
     "at_reply_probability": {"range": "0.0-1.0", "default": plugin_config.reply_probability * 4, "desc": "提及回复概率"},
     "context_size": {"range": "0-1000", "default": plugin_config.context_size, "desc": "上下文长度"},
     "forget_self": {"range": None, "default": 0, "desc": "不将指定时间戳之前的自身消息列入上下文"},
+    "impression": {"range": None, "default": True, "desc": "是否启用群组成员印象"},
 }
 
 _BLACK_LIST_FILE = _CONFIG_DIR / "blacklist.json"
