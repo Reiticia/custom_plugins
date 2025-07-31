@@ -221,7 +221,7 @@ async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
     conf = _EXPECT_PROP_NAMES.get(str(resp))
     if conf is None:
         await matcher.finish("属性名无效，指令中断")
-    prompt_str = f"""请输入要设置的属性值（取消操作请输入cancel，重置输入reset，如果类型为bool则输入其他任意字符取反）
+    prompt_str = f"""请输入要设置的属性值（取消操作请输入cancel，重置输入reset）
 键：{property_name}
 描述：{conf["desc"]}
 {"范围：" + conf["range"] if conf["range"] else ""}
