@@ -705,8 +705,8 @@ async def chat_with_gemini(
         tools.append(Tool(function_declarations=function_declarations))
 
     # 至多重试 5 次
-    success = True  # 是否正确处理
     for i in range(5):
+        success = True
         logger.debug(f"群{group_id}第{i + 1}次请求消息")
         resp = await request_for_resp(
             group_id=group_id,
