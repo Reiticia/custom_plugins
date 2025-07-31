@@ -7,8 +7,9 @@ from nonebot.rule import to_me
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent
 from aiofiles import open
 from nonebot_plugin_waiter import prompt, suggest
-from typing import Generic, Optional, TypeVar, TypedDict, Any
+from typing import Callable, Generic, Optional, TypeVar, TypedDict, Any
 import nonebot_plugin_localstore as store  # noqa: E402
+from datetime import datetime, timedelta, time
 
 from .config import plugin_config
 
@@ -23,6 +24,60 @@ PROPERTIES: dict[str, dict[str, Any]] = json.loads(
     "{}" if not _PROFILE.exists() else text if (text := _PROFILE.read_text()) is not None else "{}"
 )
 
+def str_to_bool(value: str) -> bool:
+    """将字符串转换为布尔值"""
+    if value.lower() in ("true", "1", "yes", "t", "y"):
+        return True
+    if value.lower() in ("false", "0", "no", "f", "n"):
+        return False
+    raise ValueError(f"无法将字符串 '{value}' 转换为布尔值，请输入 true/false, 1/0, yes/no, t/f, y/n")
+
+def str_to_timestamp(value: str) -> int:
+    """将字符串转换为时间戳"""
+    now = datetime.now()
+    now_list = ["now", "现在", "当前时间"]
+    if any(a in value for a in now_list):
+        return int(now.timestamp())
+    yesterday_list = ["昨天", "yesterday"]
+    if any(a in value for a in yesterday_list):
+        yesterday = now - timedelta(days=1)
+        return int(yesterday.timestamp())
+    midnight_list = ["今天0点","昨晚12点", "midnight"]
+    if any(a in value for a in midnight_list):
+        today = datetime.now().date()
+        # 构造当天0点的时间对象（昨晚24点）
+        today_noon = datetime.combine(today, time(0, 0))
+        return int(today_noon.timestamp())
+    noon_list = ["中午", "正午", "noon"]
+    if any(a in value for a in noon_list):
+        today = datetime.now().date()
+        # 构造当天12点的时间对象
+        today_noon = datetime.combine(today, time(12, 0))
+        if today_noon.timestamp() > now.timestamp():
+            raise ValueError("还没到时间")
+        return int(today_noon.timestamp())
+    yesterday_noon_list = ["昨天中午", "昨天正午", "yesterday noon"]
+    if any(a in value for a in yesterday_noon_list):
+        today = (datetime.now() - timedelta(days=1)).date()
+        # 构造昨天12点的时间对象
+        today_noon = datetime.combine(today, time(12, 0))
+        return int(today_noon.timestamp())
+    try:
+        time_stamp = int(value)
+        if time_stamp > now.timestamp():
+            raise ValueError("还没到时间")
+        return time_stamp
+    except ValueError:
+        raise ValueError(f"""
+请输入数字或一下字符串，注意指定时间必须早于当前时间
+{now_list}
+{yesterday_list}
+{midnight_list}
+{noon_list}
+{yesterday_noon_list}
+""")
+
+
 D_TYPE = TypeVar("D_TYPE")
 
 
@@ -30,23 +85,25 @@ class PropConfig(TypedDict, Generic[D_TYPE]):
     range: Optional[str] # 属性范围
     default: D_TYPE
     desc: str
+    callable: Optional[Callable[[str], D_TYPE]]
 
 
 _EXPECT_PROP_NAMES: dict[str, PropConfig] = {
-    "prompt": {"range": None, "default": "无", "desc": "额外提示词"},
-    "topP": {"range": None, "default": 0.95, "desc": "topP采样概率"},
-    "topK": {"range": None, "default": 40, "desc": "topK采样数量"},
-    "temperature": {"range": "0.0-2.0", "default": 1.0, "desc": "温度系数"},
-    "length": {"range": None, "default": 0, "desc": "限制生成token数量"},
-    "search": {"range": None, "default": False, "desc": "是否启用搜索"},
-    "reply_probability": {"range": "0.0-1.0", "default": plugin_config.reply_probability, "desc":"回复概率"},
-    "model": {"range": None, "default": plugin_config.gemini_model, "desc": "模型名称"},
-    "anime_only": {"range": None, "default": False, "desc": "发送动画表情时是否只发送二次元动画表情"},
-    "at_reply_probability": {"range": "0.0-1.0", "default": plugin_config.reply_probability * 4, "desc": "提及回复概率"},
-    "context_size": {"range": "0-1000", "default": plugin_config.context_size, "desc": "上下文长度"},
-    "forget_self": {"range": None, "default": 0, "desc": "不将指定时间戳之前的自身消息列入上下文"},
-    "impression": {"range": None, "default": True, "desc": "是否启用群组成员印象"},
+    "prompt": {"range": None, "callable": None, "default": "无", "desc": "额外提示词"},
+    "topP": {"range": None, "callable": None, "default": 0.95, "desc": "topP采样概率"},
+    "topK": {"range": None, "callable": None, "default": 40, "desc": "topK采样数量"},
+    "temperature": {"range": "0.0-2.0", "callable": None, "default": 1.0, "desc": "温度系数"},
+    "length": {"range": None, "callable": None, "default": 0, "desc": "限制生成token数量"},
+    "search": {"range": None, "callable": str_to_bool, "default": False, "desc": "是否启用搜索"},
+    "reply_probability": {"range": "0.0-1.0", "callable": None,"default": plugin_config.reply_probability, "desc":"回复概率"},
+    "model": {"range": None, "callable": None,"default": plugin_config.gemini_model, "desc": "模型名称"},
+    "anime_only": {"range": None, "callable": str_to_bool, "default": False, "desc": "发送动画表情时是否只发送二次元动画表情"},
+    "at_reply_probability": {"range": "0.0-1.0","callable": None, "default": plugin_config.reply_probability * 4, "desc": "提及回复概率"},
+    "context_size": {"range": "0-1000", "callable": None, "default": plugin_config.context_size, "desc": "上下文长度"},
+    "forget_self": {"range": None, "callable": str_to_timestamp, "default": 0, "desc": "不将指定时间戳之前的自身消息列入上下文"},
+    "impression": {"range": None, "callable": str_to_bool, "default": True, "desc": "是否启用群组成员印象"},
 }
+
 
 _BLACK_LIST_FILE = _CONFIG_DIR / "blacklist.json"
 
@@ -188,14 +245,16 @@ async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
 键：{property_name}
 已删除"""
     else:
-        # 使用反射转换输入
         property_config = _EXPECT_PROP_NAMES.get(property_name.lower(), {})
         logger.debug(f"{property_name}属性配置{repr(property_config)}")
-        property_type = type(property_config["default"]).__name__
-        if property_type == 'bool':
-            # 如果默认值类型为 bool，则取反
-            value = not get_value_or_default(int(group_id), property_name)
+        if callable := property_config["callable"]:
+            try:
+                value = callable(value_str)
+            except ValueError as error:
+                await matcher.finish(str(error.args))
         else:
+            # 使用反射转换输入
+            property_type = type(property_config["default"]).__name__
             construtor = getattr(builtins, property_type)
             value = construtor(value_str)
             if range := property_config["range"]:
