@@ -33,8 +33,6 @@ from google.genai.types import (
     UploadFileConfig,
 )
 
-from google.genai.errors import ClientError
-
 from .model import ImageSender
 from .setting import get_value_or_default
 from .vector import _GEMINI_CLIENT, VectorDataImage, get_text_embedding, get_milvus_vector_client, analysis_image_to_str_description
@@ -76,7 +74,7 @@ async def get_file_name_of_image_will_sent_by_description_vec(description: str, 
         description (str): 描述信息
         group_id (int): 群号
     """
-    global _GEMINI_CLIENT, _IMAGE_DICT
+    global _GEMINI_CLIENT
     # 先查数据库里所有的动画表情
     milvus_client = await get_milvus_vector_client()
     vec_data = await get_text_embedding(description)
@@ -332,7 +330,7 @@ async def add_image(event: GroupMessageEvent):
                         logger.info(f"新增表情包图片{file_name}成功")
 
                         parts = []
-                        parts.append(Part.from_text(text="分析一下这张图片描述的内容，用中文描述它"))
+                        parts.append(Part.from_text(text="Help me summarize the content of this image and return it in the form of tags. Give at least 40 tags."))
                         parts.append(Part.from_bytes(data=resp.content, mime_type=mime_type))
                         content = await analysis_image_to_str_description(parts=parts)
                         vec = await get_text_embedding(content)
@@ -391,82 +389,8 @@ driver = get_driver()
 
 
 # @driver.on_bot_connect
-# @scheduler.scheduled_job("interval", days=2, id="update_file_cache")
-
-@typing_extensions.deprecated("This method is not used.")
-async def upload_image() -> Optional[str]:
-    """每搁两天重置图片文件缓存"""
-    global _GEMINI_CLIENT
-    _FILES = set()
-    logger.debug(f"图片存储目录{EMOJI_DIR_PATH.absolute()}")
-    do_not_re_upload = 0
-
-    async_lock = asyncio.Lock()
-    semaphore = asyncio.Semaphore(10)
-
-    async def process_file(local_file: str):
-        nonlocal do_not_re_upload
-        async with semaphore:
-            mime_type = get_mime_type(local_file)
-            need_upload_name = ""
-            async with get_session() as search_session:
-                res = await search_session.execute(select(ImageSender).where(ImageSender.name == local_file))
-                first = res.scalars().first()
-                now = int(time.time())
-                if first is not None:
-                    need_upload_name = first.remote_file_name
-                    if (
-                        now - int(first.update_time) < 46 * 60 * 60
-                        and first.remote_file_name is not None
-                        and first.mime_type is not None
-                    ):
-                        remote_file_name = f"files/{first.remote_file_name}"
-                        try:
-                            exsit_file = await _GEMINI_CLIENT.aio.files.get(name=remote_file_name)
-                            if exsit_file is not None:
-                                _FILES.add(local_file)
-                                logger.debug(f"图片: {local_file} 文件名: {remote_file_name} 未过期，跳过上传")
-                                need_upload_name = ""
-                                async with async_lock:
-                                    do_not_re_upload += 1
-                        except ClientError as e:
-                            logger.error(f"{e.message}")
-
-            if need_upload_name != "":
-                file_path = EMOJI_DIR_PATH / local_file
-                try:
-                    file = await _GEMINI_CLIENT.aio.files.upload(file=file_path, config=UploadFileConfig(mime_type=mime_type))
-                    _FILES.add(local_file)
-                    async with get_session() as session:
-                        await session.execute(
-                            update(ImageSender)
-                            .where(ImageSender.name == local_file)
-                            .values(
-                                {
-                                    "update_time": int(time.time()),
-                                    "file_uri": str(file.uri),
-                                    "remote_file_name": str(file.name),
-                                    "mime_type": file.mime_type,
-                                }
-                            )
-                        )
-                        logger.debug(f"更新图片{local_file}成功")
-                        await session.commit()
-                except RemoteProtocolError as e:
-                    logger.error(f"文件{file_path}更新失败{repr(e)}")
-
-    tasks = []
-    for _, _, file_list in os.walk(EMOJI_DIR_PATH):
-        logger.info(f"检测到图片目录下共有 {len(file_list)} 个文件")
-        for local_file in file_list:
-            tasks.append(process_file(local_file))
-    if tasks:
-        await asyncio.gather(*tasks)
-        logger.info(f"图片缓存刷新完成，共有 {len(_FILES)} 个文件，其中{do_not_re_upload}个文件未过期，跳过上传")
-
-
-@driver.on_bot_connect
-@scheduler.scheduled_job("interval", minutes=10, id="update_image_dict_cache")
+# @scheduler.scheduled_job("interval", minutes=10, id="update_image_dict_cache")
+@typing_extensions.deprecated("")
 async def refresh_image_cache():
     global _IMAGE_DICT
     # 查数据库里所有的动画表情
@@ -474,47 +398,6 @@ async def refresh_image_cache():
         res = await session.scalars(select(ImageSender))
     res = list(res)
     _IMAGE_DICT = {i.name:i for i in res}
-
-
-
-who_send = on_command("谁发的", aliases={"谁发的图片", "图片来源"})
-
-
-@who_send.handle()
-async def who_send_image(msg: Message = CommandArg()):
-    img_name = msg.extract_plain_text()
-    if not img_name:
-        await who_send.finish("请指定图片名称")
-
-    async with get_session() as session:
-        res = await session.execute(select(ImageSender).where(ImageSender.name == img_name))
-        first = res.scalars().first()
-        if first is None:
-            await who_send.finish("图片不存在")
-        else:
-            time = datetime.fromtimestamp(first.update_time).strftime("%Y-%m-%d %H:%M:%S")
-            size = first.file_size
-            emoji_id = first.emoji_id
-            emoji_package_id = first.emoji_package_id
-            message = f"""
-来自群{first.group_id}的成员{first.user_id}
-上传时间: {time}
-大小: {size}
-emoji_id: {emoji_id}
-emoji_package_id: {emoji_package_id}
-"""
-            await who_send.finish(message.strip())
-
-
-count_image = on_command("图片统计", aliases={"图片数量", "图片总数"}, permission=SUPERUSER)
-
-
-@count_image.handle()
-async def count_image_handle():
-    async with get_session() as session:
-        res = await session.execute(select(ImageSender))
-        all = res.scalars().fetchall()
-        await count_image.send(str(len(all)))
 
 
 def get_mime_type(filename: str) -> Literal["image/jpeg", "image/png"]:
@@ -543,18 +426,25 @@ async def migrate_imagesender_to_milvus():
         emoji_id = i.emoji_id
         emoji_package_id = i.emoji_package_id
 
-
         res = await milvus_client.query_image_data(name)
         if len(res) > 0:
-            skip_count += 1
-            logger.debug(f"图片{name}已存在，不进行数据迁移")
-            continue
+            # 判断描述中是否含有中文，有则删除原来的记录，重新设置
+            description = res[0].description
+            if description and any('\u4e00' <= ch <= '\u9fff' for ch in description):
+                # 删除原有记录，重新迁移
+                await milvus_client.delete_image_data(name)
+                logger.info(f"图片{name}描述不合法，已删除原有记录，准备重新迁移")
+            else:
+                skip_count += 1
+                logger.debug(f"图片{name}已存在且描述无中文，不进行数据迁移")
+                continue
 
+        mime_type = get_mime_type(name)
         try:
             async with aopen(EMOJI_DIR_PATH.joinpath(name), "rb") as f:
                 content = await f.read()
             parts = []
-            parts.append(Part.from_text(text="分析一下这张图片描述的内容，用中文描述它"))
+            parts.append(Part.from_text(text="Help me summarize the content of this image and return it in the form of tags. Give at least 40 tags."))
             parts.append(Part.from_bytes(data=content, mime_type=mime_type))
             description = await analysis_image_to_str_description(parts=parts)
             vec = await get_text_embedding(description)
@@ -576,21 +466,21 @@ async def migrate_imagesender_to_milvus():
         except Exception as e:
             fail_files.append(name)
             error_count += 1
-            logger.error(f"数据{name}迁移失败{repr(e)}")
+            logger.error(f"数据{name}, mime_type为{mime_type}，迁移失败{repr(e)}")
 
     else:
         # 删除失败的文件以及本地文件
-        if fail_files:
-            for file_name in fail_files:
-                file_path = EMOJI_DIR_PATH.joinpath(file_name)
-                if file_path.exists():
-                    os.remove(file_path)
-                    logger.info(f"删除失败的文件{file_name}成功")
-                else:
-                    logger.warning(f"文件{file_name}不存在，无法删除")
+        # if fail_files:
+        #     for file_name in fail_files:
+        #         file_path = EMOJI_DIR_PATH.joinpath(file_name)
+        #         if file_path.exists():
+        #             os.remove(file_path)
+        #             logger.info(f"删除失败的文件{file_name}成功")
+        #         else:
+        #             logger.warning(f"文件{file_name}不存在，无法删除")
             
-        async with get_session() as session:
-            count = await session.execute(delete(ImageSender).where(ImageSender.name.in_(fail_files)))
-            await session.commit()
-        logger.info(f"删除数据库中{count.rowcount}条迁移失败的数据")
+        # async with get_session() as session:
+            # count = await session.execute(delete(ImageSender).where(ImageSender.name.in_(fail_files)))
+            # await session.commit()
+        # logger.info(f"删除数据库中{count.rowcount}条迁移失败的数据")
         logger.info(f"{skip_count}条数据跳过迁移，{error_count}条数据迁移失败，{success_count}条数据迁移成功")

@@ -1,13 +1,13 @@
-import typing_extensions
+import json
 from typing import Optional
 from pydantic import BaseModel
 from pymilvus import DataType, AsyncMilvusClient, MilvusClient
-from datetime import datetime
 from nonebot import get_driver, logger
 from google import genai
 from google.genai.types import (
     Part,
     Content,
+    GenerateContentConfig
 )
 from common import retry_on_exception
 
@@ -87,7 +87,6 @@ class MilvusVector:
         self.query_len = query_len
         self.search_len = search_len
         self.self_len = self_len
-        self.collection_name = "people_like"
 
         self.collection_name_image = "people_like_image"
 
@@ -132,14 +131,6 @@ class MilvusVector:
         else:
             logger.info(f"Collection '{self.collection_name_image}' already exists.")
 
-    @typing_extensions.deprecated("This method is not used.")
-    async def insert_data(self, data: list[VectorData]):
-        """插入数据到 Milvus 向量数据库 collection_name"""
-        data_dict = [item.model_dump() for item in data]
-        for d in data_dict:
-            d.pop("id", None)
-        res = await self.async_client.insert(collection_name=self.collection_name, data=data_dict)
-        return res["insert_count"]
 
     async def insert_image_data(self, data: list[VectorDataImage]):
         """插入数据到 Milvus 向量数据库 collection_name_image"""
@@ -148,86 +139,6 @@ class MilvusVector:
             d.pop("id", None)
         res = await self.async_client.insert(collection_name=self.collection_name_image, data=data_dict)
         return res["insert_count"]
-
-    @typing_extensions.deprecated("This method is not used.")
-    async def query_data(self, group_id: int = 0) -> list[VectorData]:
-        exprs = []
-        if group_id != 0:
-            exprs.append(f"group_id == {group_id}")
-        await self.async_client.load_collection(collection_name=self.collection_name)
-        results = await self.async_client.query(
-            collection_name=self.collection_name,
-            filter=" and ".join(exprs),
-            output_fields=[
-                "id",
-                "message_id",
-                "group_id",
-                "user_id",
-                "self_msg",
-                "to_me",
-                "index",
-                "nick_name",
-                "content",
-                "file_id",
-                "vec",
-                "time",
-            ],
-            limit=self.query_len,  # 限制返回数量
-        )
-        return [VectorData(**item) for item in results]
-
-    @typing_extensions.deprecated("This method is not used.")
-    async def query_all_data(self) -> list[VectorData]:
-        """查询所有数据"""
-        await self.async_client.load_collection(collection_name=self.collection_name)
-        results = await self.async_client.query(
-            collection_name=self.collection_name,
-            output_fields=[
-                "id",
-                "message_id",
-                "group_id",
-                "user_id",
-                "self_msg",
-                "to_me",
-                "index",
-                "nick_name",
-                "content",
-                "file_id",
-                "vec",
-                "time",
-            ],
-        )
-        return [VectorData(**item) for item in results]
-
-    @typing_extensions.deprecated("This method is not used.")
-    async def query_self_data(self, group_id: int = 0) -> list[VectorData]:
-        today_zero_time = int(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
-        exprs = []
-        exprs.append("self_msg == true")  # 只查询自己的消息
-        exprs.append(f"time >= {today_zero_time}")  # 只查询今天的
-        if group_id != 0:
-            exprs.append(f"group_id == {group_id}")
-        await self.async_client.load_collection(collection_name=self.collection_name)
-        results = await self.async_client.query(
-            collection_name=self.collection_name,
-            filter=" and ".join(exprs),
-            output_fields=[
-                "id",
-                "message_id",
-                "group_id",
-                "user_id",
-                "self_msg",
-                "to_me",
-                "index",
-                "nick_name",
-                "content",
-                "file_id",
-                "vec",
-                "time",
-            ],
-            limit=self.self_len,  # 限制返回数量
-        )
-        return [VectorData(**item) for item in results]
 
     async def query_image_data(self, file_id: str | list[str]) -> list[VectorDataImage]:
         exprs = []
@@ -255,68 +166,6 @@ class MilvusVector:
             limit=self.query_len,  # 限制返回数量
         )
         return [VectorDataImage(**item) for item in results]
-
-    @typing_extensions.deprecated("This method is not used.")
-    async def search_data(
-        self,
-        query_vector: list[list[float]],
-        file_ids: list[str] | bool = False,
-        time_limit: int | bool = False,
-        search_len: int = 0,
-        group_id: int = 0,
-    ) -> list[VectorData]:
-        today_zero_time = int(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
-        exprs: list[str] = []
-        if time_limit:
-            if isinstance(time_limit, bool) and time_limit:
-                exprs.append(f"time >= {today_zero_time}")
-            elif isinstance(time_limit, int):
-                exprs.append(f"time >= {time_limit}")
-        if group_id != 0:
-            exprs.append(f"group_id == {group_id}")
-        if file_ids:
-            if isinstance(file_ids, bool) and file_ids:
-                exprs.append("file_id != ''")
-            elif isinstance(file_ids, list) and file_ids:
-                exprs.append(f"file_id in {repr(file_ids)}")
-        await self.async_client.load_collection(collection_name=self.collection_name)
-        results = await self.async_client.search(
-            collection_name=self.collection_name,
-            data=query_vector,
-            filter=" and ".join(exprs),
-            search_params={
-                "metric_type": "COSINE",
-                "params": {
-                    "nprobe": 128,  # 搜索空间大小（精度-性能平衡点）
-                    "radius": 0.7,  # 最小相似度阈值（可选）
-                },
-            },
-            output_fields=[
-                "id",
-                "message_id",
-                "group_id",
-                "user_id",
-                "self_msg",
-                "to_me",
-                "index",
-                "nick_name",
-                "content",
-                "file_id",
-                "vec",
-                "time",
-            ],
-            limit=self.search_len if search_len == 0 else search_len,  # 限制返回数量
-            consistency_level="Strong",  # 强一致性
-        )
-
-        # 适配 Milvus 返回结构
-        vector_data_list = []
-        if results and len(results) > 0:
-            for item in results[0]:
-                # 如果是 entity 结构
-                entity = item.get("entity", item)
-                vector_data_list.append(VectorData(**entity))
-        return vector_data_list
 
     async def search_image_data(
         self,
@@ -367,6 +216,19 @@ class MilvusVector:
                 vector_data_image_list.append(VectorDataImage(**entity))
         return vector_data_image_list
 
+    async def delete_image_data(self, file_id: str | list[str]) -> int:
+        """删除 Milvus 向量数据库 collection_name_image 中的数据"""
+        exprs = []
+        if isinstance(file_id, list):
+            exprs.append(f"name in {repr(file_id)}")
+        else:
+            exprs.append(f"name == '{file_id}'")
+        await self.async_client.load_collection(collection_name=self.collection_name_image)
+        res = await self.async_client.delete(
+            collection_name=self.collection_name_image,
+            filter=" and ".join(exprs),
+        )
+        return res["delete_count"]
 
 @retry_on_exception(max_retries=5)
 async def get_text_embedding(text: str) -> list[float]:
@@ -395,5 +257,11 @@ async def analysis_image_to_str_description(parts: list[Part]) -> str:
                 parts=parts,
             )
         ],
+        config=GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=list[str],
+        ),
     )
-    return response.text.strip() if response.text else ""
+    arr: list[str] = json.loads(str(response.text))
+
+    return ",".join(arr) if arr else ""
