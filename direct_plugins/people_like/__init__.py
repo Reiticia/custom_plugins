@@ -876,6 +876,7 @@ async def build_message_content(bot, item) -> ChatMsg:
     else:
         character = Character.USER
         # 生成 parts
+    # TODO 这块或许也需要处理 GIF 分帧动画
     if item.file_id:
         # 判断为图片消息
         # 读取指定文件二进制信息

@@ -437,9 +437,6 @@ async def migrate_imagesender_to_milvus():
                 # 删除原有记录，重新迁移
                 await milvus_client.delete_image_data(name)
                 logger.info(f"图片{name}描述不合法，已删除原有记录，准备重新迁移")
-            elif res[0].name.split(".")[-1] == "gif":  # type: ignore
-                await milvus_client.delete_image_data(name)
-                logger.info(f"图片{name}为GIF格式，已删除原有记录，准备重新迁移")
             else:
                 skip_count += 1
                 logger.debug(f"图片{name}已存在且描述无中文，不进行数据迁移")
@@ -541,7 +538,7 @@ async def split_gif_pillow_async(gif_path: Path, file_name: str) -> list[Path]:
 
     await asyncio.gather(*tasks)
 
-    logger.info(f"完成，共导出 {len(durations)} 帧，时长写入 durations_ms.txt")
+    logger.info(f"完成，共导出 {len(durations)} 帧")
     return frame_paths
 
 
