@@ -334,7 +334,8 @@ async def add_image(event: GroupMessageEvent):
                         session.add(image_sender)
                         logger.info(f"新增表情包图片{file_name}成功")
 
-                        parts = await process_image_file(file_name)
+                        parts = [Part.from_text(text="Summarize the content of the following set of pictures, using multiple tags to describe them, at least 40 tags")]
+                        parts.extend(await process_image_file(EMOJI_DIR_PATH.joinpath(file_name)))
                         content = await analysis_image_to_str_description(parts=parts)
                         vec = await get_text_embedding(content)
 
@@ -444,7 +445,8 @@ async def migrate_imagesender_to_milvus():
 
         mime_type = get_mime_type(name)
         try:
-            parts = await process_image_file(name)
+            parts = [Part.from_text(text="Summarize the content of the following set of pictures, using multiple tags to describe them, at least 40 tags")]
+            parts.extend(await process_image_file(EMOJI_DIR_PATH.joinpath(name)))
             description = await analysis_image_to_str_description(parts=parts)
             vec = await get_text_embedding(description)
             vec_image_data = VectorDataImage(
@@ -466,8 +468,6 @@ async def migrate_imagesender_to_milvus():
             fail_files.append(name)
             error_count += 1
             logger.error(f"数据{name}, mime_type为{mime_type}，迁移失败{repr(e)}")
-        finally:
-            await remove_gif_frames(name)
 
     else:
         # 删除失败的文件以及本地文件
@@ -488,19 +488,19 @@ async def migrate_imagesender_to_milvus():
 
 
 
-async def process_image_file(file_name: str) -> list[Part]:
-    """处理即将发送给AI进行分析的图片输入"""
+async def process_image_file(file_path: Path) -> list[Part]:
+    """处理即将发送给AI进行分析的图片输入，如果是静态图片，则直接去二进制内容，如果是动态图片，则分帧去多次二进制内容"""
     parts = []
-    parts.append(Part.from_text(text="Summarize the content of the following set of pictures, using multiple tags to describe them, at least 40 tags"))
-    mime_type = get_mime_type(file_name)
-    if file_name.endswith(".gif"):
-        frame_paths = await split_gif_pillow_async(EMOJI_DIR_PATH.joinpath(file_name), file_name)
+    mime_type = get_mime_type(file_path.name)
+    if file_path.name.endswith(".gif"):
+        frame_paths = await split_gif_pillow_async(file_path, file_path.name)
         for path in frame_paths:
             async with aopen(path, "rb") as f:
                 content = await f.read()
             parts.append(Part.from_bytes(data=content, mime_type=mime_type))
+        await remove_gif_frames(file_path)
     else:
-        async with aopen(EMOJI_DIR_PATH.joinpath(file_name), "rb") as f:
+        async with aopen(file_path, "rb") as f:
             content = await f.read()
         parts.append(Part.from_bytes(data=content, mime_type=mime_type))
     return parts
@@ -542,9 +542,9 @@ async def split_gif_pillow_async(gif_path: Path, file_name: str) -> list[Path]:
     return frame_paths
 
 
-async def remove_gif_frames(file_name: str):
+async def remove_gif_frames(file_path: Path):
     """删除 GIF 动画帧"""
-    file_name = file_name.split(".")[0]
+    file_name = file_path.name.split(".")[0]
 
     for frame in GIF_FRAME_OUTPUT_DIR.glob(f"{file_name}_frame_*.png"):
         frame.unlink(missing_ok=True)
