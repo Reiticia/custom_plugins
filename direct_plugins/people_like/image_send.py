@@ -4,6 +4,8 @@ import os
 import asyncio
 import typing_extensions
 import json
+import aiofiles
+import io
 from datetime import datetime
 from typing import Literal, Optional
 from pydantic import BaseModel
@@ -19,6 +21,9 @@ from nonebot.adapters.onebot.utils import b2s, f2s
 from nonebot.permission import SUPERUSER
 import nonebot_plugin_localstore as store  # noqa: E402
 from nonebot_plugin_apscheduler import scheduler
+from pathlib import Path
+
+from PIL import Image, ImageSequence
 
 
 from google.genai.types import (
@@ -329,9 +334,7 @@ async def add_image(event: GroupMessageEvent):
                         session.add(image_sender)
                         logger.info(f"新增表情包图片{file_name}成功")
 
-                        parts = []
-                        parts.append(Part.from_text(text="Help me summarize the content of this image and return it in the form of tags. Give at least 40 tags."))
-                        parts.append(Part.from_bytes(data=resp.content, mime_type=mime_type))
+                        parts = await process_image_file(file_name)
                         content = await analysis_image_to_str_description(parts=parts)
                         vec = await get_text_embedding(content)
 
@@ -441,11 +444,7 @@ async def migrate_imagesender_to_milvus():
 
         mime_type = get_mime_type(name)
         try:
-            async with aopen(EMOJI_DIR_PATH.joinpath(name), "rb") as f:
-                content = await f.read()
-            parts = []
-            parts.append(Part.from_text(text="Help me summarize the content of this image and return it in the form of tags. Give at least 40 tags."))
-            parts.append(Part.from_bytes(data=content, mime_type=mime_type))
+            parts = await process_image_file(name)
             description = await analysis_image_to_str_description(parts=parts)
             vec = await get_text_embedding(description)
             vec_image_data = VectorDataImage(
@@ -467,6 +466,8 @@ async def migrate_imagesender_to_milvus():
             fail_files.append(name)
             error_count += 1
             logger.error(f"数据{name}, mime_type为{mime_type}，迁移失败{repr(e)}")
+        finally:
+            await remove_gif_frames(name)
 
     else:
         # 删除失败的文件以及本地文件
@@ -484,3 +485,67 @@ async def migrate_imagesender_to_milvus():
             # await session.commit()
         # logger.info(f"删除数据库中{count.rowcount}条迁移失败的数据")
         logger.info(f"{skip_count}条数据跳过迁移，{error_count}条数据迁移失败，{success_count}条数据迁移成功")
+
+
+
+async def process_image_file(file_name: str) -> list[Part]:
+    """处理即将发送给AI进行分析的图片输入"""
+    parts = []
+    parts.append(Part.from_text(text="Summarize the content of the following set of pictures, using multiple tags to describe them, at least 40 tags"))
+    mime_type = get_mime_type(file_name)
+    if file_name.endswith(".gif"):
+        frame_paths = await split_gif_pillow_async(EMOJI_DIR_PATH.joinpath(file_name), file_name)
+        for path in frame_paths:
+            async with aopen(path, "rb") as f:
+                content = await f.read()
+            parts.append(Part.from_bytes(data=content, mime_type=mime_type))
+    else:
+        async with aopen(EMOJI_DIR_PATH.joinpath(file_name), "rb") as f:
+            content = await f.read()
+        parts.append(Part.from_bytes(data=content, mime_type=mime_type))
+    return parts
+
+
+async def async_save_image(image: Image.Image, path: Path):
+    """Pillow保存为字节流，然后异步写入文件"""
+    buf = io.BytesIO()
+    rgb_image = image.convert("RGB")
+    rgb_image.save(buf, format="JPEG")
+    async with aiofiles.open(path, "wb") as f:
+        await f.write(buf.getvalue())
+
+GIF_FRAME_OUTPUT_DIR = store.get_cache_dir("people_like") / "gif_frames"
+
+async def split_gif_pillow_async(gif_path: Path, file_name: str) -> list[Path]:
+    """将gif动态图片分割成多个静态图片"""
+    gif = Image.open(gif_path)
+    GIF_FRAME_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    canvas = Image.new("RGBA", gif.size, (0, 0, 0, 0))
+    durations = []
+    tasks = []
+    frame_paths = []
+    file_name = file_name.split(".")[0]
+
+    for i, frame in enumerate(ImageSequence.Iterator(gif)):
+        rgba = frame.convert("RGBA")
+        composed = Image.alpha_composite(canvas, rgba)
+        save_path = GIF_FRAME_OUTPUT_DIR / f"{file_name}_frame_{i:03d}.png"
+        tasks.append(async_save_image(composed, save_path))
+        canvas = composed
+        durations.append(int(frame.info.get("duration", 0)))
+        frame_paths.append(save_path)
+
+    await asyncio.gather(*tasks)
+
+    logger.info(f"完成，共导出 {len(durations)} 帧")
+    return frame_paths
+
+
+async def remove_gif_frames(file_name: str):
+    """删除 GIF 动画帧"""
+    file_name = file_name.split(".")[0]
+
+    for frame in GIF_FRAME_OUTPUT_DIR.glob(f"{file_name}_frame_*.png"):
+        frame.unlink(missing_ok=True)
+    logger.info(f"删除 {file_name} GIF 动画帧成功")
