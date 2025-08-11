@@ -11,12 +11,14 @@ from pathlib import Path
 from asyncio import sleep
 from typing import Any, Literal, Optional
 from pydantic import BaseModel
-from nonebot import get_bot, logger, on_keyword, on_message, require, get_driver, on
+from nonebot import get_bot, logger, on_command, on_keyword, on_message, require, get_driver, on
+from nonebot_plugin_waiter import suggest
+from nonebot.permission import SUPERUSER
 
 from nonebot.rule import to_me
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters import Event
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Message, MessageSegment
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Message, MessageSegment, MessageEvent
 from google.genai.types import (
     Part,
     Tool,
@@ -1157,7 +1159,7 @@ def get_prompt(
     return f"""
 ## 基础设定
 
-你是{bot_nickname}{f"，你是{bot_gender}生。" if bot_gender else "。"}。
+你是{bot_nickname}{f"，你是{bot_gender}生。" if bot_gender else "。"}
 你是一个参与多人群聊的成员。以下是群聊中其他人的部分历史消息记录。
 你需要根据上下文内容进行回复，请以最近的一条消息为回复标准，之前的消息作为对话内容辅助参考，回复内容可以包含纯文本消息和提及消息。
 不要暴露你是AI的身份。
@@ -1461,3 +1463,59 @@ async def request_for_impression_list(contents: list) -> list[MemberImpression]:
 
 
 # ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑更新群成员印象↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
+
+
+# ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓获取群组对应Prompt↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
+
+
+@on_command(cmd="prompt", permission=SUPERUSER, rule=to_me(), priority=1, block=True).handle()
+async def get_current_prompt(bot: Bot, matcher: Matcher, e: MessageEvent) :
+    if not isinstance(e, GroupMessageEvent):
+        # 获取所有群组
+        group_list: list[str] = [str(group["group_id"]) for group in await bot.get_group_list()]
+        resp = await suggest("请输入群号", timeout=60, expect=group_list)
+        if not resp:
+            await matcher.finish()
+        if not str(resp).isdigit():
+            await matcher.finish("输入无效，指令中断")
+        group_id = int(str(resp))
+    else:
+        group_id = int(e.group_id)
+    # 判断是获取超级管理员的prompt还是普通成员的prompt
+    # resp = await suggest("是否为超级管理员", timeout=60, expect=["是", "否"])
+    # is_superuser = str(resp) == "是"
+
+    extra_prompt = get_value_or_default(group_id, "prompt")
+
+    enable_impression: bool = get_value_or_default(group_id, "impression")
+
+    group_remark = await get_bot_nickname_of_group(group_id)
+    nickname = list(bot.config.nickname)[0] if len(group_remark) > 5 else group_remark
+    bot_gender = await get_bot_gender()
+    is_admin = await is_bot_admin(group_id)
+
+
+    if enable_impression:
+        async with get_session() as session:
+            impression = list(
+                await session.scalars(
+                    select(GroupMemberImpression)
+                    .where(GroupMemberImpression.group_id == group_id)
+                    .where(GroupMemberImpression.user_id != int(bot.self_id))
+                )
+            )
+        impression_dict: dict[int, str] = {}
+        for item in impression:
+            impression_dict.update({item.user_id: item.impression})
+        prompt = get_prompt(nickname, bot_gender, extra_prompt, is_admin, impression_dict)
+    else:
+        prompt = get_prompt(nickname, bot_gender, extra_prompt, is_admin, None)
+    
+
+    msg = [MessageSegment.node_custom(user_id=int(bot.self_id), nickname=nickname, content=prompt)]
+    if not isinstance(e, GroupMessageEvent):
+        await bot.call_api("send_forward_msg", user_id=e.user_id, messages=msg)
+    else:
+        await bot.call_api("send_forward_msg", group_id=group_id, messages=msg)
+
+# ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑获取群组对应Prompt↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑

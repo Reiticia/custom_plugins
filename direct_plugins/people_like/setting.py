@@ -69,7 +69,7 @@ def str_to_timestamp(value: str) -> int:
         return time_stamp
     except ValueError:
         raise ValueError(f"""
-请输入数字或一下字符串，注意指定时间必须早于当前时间
+请输入数字或以下字符串，注意指定时间必须早于当前时间
 {now_list}
 {yesterday_list}
 {midnight_list}
@@ -225,7 +225,7 @@ async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
 键：{property_name}
 描述：{conf["desc"]}
 {"范围：" + conf["range"] if conf["range"] else ""}
-类型：{type(conf["default"]).__name__}
+类型：{(type_name := type(conf["default"]).__name__)}
 默认值：{conf["default"]}
 当前值：{get_value_or_default(int(group_id), property_name)}
     """
@@ -254,8 +254,7 @@ async def set_property(bot: Bot, matcher: Matcher, e: MessageEvent):
                 await matcher.finish(str(error.args))
         else:
             # 使用反射转换输入
-            property_type = type(property_config["default"]).__name__
-            construtor = getattr(builtins, property_type)
+            construtor = getattr(builtins, type_name)
             value = construtor(value_str)
             if range := property_config["range"]:
                 min, max = range.split("-")
