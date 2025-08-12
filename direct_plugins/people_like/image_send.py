@@ -335,9 +335,11 @@ async def add_image(event: GroupMessageEvent):
                         logger.info(f"新增表情包图片{file_name}成功")
 
                         parts = [Part.from_text(text="Summarize the content of the following set of pictures, using multiple tags to describe them, at least 40 tags")]
-                        parts.extend(await process_image_file(EMOJI_DIR_PATH.joinpath(file_name)))
+                        file_path = EMOJI_DIR_PATH.joinpath(file_name)
+                        parts.extend(await process_image_file(file_path))
                         content = await analysis_image_to_str_description(parts=parts)
                         vec = await get_text_embedding(content)
+                        await remove_gif_frames(file_path)
 
                         image_vec_data = VectorDataImage(
                             description=content,
@@ -372,7 +374,7 @@ async def add_image(event: GroupMessageEvent):
                                     "emoji_id": emoji_id,
                                     "emoji_package_id": emoji_package_id,
                                     "mime_type": mime_type,
-                                    "remote_file_name": file.name,                                    
+                                    "remote_file_name": file.name,
                                 }
                             )
                         )
@@ -444,9 +446,10 @@ async def migrate_imagesender_to_milvus():
                 continue
 
         mime_type = get_mime_type(name)
+        file_path = EMOJI_DIR_PATH.joinpath(name)
         try:
             parts = [Part.from_text(text="Summarize the content of the following set of pictures, using multiple tags to describe them, at least 40 tags")]
-            parts.extend(await process_image_file(EMOJI_DIR_PATH.joinpath(name)))
+            parts.extend(await process_image_file(file_path))
             description = await analysis_image_to_str_description(parts=parts)
             vec = await get_text_embedding(description)
             vec_image_data = VectorDataImage(
@@ -468,6 +471,8 @@ async def migrate_imagesender_to_milvus():
             fail_files.append(name)
             error_count += 1
             logger.error(f"数据{name}, mime_type为{mime_type}，迁移失败{repr(e)}")
+        finally:
+            await remove_gif_frames(file_path)
 
     else:
         # 删除失败的文件以及本地文件
@@ -498,21 +503,23 @@ async def process_image_file(file_path: Path) -> list[Part]:
             async with aopen(path, "rb") as f:
                 content = await f.read()
             parts.append(Part.from_bytes(data=content, mime_type=mime_type))
-        await remove_gif_frames(file_path)
     else:
         async with aopen(file_path, "rb") as f:
             content = await f.read()
         parts.append(Part.from_bytes(data=content, mime_type=mime_type))
     return parts
 
+SAVE_IMAGE_SEMAPHORE = asyncio.Semaphore(16)
 
 async def async_save_image(image: Image.Image, path: Path):
     """Pillow保存为字节流，然后异步写入文件"""
-    buf = io.BytesIO()
-    rgb_image = image.convert("RGB")
-    rgb_image.save(buf, format="JPEG")
-    async with aiofiles.open(path, "wb") as f:
-        await f.write(buf.getvalue())
+    async with SAVE_IMAGE_SEMAPHORE:
+        buf = io.BytesIO()
+        rgb_image = image.convert("RGB")
+        rgb_image.save(buf, format="JPEG")
+        if not path.exists():
+            async with aiofiles.open(path, "wb") as f:
+                await f.write(buf.getvalue())
 
 GIF_FRAME_OUTPUT_DIR = store.get_cache_dir("people_like") / "gif_frames"
 

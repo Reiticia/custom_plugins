@@ -54,7 +54,7 @@ import nonebot_plugin_localstore as store
 from sqlalchemy import delete, select, func, update
 from .setting import get_value_or_default, get_blacklist
 from .config import Config, plugin_config
-from .image_send import get_file_name_of_image_will_sent_by_description_vec, SAFETY_SETTINGS, _HTTP_CLIENT
+from .image_send import get_file_name_of_image_will_sent_by_description_vec, SAFETY_SETTINGS, _HTTP_CLIENT, process_image_file, remove_gif_frames
 from .vector import (
     _GEMINI_CLIENT,
     analysis_image_to_str_description,
@@ -553,8 +553,15 @@ async def chat_with_gemini(
         )
 
     context: list[ChatMsg] = []
+    file_paths = set()
     for item in data:
-        context.append(await build_message_content(bot, item))
+        msg, file_path = await build_message_content(bot, item)
+        context.append(msg)
+        if file_path:
+            file_paths.add(file_path)
+    else:
+        for fp in file_paths:
+            await remove_gif_frames(fp)
 
     try:
         today_zero_time = int(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
@@ -871,7 +878,7 @@ async def chat_with_gemini(
             break
 
 
-async def build_message_content(bot, item) -> ChatMsg:
+async def build_message_content(bot, item) -> tuple[ChatMsg, Optional[Path]]:
     """提取数据库中的消息元素，将其转为特定格式的文本消息内容"""
     if item.self_msg:
         character = Character.BOT
@@ -882,28 +889,30 @@ async def build_message_content(bot, item) -> ChatMsg:
     if item.file_id:
         # 判断为图片消息
         # 读取指定文件二进制信息
-        async with aiofiles.open(ALL_IMAGE_FILE_CACHE_DIR / item.file_id, "rb") as f:
-            content = await f.read()
-        suffix_name = item.file_id.split(".")[-1]
-        mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
-        match suffix_name:
-            case "jpg" | "gif":
-                mime_type = "image/jpeg"
-            case "png":
-                mime_type = "image/png"
+        # async with aiofiles.open(ALL_IMAGE_FILE_CACHE_DIR / item.file_id, "rb") as f:
+        #     content = await f.read()
+        # suffix_name = item.file_id.split(".")[-1]
+        # mime_type: Literal["image/jpeg", "image/png"] = "image/jpeg"
+        # match suffix_name:
+        #     case "jpg" | "gif":
+        #         mime_type = "image/jpeg"
+        #     case "png":
+        #         mime_type = "image/png"
+        file_path = ALL_IMAGE_FILE_CACHE_DIR / item.file_id
+        await process_image_file(file_path)
         parts = []
         parts.append(Part.from_text(text=f"[{item.nick_name}<{item.user_id}>]"))
         if item.to_me:
             parts.append(Part.from_text(text=f"@{bot.self_id} "))
-        parts.append(Part.from_bytes(data=content, mime_type=mime_type))
-        return ChatMsg(sender=character, content=parts)
+        parts.extend(await process_image_file(file_path))
+        return ChatMsg(sender=character, content=parts), file_path
     else:
         parts = []
         parts.append(Part.from_text(text=f"[{item.nick_name}<{item.user_id}>]"))
         if item.to_me:
             parts.append(Part.from_text(text=f"@{bot.self_id} "))
         parts.append(Part.from_text(text=str(item.content)))
-        return ChatMsg(sender=character, content=parts)
+        return ChatMsg(sender=character, content=parts), None
 
 
 async def process_text_segment(message: Message, text_content: str, group_id: int, message_id: int) -> bool:
@@ -1357,8 +1366,15 @@ async def analysis_messages_of_group(group_id: int, messages: list[GroupMsg]):
     messages = sorted(messages, key=lambda x: x.time, reverse=False)
     bot = get_bot()
     context: list[ChatMsg] = []
+    file_paths: set[Path] = set()
     for item in messages:
-        context.append(await build_message_content(bot, item))
+        msg, file_path = await build_message_content(bot, item)
+        context.append(msg)
+        if file_path:
+            file_paths.add(file_path)
+    else:
+        for fp in file_paths:
+            await remove_gif_frames(fp)
 
     contents = []
     for msg in context:
