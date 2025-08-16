@@ -187,8 +187,7 @@ class MilvusVector:
             search_params={
                 "metric_type": "COSINE",
                 "params": {
-                    "nprobe": 128,  # 搜索空间大小（精度-性能平衡点）
-                    "radius": 0.7,  # 最小相似度阈值（可选）
+                    "nprobe": 8,  # 搜索空间大小（精度-性能平衡点）
                 },
             },
             output_fields=[
