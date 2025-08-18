@@ -36,8 +36,8 @@ jobs:
         cd ~/forward
         source ~/forward/.venv/bin/activate
         nohup ~/.local/bin/nb orm upgrade
-        nohup ~/forward/.venv/bin/python3 bot.py >> ~/forward/logs/forward.log 2>&1 & echo $! > ~/forward/pid;
+        nohup ~/forward/.venv/bin/python3 bot.py >> /dev/null 2>&1 & echo $! > ~/forward/pid;
         cd ~/direct
         source ~/direct/.venv/bin/activate
         nohup ~/.local/bin/nb orm upgrade
-        nohup ~/direct/.venv/bin/python3 bot.py >> ~/direct/logs/direct.log 2>&1 & echo $! > ~/direct/pid;
+        nohup ~/direct/.venv/bin/python3 bot.py >> /dev/null 2>&1 & echo $! > ~/direct/pid;

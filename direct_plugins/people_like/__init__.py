@@ -779,7 +779,7 @@ async def chat_with_gemini(
                                 if face_id in EMOJI_ID_DICT:
                                     message.append(MessageSegment.face(face_id))
 
-                    if len(message) > 0:
+                    if len(message) > 0 and success:
                         plain_text = extract_plain_text_from_message(message)
 
                         if LOG_LEVEL.upper() == "DEBUG" if isinstance(LOG_LEVEL, str) else LOG_LEVEL == logging.DEBUG:
