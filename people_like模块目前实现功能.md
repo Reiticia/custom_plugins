@@ -9,3 +9,6 @@
 TODO
 - [ ] 分析视频内容
 - [ ] 发送语音
+- [ ] 将禁言与解禁通知加入上下文 (notice.group_ban.ban/lift_ban)
+- [ ] 将戳一戳通知加入上下文 (notice.notify.poke)
+- [ ] 收到群成员名片修改通知修改缓存 (notice.group_card)
