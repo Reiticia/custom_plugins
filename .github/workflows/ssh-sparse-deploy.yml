@@ -102,8 +102,8 @@ jobs:
         cd ~/forward
         source ~/forward/.venv/bin/activate
         nohup ~/.local/bin/nb orm upgrade
-        nohup ~/.local/bin/nb run >> ~/forward/logs/forward.log 2>&1 & echo $! > ~/forward/pid;
+        nohup ~/.local/bin/nb run >> /dev/null 2>&1 & echo $! > ~/forward/pid;
         cd ~/direct
         source ~/direct/.venv/bin/activate
         nohup ~/.local/bin/nb orm upgrade
-        nohup ~/.local/bin/nb run >> ~/direct/logs/direct.log 2>&1 & echo $! > ~/direct/pid;
+        nohup ~/.local/bin/nb run >> /dev/null 2>&1 & echo $! > ~/direct/pid;
