@@ -1,3 +1,5 @@
+# 环境配置参数
+
 from typing import Optional
 from pydantic import BaseModel, Field
 from nonebot import get_plugin_config

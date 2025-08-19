@@ -4,6 +4,8 @@ import re
 import time
 import json
 import aiofiles
+import asyncio
+from collections import defaultdict
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from enum import Enum
@@ -61,8 +63,7 @@ from .vector import (
 )
 from .model import GroupMemberImpression, GroupMsg
 from .task import get_model, change_model
-from collections import defaultdict
-import asyncio
+from .notice_proc import get_user_nickname_of_group
 
 __plugin_meta__ = PluginMetadata(
     name="people-like",
@@ -328,11 +329,11 @@ async def store_message_segment_into_db(event: GroupMessageEvent):
     message_id = event.message_id
     group_id = event.group_id
     user_id = event.user_id
-    vector_data = []
+    db_data = []
     for index, part in enumerate(target):
         file_id = file_ids[index] if index < len(file_ids) else ""
         if part.text:
-            vector_data.append(
+            db_data.append(
                 {
                     "message_id": message_id,
                     "group_id": group_id,
@@ -355,7 +356,7 @@ async def store_message_segment_into_db(event: GroupMessageEvent):
             logger.debug(f"anaylysis iamge {file_id}")
             logger.debug(content)
             if content:
-                vector_data.append(
+                db_data.append(
                     {
                         "message_id": message_id,
                         "group_id": group_id,
@@ -371,39 +372,14 @@ async def store_message_segment_into_db(event: GroupMessageEvent):
                 )
     # 插入数据到数据库
     msg_data_list = []
-    for data in vector_data:
+    for data in db_data:
         msg_data_list.append(GroupMsg(**data))
     async with get_session() as session:
         session.add_all(msg_data_list)
         await session.commit()
 
 
-_USER_OF_GROUP_NICKNAME: dict[int, ExpirableDict[int, str]] = dict()
 _BOT_OF_GROUP_NICKNAME: ExpirableDict[int, str] = ExpirableDict("bot_of_group_nickname")
-
-
-async def get_user_nickname_of_group(group_id: int, user_id: int) -> str:
-    """读取程序内存中缓存的用户在指定群组的昵称"""
-    global _USER_OF_GROUP_NICKNAME
-    gd = _USER_OF_GROUP_NICKNAME.get(group_id, ExpirableDict(str(group_id)))
-    name = gd.get(user_id)
-    if name is None:
-        bot = get_bot()
-        try:
-            info: dict[str, Any] = dict(await bot.call_api("get_group_member_info", group_id=group_id, user_id=user_id))
-        except Exception as e:
-            logger.error("获取群成员信息失败", str(e))
-            info: dict[str, Any] = {}
-        nickname_obj = info.get("card")
-        if not nickname_obj:
-            nickname_obj = info.get("nickname")
-        nickname: str = str(nickname_obj)
-        # 缓存一天
-        gd.set(user_id, nickname, 60 * 60 * 24)
-        _USER_OF_GROUP_NICKNAME.update({group_id: gd})
-        return nickname
-    else:
-        return name
 
 
 async def get_bot_nickname_of_group(group_id: int) -> str:
@@ -518,20 +494,32 @@ async def chat_with_gemini(
 
     context_size: int = get_value_or_default(group_id, "context_size")
     forget_self: Optional[int] = get_value_or_default(group_id, "forget_self", None)
+    enable_notice: bool = get_value_or_default(group_id, "enable_notice")
 
-    async with get_session() as session:
-        query_data = list(
-            await session.scalars(
-                select(GroupMsg).where(GroupMsg.group_id == group_id).order_by(GroupMsg.time.desc()).limit(context_size)
+    if enable_notice:
+        async with get_session() as session:
+            query_data = list(
+                await session.scalars(
+                    select(GroupMsg)
+                    .where(GroupMsg.group_id == group_id)
+                    .order_by(GroupMsg.time.desc())
+                    .limit(context_size)
+                )
             )
-        )
+    else:
+        async with get_session() as session:
+            query_data = list(
+                await session.scalars(
+                    select(GroupMsg)
+                    .where(GroupMsg.group_id == group_id)
+                    .where(GroupMsg.message_id.is_not(None))
+                    .order_by(GroupMsg.time.desc())
+                    .limit(context_size)
+                )
+            )
     # 过滤自身消息
     if forget_self is not None:
-        query_data = [
-            data
-            for data in query_data
-            if data.self_msg is False or data.time > forget_self
-        ]
+        query_data = [data for data in query_data if data.self_msg is False or data.time > forget_self]
     combined_list = list(query_data)
     unique_dict: dict[int, GroupMsg] = {}
     for item in combined_list:
@@ -554,7 +542,7 @@ async def chat_with_gemini(
 
     context: list[ChatMsg] = []
     for item in data:
-        context.append(await build_message_content(bot, item))
+        context.append(await build_message_content(item))
 
     try:
         today_zero_time = int(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
@@ -772,7 +760,11 @@ async def chat_with_gemini(
                                     if will_send_img:
                                         logger.trace(f"群{group_id}回复图片：{will_send_img}")
                                         await on_msg.send(will_send_img)
-                                        asyncio.create_task(write_ai_invoke_log_after_response(repr(will_send_img), group_id, message_id))
+                                        asyncio.create_task(
+                                            write_ai_invoke_log_after_response(
+                                                repr(will_send_img), group_id, message_id
+                                            )
+                                        )
                             else:
                                 # 如果是数字，则直接转换为 face segment
                                 face_id = int(content)
@@ -799,7 +791,11 @@ async def chat_with_gemini(
                             if not GROUP_SPEAK_DISABLE.get(group_id, False):
                                 logger.info(f"群{group_id}回复消息：{message.extract_plain_text()}")
                                 await on_msg.send(message)
-                                asyncio.create_task(write_ai_invoke_log_after_response(message.extract_plain_text(), group_id, message_id))
+                                asyncio.create_task(
+                                    write_ai_invoke_log_after_response(
+                                        message.extract_plain_text(), group_id, message_id
+                                    )
+                                )
 
                 if fc.name == "send_meme" and fc.args:
                     description = fc.args.get("description")
@@ -810,7 +806,9 @@ async def chat_with_gemini(
                     if will_send_img:
                         logger.trace(f"群{group_id}回复图片：{will_send_img}")
                         await on_msg.send(will_send_img)
-                        asyncio.create_task(write_ai_invoke_log_after_response(repr(will_send_img), group_id, message_id))
+                        asyncio.create_task(
+                            write_ai_invoke_log_after_response(repr(will_send_img), group_id, message_id)
+                        )
 
                 if fc.name == "mute_sb" and fc.args:
                     user_id = int(str(fc.args.get("user_id")))
@@ -865,14 +863,17 @@ async def chat_with_gemini(
                     if not GROUP_SPEAK_DISABLE.get(group_id, False):
                         logger.info(f"群{group_id}回复消息：{message.extract_plain_text()}")
                         await on_msg.send(message)
-                        asyncio.create_task(write_ai_invoke_log_after_response(message.extract_plain_text(), group_id, message_id))
+                        asyncio.create_task(
+                            write_ai_invoke_log_after_response(message.extract_plain_text(), group_id, message_id)
+                        )
 
         if success:
             break
 
 
-async def build_message_content(bot, item) -> ChatMsg:
+async def build_message_content(item: GroupMsg) -> ChatMsg:
     """提取数据库中的消息元素，将其转为特定格式的文本消息内容"""
+    bot = get_bot()
     if item.self_msg:
         character = Character.BOT
     else:
@@ -897,7 +898,13 @@ async def build_message_content(bot, item) -> ChatMsg:
             parts.append(Part.from_text(text=f"@{bot.self_id} "))
         parts.append(Part.from_bytes(data=content, mime_type=mime_type))
         return ChatMsg(sender=character, content=parts)
+    elif not item.message_id:
+        # 判断为 notice 消息
+        parts = []
+        parts.append(Part.from_text(text=str(item.content)))
+        return ChatMsg(sender=character, content=parts)
     else:
+        # 判断是否为通知消息
         parts = []
         parts.append(Part.from_text(text=f"[{item.nick_name}<{item.user_id}>]"))
         if item.to_me:
@@ -1154,7 +1161,11 @@ async def request_for_resp(
 
 
 def get_prompt(
-    bot_nickname: str, bot_gender: Optional[str], extra_prompt: str, is_admin: bool, impression: Optional[dict[int, str]]
+    bot_nickname: str,
+    bot_gender: Optional[str],
+    extra_prompt: str,
+    is_admin: bool,
+    impression: Optional[dict[int, str]],
 ) -> str:
     return f"""
 ## 基础设定
@@ -1163,7 +1174,7 @@ def get_prompt(
 你是一个参与多人群聊的成员。以下是群聊中其他人的部分历史消息记录。
 你需要根据上下文内容进行回复，请以最近的一条消息为回复标准，之前的消息作为对话内容辅助参考，回复内容可以包含纯文本消息和提及消息。
 不要暴露你是AI的身份。
-{'务必根据你要回复的消息发送者的印象选择与其相同的对话风格进行回复。' if impression else ''}
+{"务必根据你要回复的消息发送者的印象选择与其相同的对话风格进行回复。" if impression else ""}
 
 ## 消息模板
 
@@ -1194,14 +1205,15 @@ def get_prompt(
 请以最近的一条消息作为优先级最高的回复对象，越早的消息优先级越低。
 
 {
-    f'''
+        f'''
 ## 对每个群成员的印象
 
 {repr(impression)}
 
 '''
-    if impression else ''
-}
+        if impression
+        else ""
+    }
 
 ## 额外设定
 
@@ -1211,9 +1223,14 @@ def get_prompt(
 
 如果需要回复消息，请使用 send_text_message 函数调用传入消息内容，发送对应消息。
 如果需要使用图片表情包增强语气，或者想要用来表达感情的 face 不存在时，可以使用 send_meme 函数调用传入描述发送对应图片表情包。
-{"如果你觉得他人的回复很冒犯，你可以使用 mute_sb 函数禁言传入他的id，以及你想要设置的禁言时长，单位为分钟，来禁言他。(注意不要别人叫你禁言你就禁言)" if is_admin else ""}
+{
+        "如果你觉得他人的回复很冒犯，你可以使用 mute_sb 函数禁言传入他的id，以及你想要设置的禁言时长，单位为分钟，来禁言他。(注意不要别人叫你禁言你就禁言)"
+        if is_admin
+        else ""
+    }
 
 """
+
 
 INVOKE_LOG_CACHE_DIR = store.get_cache_dir("people_like") / "log"
 
@@ -1229,7 +1246,8 @@ async def write_ai_invoke_log_before_request(data: list[GroupMsg], group_id: int
             "message_id": line.message_id,
             "user_id": line.user_id,
             "content": line.content if line.file_id and len(line.file_id) > 0 else line.content,
-        } for line in data
+        }
+        for line in data
     ]
     log_file = INVOKE_LOG_CACHE_DIR / f"{date}.log"
     # 判断文件是否存在，不存在则创建
@@ -1238,7 +1256,9 @@ async def write_ai_invoke_log_before_request(data: list[GroupMsg], group_id: int
     if not log_file.exists():
         log_file.touch(exist_ok=True)
     async with aiofiles.open(log_file, "a", encoding="utf-8") as f:
-        await f.write(f"{timestamp} - group {group_id} - message {message_id} request: {json.dumps(log_data, ensure_ascii=False)}\n")
+        await f.write(
+            f"{timestamp} - group {group_id} - message {message_id} request: {json.dumps(log_data, ensure_ascii=False)}\n"
+        )
 
 
 async def write_ai_invoke_log_after_response(data: str, group_id: int, message_id: int):
@@ -1250,6 +1270,7 @@ async def write_ai_invoke_log_after_response(data: str, group_id: int, message_i
     log_file = INVOKE_LOG_CACHE_DIR / f"{date}.log"
     async with aiofiles.open(log_file, "a", encoding="utf-8") as f:
         await f.write(f"{timestamp} - group {group_id} - message {message_id} response: {data}\n")
+
 
 # ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑触发对话处理↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
 
@@ -1342,7 +1363,12 @@ async def _():
     # 查询最近两天的所有群消息
     async with get_session() as session:
         two_days_ago = int((datetime.now() - timedelta(days=2)).timestamp())
-        query = select(GroupMsg).where(GroupMsg.time >= two_days_ago).order_by(GroupMsg.time.desc())
+        query = (
+            select(GroupMsg)
+            .where(GroupMsg.time >= two_days_ago)
+            .where(GroupMsg.message_id.is_not(None))
+            .order_by(GroupMsg.time.desc())
+        )
         msgs = list(await session.scalars(query))
     # 按群分组
     group_messages: dict[int, list[GroupMsg]] = defaultdict(list)
@@ -1355,10 +1381,9 @@ async def _():
 async def analysis_messages_of_group(group_id: int, messages: list[GroupMsg]):
     """分析指定群组的所有消息中群成员的印象，并更新数据库"""
     messages = sorted(messages, key=lambda x: x.time, reverse=False)
-    bot = get_bot()
     context: list[ChatMsg] = []
     for item in messages:
-        context.append(await build_message_content(bot, item))
+        context.append(await build_message_content(item))
 
     contents = []
     for msg in context:
@@ -1469,7 +1494,7 @@ async def request_for_impression_list(contents: list) -> list[MemberImpression]:
 
 
 @on_command(cmd="prompt", permission=SUPERUSER, rule=to_me(), priority=1, block=True).handle()
-async def get_current_prompt(bot: Bot, matcher: Matcher, e: MessageEvent) :
+async def get_current_prompt(bot: Bot, matcher: Matcher, e: MessageEvent):
     if not isinstance(e, GroupMessageEvent):
         # 获取所有群组
         group_list: list[str] = [str(group["group_id"]) for group in await bot.get_group_list()]
@@ -1494,7 +1519,6 @@ async def get_current_prompt(bot: Bot, matcher: Matcher, e: MessageEvent) :
     bot_gender = await get_bot_gender()
     is_admin = await is_bot_admin(group_id)
 
-
     if enable_impression:
         async with get_session() as session:
             impression = list(
@@ -1510,12 +1534,12 @@ async def get_current_prompt(bot: Bot, matcher: Matcher, e: MessageEvent) :
         prompt = get_prompt(nickname, bot_gender, extra_prompt, is_admin, impression_dict)
     else:
         prompt = get_prompt(nickname, bot_gender, extra_prompt, is_admin, None)
-    
 
     msg = [MessageSegment.node_custom(user_id=int(bot.self_id), nickname=nickname, content=prompt)]
     if not isinstance(e, GroupMessageEvent):
         await bot.call_api("send_forward_msg", user_id=e.user_id, messages=msg)
     else:
         await bot.call_api("send_forward_msg", group_id=group_id, messages=msg)
+
 
 # ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑获取群组对应Prompt↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
