@@ -4,6 +4,8 @@ import re
 import time
 import json
 import aiofiles
+import asyncio
+from collections import defaultdict
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from enum import Enum
@@ -61,8 +63,7 @@ from .vector import (
 )
 from .model import GroupMemberImpression, GroupMsg
 from .task import get_model, change_model
-from collections import defaultdict
-import asyncio
+from .notice_proc import get_user_nickname_of_group
 
 __plugin_meta__ = PluginMetadata(
     name="people-like",
@@ -328,11 +329,11 @@ async def store_message_segment_into_db(event: GroupMessageEvent):
     message_id = event.message_id
     group_id = event.group_id
     user_id = event.user_id
-    vector_data = []
+    db_data = []
     for index, part in enumerate(target):
         file_id = file_ids[index] if index < len(file_ids) else ""
         if part.text:
-            vector_data.append(
+            db_data.append(
                 {
                     "message_id": message_id,
                     "group_id": group_id,
@@ -355,7 +356,7 @@ async def store_message_segment_into_db(event: GroupMessageEvent):
             logger.debug(f"anaylysis iamge {file_id}")
             logger.debug(content)
             if content:
-                vector_data.append(
+                db_data.append(
                     {
                         "message_id": message_id,
                         "group_id": group_id,
@@ -371,39 +372,16 @@ async def store_message_segment_into_db(event: GroupMessageEvent):
                 )
     # 插入数据到数据库
     msg_data_list = []
-    for data in vector_data:
+    for data in db_data:
         msg_data_list.append(GroupMsg(**data))
     async with get_session() as session:
         session.add_all(msg_data_list)
         await session.commit()
 
 
-_USER_OF_GROUP_NICKNAME: dict[int, ExpirableDict[int, str]] = dict()
 _BOT_OF_GROUP_NICKNAME: ExpirableDict[int, str] = ExpirableDict("bot_of_group_nickname")
 
 
-async def get_user_nickname_of_group(group_id: int, user_id: int) -> str:
-    """读取程序内存中缓存的用户在指定群组的昵称"""
-    global _USER_OF_GROUP_NICKNAME
-    gd = _USER_OF_GROUP_NICKNAME.get(group_id, ExpirableDict(str(group_id)))
-    name = gd.get(user_id)
-    if name is None:
-        bot = get_bot()
-        try:
-            info: dict[str, Any] = dict(await bot.call_api("get_group_member_info", group_id=group_id, user_id=user_id))
-        except Exception as e:
-            logger.error("获取群成员信息失败", str(e))
-            info: dict[str, Any] = {}
-        nickname_obj = info.get("card")
-        if not nickname_obj:
-            nickname_obj = info.get("nickname")
-        nickname: str = str(nickname_obj)
-        # 缓存一天
-        gd.set(user_id, nickname, 60 * 60 * 24)
-        _USER_OF_GROUP_NICKNAME.update({group_id: gd})
-        return nickname
-    else:
-        return name
 
 
 async def get_bot_nickname_of_group(group_id: int) -> str:
@@ -554,7 +532,7 @@ async def chat_with_gemini(
 
     context: list[ChatMsg] = []
     for item in data:
-        context.append(await build_message_content(bot, item))
+        context.append(await build_message_content(item))
 
     try:
         today_zero_time = int(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
@@ -871,8 +849,9 @@ async def chat_with_gemini(
             break
 
 
-async def build_message_content(bot, item) -> ChatMsg:
+async def build_message_content(item: GroupMsg) -> ChatMsg:
     """提取数据库中的消息元素，将其转为特定格式的文本消息内容"""
+    bot = get_bot()
     if item.self_msg:
         character = Character.BOT
     else:
@@ -897,7 +876,13 @@ async def build_message_content(bot, item) -> ChatMsg:
             parts.append(Part.from_text(text=f"@{bot.self_id} "))
         parts.append(Part.from_bytes(data=content, mime_type=mime_type))
         return ChatMsg(sender=character, content=parts)
+    elif not item.message_id:
+        # 判断为 notice 消息
+        parts = []
+        parts.append(Part.from_text(text=str(item.content)))
+        return ChatMsg(sender=character, content=parts)
     else:
+        # 判断是否为通知消息
         parts = []
         parts.append(Part.from_text(text=f"[{item.nick_name}<{item.user_id}>]"))
         if item.to_me:
@@ -1358,7 +1343,7 @@ async def analysis_messages_of_group(group_id: int, messages: list[GroupMsg]):
     bot = get_bot()
     context: list[ChatMsg] = []
     for item in messages:
-        context.append(await build_message_content(bot, item))
+        context.append(await build_message_content(item))
 
     contents = []
     for msg in context:

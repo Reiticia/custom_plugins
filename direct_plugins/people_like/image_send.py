@@ -1,3 +1,5 @@
+# 消息发送相关
+
 import random
 import time
 import os
