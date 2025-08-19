@@ -1327,7 +1327,7 @@ async def _():
     # 查询最近两天的所有群消息
     async with get_session() as session:
         two_days_ago = int((datetime.now() - timedelta(days=2)).timestamp())
-        query = select(GroupMsg).where(GroupMsg.time >= two_days_ago).order_by(GroupMsg.time.desc())
+        query = select(GroupMsg).where(GroupMsg.time >= two_days_ago).where(GroupMsg.message_id.is_not(None)).order_by(GroupMsg.time.desc())
         msgs = list(await session.scalars(query))
     # 按群分组
     group_messages: dict[int, list[GroupMsg]] = defaultdict(list)
@@ -1340,7 +1340,6 @@ async def _():
 async def analysis_messages_of_group(group_id: int, messages: list[GroupMsg]):
     """分析指定群组的所有消息中群成员的印象，并更新数据库"""
     messages = sorted(messages, key=lambda x: x.time, reverse=False)
-    bot = get_bot()
     context: list[ChatMsg] = []
     for item in messages:
         context.append(await build_message_content(item))
