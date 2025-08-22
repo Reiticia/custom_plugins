@@ -1,3 +1,5 @@
+# 启动后参数动态修改
+
 import json
 import builtins
 from nonebot import logger, on_command, get_driver
@@ -102,6 +104,7 @@ _EXPECT_PROP_NAMES: dict[str, PropConfig] = {
     "context_size": {"range": "0-1000", "callable": None, "default": plugin_config.context_size, "desc": "上下文长度"},
     "forget_self": {"range": None, "callable": str_to_timestamp, "default": 0, "desc": "不将指定时间戳之前的自身消息列入上下文"},
     "impression": {"range": None, "callable": str_to_bool, "default": True, "desc": "是否启用群组成员印象"},
+    "enable_notice": {"range": None, "callable": str_to_bool, "default": True, "desc": "是否将通知消息加入消息上下文"}
 }
 
 

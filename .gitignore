@@ -150,3 +150,5 @@ template/
 /config
 !/emoji.py
 !/runscp.py
+/*.json
+!/emoji.json

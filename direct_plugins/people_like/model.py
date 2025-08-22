@@ -1,3 +1,5 @@
+# 数据库实体
+
 from nonebot_plugin_orm import Model
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -40,7 +42,7 @@ class ImageSender(Model):
 class GroupMsg(Model):
     """记录消息数据结构"""
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)  # 自增主键
-    message_id: Mapped[int]
+    message_id: Mapped[int] = mapped_column(nullable=True)  # 如果缺少 message_id 则为通知消息
     group_id: Mapped[int]
     user_id: Mapped[int]
     self_msg: Mapped[bool]  # 是否为自己的消息
