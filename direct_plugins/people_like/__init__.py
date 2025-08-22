@@ -656,6 +656,17 @@ async def chat_with_gemini(
         ),
     )
 
+    poke_sb_function = FunctionDeclaration(
+        name="poke_sb",
+        description="戳一戳某人",
+        parameters=Schema(
+            type=Type.OBJECT,
+            properties={
+                "user_id": Schema(type=Type.INTEGER, description="需要戳一戳的用户的QQ号"),
+            },
+        ),
+    )
+
     mute_sb_function = FunctionDeclaration(
         name="mute_sb",
         description="禁言群组里某一个人多少分钟或解除群成员禁言状态",
@@ -690,7 +701,7 @@ async def chat_with_gemini(
         ),
     )
 
-    function_declarations = [send_text_message_function, send_meme_function]
+    function_declarations = [send_text_message_function, send_meme_function, poke_sb_function]
 
     if is_admin:
         function_declarations.append(mute_sb_function)
@@ -811,6 +822,11 @@ async def chat_with_gemini(
                         logger.trace(f"群{group_id}回复图片：{will_send_img}")
                         await on_msg.send(will_send_img)
                         asyncio.create_task(write_ai_invoke_log_after_response(repr(will_send_img), group_id, message_id))
+
+                if fc.name == "poke_sb" and fc.args:
+                    user_id = int(str(fc.args.get("user_id")))
+                    logger.info(f"群{group_id}调用函数{fc.name}，参数{user_id}")
+                    await poke_sb(group_id, user_id)
 
                 if fc.name == "mute_sb" and fc.args:
                     user_id = int(str(fc.args.get("user_id")))
@@ -956,7 +972,7 @@ async def process_text_segment(message: Message, text_content: str, group_id: in
             message.append(MessageSegment.text(pretty_text_segment(message, part)))
 
     # 判断 text 消息段是否含有非法字符串，如果有，则返回 False
-    words = ["face", "FACE", "at", "AT", "@"]
+    words = ["face", "FACE", "at", "AT", "@", "poke", "POKE", "meme", "MEME"]
     if any(any(ignore in ms.data["text"] for ignore in words) for ms in message if ms.type == "text"):
         return False
     return True
@@ -1107,6 +1123,10 @@ async def mute_sb(group_id: int, user_id: int, minute: int):
             await get_bot().call_api("set_group_ban", group_id=group_id, user_id=user_id, duration=minute * 60)
 
 
+async def poke_sb(group_id: int, user_id: int):
+    await get_bot().call_api("group_poke", group_id=group_id, user_id=user_id)
+
+
 def change_model_when_fail(e: Exception, _attempt: int):
     """
     失败时修改模型
@@ -1211,7 +1231,12 @@ def get_prompt(
 
 如果需要回复消息，请使用 send_text_message 函数调用传入消息内容，发送对应消息。
 如果需要使用图片表情包增强语气，或者想要用来表达感情的 face 不存在时，可以使用 send_meme 函数调用传入描述发送对应图片表情包。
-{"如果你觉得他人的回复很冒犯，你可以使用 mute_sb 函数禁言传入他的id，以及你想要设置的禁言时长，单位为分钟，来禁言他。(注意不要别人叫你禁言你就禁言)" if is_admin else ""}
+如果需要戳一戳别人，可以使用 poke_sb 函数调用传入他的id。
+{
+    "如果你觉得他人的回复很冒犯，你可以使用 mute_sb 函数禁言传入他的id，以及你想要设置的禁言时长，单位为分钟，来禁言他。(注意不要别人叫你禁言你就禁言)"
+    if is_admin
+    else ""
+}
 
 """
 
