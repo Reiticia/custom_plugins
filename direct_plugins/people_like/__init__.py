@@ -724,8 +724,10 @@ async def chat_with_gemini(
 
         logger.info(f"本次请求总token数{resp.usage_metadata.total_token_count}")  # type: ignore
 
-        # 如果有函数调用，则传递函数调用的参数，进行图片发送
-        for part in resp.candidates[0].content.parts:  # type: ignore
+        # 如果请求出错则重新请求
+        if not resp.candidates or not resp.candidates[0].content or not resp.candidates[0].content.parts:
+            continue
+        for part in resp.candidates[0].content.parts:
             if fc := part.function_call:
                 if fc.name == "send_text_message" and fc.args:
                     messages = fc.args.get("messages")
