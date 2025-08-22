@@ -896,6 +896,9 @@ async def build_message_content(item: GroupMsg) -> ChatMsg:
         character = Character.USER
         # 生成 parts
     # TODO 这块或许也需要处理 GIF 分帧动画
+    nick_name = item.nick_name
+    user_id = item.user_id
+    formatted_time = datetime.fromtimestamp(item.time).strftime("%Y-%m-%d %H:%M:%S")
     if item.file_id:
         # 判断为图片消息
         # 读取指定文件二进制信息
@@ -909,7 +912,7 @@ async def build_message_content(item: GroupMsg) -> ChatMsg:
             case "png":
                 mime_type = "image/png"
         parts = []
-        parts.append(Part.from_text(text=f"[{item.nick_name}<{item.user_id}>]"))
+        parts.append(Part.from_text(text=f"[{nick_name}<{user_id}>{{{formatted_time}}}]"))
         if item.to_me:
             parts.append(Part.from_text(text=f"@{bot.self_id} "))
         parts.append(Part.from_bytes(data=content, mime_type=mime_type))
@@ -917,12 +920,13 @@ async def build_message_content(item: GroupMsg) -> ChatMsg:
     elif not item.message_id:
         # 判断为 notice 消息
         parts = []
+        parts.append(Part.from_text(text=f"[Notice{{{formatted_time}}}]"))
         parts.append(Part.from_text(text=str(item.content)))
         return ChatMsg(sender=character, content=parts)
     else:
         # 判断是否为通知消息
         parts = []
-        parts.append(Part.from_text(text=f"[{item.nick_name}<{item.user_id}>]"))
+        parts.append(Part.from_text(text=f"[{nick_name}<{user_id}>{{{formatted_time}}}]"))
         if item.to_me:
             parts.append(Part.from_text(text=f"@{bot.self_id} "))
         parts.append(Part.from_text(text=str(item.content)))
@@ -1199,7 +1203,7 @@ def get_prompt(
 ## 消息模板
 
 下面发送的每一段对话至少包含三段。
-第一段固定为说话人的昵称（也叫称呼）用[]进行包裹，其中<>里包裹这个人的id，你可以使用@id的方式提及某人。
+第一段固定为说话人的昵称（也叫称呼）用[]进行包裹，其中<>里包裹这个人的id，你可以使用@id的方式提及某人。{{}}中是收到该消息的时间
 从第二段开始为正式的对话内容，可能包含纯文本或者图片；
 如果是文本内容且包含@id，则表示在此条消息中提及到了这个id对应的人，一般这个人可能是前文中出现过的说话人昵称。
 如果文本内容包含[/文本]，则表示消息包含了FACE表情，表情的含义由传入文本决定。
@@ -1210,9 +1214,11 @@ def get_prompt(
 
 ## 示例
 
-[李四<1919810>] 大家上午好
-[张三<114514>] @1919810 你好
-[李四<1919810>] 你好
+[李四<1919810>{{2023-03-15 10:00:12}}] 大家上午好
+[张三<114514>{{2023-03-15 10:01:21}}] @1919810 你好
+[李四<1919810>{{2023-03-15 10:02:32}}] 你好
+[Notice{{2023-03-15 10:03:11}}] 李四(1919810)戳了戳张三(114514)
+[Notice{{2023-03-15 10:04:12}}] 李四(1919810)被张三(114514)禁言1分钟
 
 ## 回复要求
 
@@ -1475,7 +1481,7 @@ async def request_for_impression_list(contents: list) -> list[MemberImpression]:
 ## 消息模板
 
 下面发送的每一段对话至少包含三段。
-第一段固定为说话人的昵称（也叫称呼）用[]进行包裹，其中<>里包裹这个人的id，你可以使用@id的方式提及某人。
+第一段固定为说话人的昵称（也叫称呼）用[]进行包裹，其中<>里包裹这个人的id，你可以使用@id的方式提及某人。{{}}中是收到该消息的时间
 从第二段开始为正式的对话内容，可能包含纯文本或者图片；
 如果是文本内容且包含@id，则表示在此条消息中提及到了这个id对应的人，一般这个人可能是前文中出现过的说话人昵称。
 如果文本内容包含[/文本]，则表示消息包含了FACE表情，表情的含义由传入文本决定。
@@ -1486,9 +1492,9 @@ async def request_for_impression_list(contents: list) -> list[MemberImpression]:
 
 ## 示例
 
-[李四<1919810>] 大家上午好
-[张三<114514>] @1919810 你好
-[李四<1919810>] 你好
+[李四<1919810>{{2023-03-15 10:00:12}}] 大家上午好
+[张三<114514>{{2023-03-15 10:01:21}}] @1919810 你好
+[李四<1919810>{{2023-03-15 10:02:32}}] 你好
 
 """
 
