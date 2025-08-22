@@ -8,21 +8,16 @@ import typing_extensions
 import json
 import aiofiles
 import io
-from datetime import datetime
 from typing import Literal, Optional
 from pydantic import BaseModel
-from httpx import RemoteProtocolError, AsyncClient
+from httpx import AsyncClient
 from aiofiles import open as aopen
 from nonebot_plugin_orm import get_session
-from sqlalchemy import delete, select, update
+from sqlalchemy import select, update
 from nonebot import get_bot, logger, on_command, on_message, get_driver
-from nonebot.params import CommandArg
-from nonebot.adapters import Message
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent, MessageSegment, Bot as OB11Bot
 from nonebot.adapters.onebot.utils import b2s, f2s
-from nonebot.permission import SUPERUSER
 import nonebot_plugin_localstore as store  # noqa: E402
-from nonebot_plugin_apscheduler import scheduler
 from pathlib import Path
 
 from PIL import Image, ImageSequence
@@ -57,8 +52,6 @@ class LocalFile(BaseModel):
     file_name: str
     file: File
 
-
-# _FILES: list[LocalFile] = []
 
 SAFETY_SETTINGS = [
     SafetySetting(category=HarmCategory.HARM_CATEGORY_HARASSMENT, threshold=HarmBlockThreshold.OFF),
@@ -287,8 +280,6 @@ _HTTP_CLIENT = AsyncClient(verify=False, timeout=30.0)
 async def add_image(event: GroupMessageEvent):
     if not EMOJI_DIR_PATH.exists():
         EMOJI_DIR_PATH.mkdir(parents=True)
-    if not NORMAL_IMAGE_DIR_PATH.exists():
-        NORMAL_IMAGE_DIR_PATH.mkdir(parents=True)
     ms = event.message.include("image")
     for m in ms:
         url = m.data["url"]
@@ -382,13 +373,13 @@ async def add_image(event: GroupMessageEvent):
                         logger.info(f"更新表情包图片{file_name}成功")
                     await session.commit()
 
-        else:
-            resp = await _HTTP_CLIENT.get(url)
-            # 文件不存在则写入
-            if not (file_path := NORMAL_IMAGE_DIR_PATH.joinpath(file_name)).exists():
-                async with aopen(file_path, "wb") as f:
-                    await f.write(resp.content)
-                logger.info(f"下载图片{file_name}成功")
+        # else:
+        #     resp = await _HTTP_CLIENT.get(url)
+        #     # 文件不存在则写入
+        #     if not (file_path := NORMAL_IMAGE_DIR_PATH.joinpath(file_name)).exists():
+        #         async with aopen(file_path, "wb") as f:
+        #             await f.write(resp.content)
+        #         logger.info(f"下载图片{file_name}成功")
 
 
 driver = get_driver()

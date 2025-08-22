@@ -14,7 +14,6 @@ from asyncio import sleep
 from typing import Any, Literal, Optional
 from pydantic import BaseModel
 from nonebot import get_bot, logger, on_command, on_keyword, on_message, require, get_driver, on
-from nonebot_plugin_waiter import suggest
 from nonebot.permission import SUPERUSER
 
 from nonebot.rule import to_me
@@ -47,7 +46,7 @@ require("nonebot_plugin_waiter")
 require("nonebot_plugin_apscheduler")
 require("nonebot_plugin_orm")
 
-from nonebot_plugin_waiter import Matcher
+from nonebot_plugin_waiter import Matcher, suggest
 from nonebot_plugin_orm import get_session
 from nonebot_plugin_apscheduler import scheduler
 
