@@ -726,6 +726,7 @@ async def chat_with_gemini(
 
         # 如果请求出错则重新请求
         if not resp.candidates or not resp.candidates[0].content or not resp.candidates[0].content.parts:
+            logger.error(f"请求出错{repr(contents)}----------------------------{repr(resp)}")
             continue
         for part in resp.candidates[0].content.parts:
             if fc := part.function_call:
