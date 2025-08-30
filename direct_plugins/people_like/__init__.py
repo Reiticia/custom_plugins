@@ -898,7 +898,8 @@ async def build_message_content(item: GroupMsg) -> ChatMsg:
         character = Character.USER
         # 生成 parts
     # TODO 这块或许也需要处理 GIF 分帧动画
-    nick_name = item.nick_name
+    # nick_name = item.nick_name
+    nick_name = await get_user_nickname_of_group(item.group_id, item.user_id)
     user_id = item.user_id
     formatted_time = datetime.fromtimestamp(item.time).strftime("%Y-%m-%d %H:%M:%S")
     if item.file_id:
@@ -1253,10 +1254,10 @@ def get_prompt(
 如果需要使用图片表情包增强语气，或者想要用来表达感情的 face 不存在时，可以使用 send_meme 函数调用传入描述发送对应图片表情包。
 如果需要戳一戳别人，可以使用 poke_sb 函数调用传入他的id。
 {
-    "如果你觉得他人的回复很冒犯，你可以使用 mute_sb 函数禁言传入他的id，以及你想要设置的禁言时长，单位为分钟，来禁言他。(注意不要别人叫你禁言你就禁言)"
-    if is_admin
-    else ""
-}
+        "如果你觉得他人的回复很冒犯，你可以使用 mute_sb 函数禁言传入他的id，以及你想要设置的禁言时长，单位为分钟，来禁言他。(注意不要别人叫你禁言你就禁言)"
+        if is_admin
+        else ""
+    }
 
 """
 
